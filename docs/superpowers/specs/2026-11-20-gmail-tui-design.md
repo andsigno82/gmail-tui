@@ -55,13 +55,15 @@ gmail-tui/                          modulo: github.com/<utente>/gmail-tui
 │   │   ├── thread/                 lettura messaggio/thread (bubbles/viewport)
 │   │   ├── composer/               composizione — adattato da pop (MIT)
 │   │   ├── search/                 barra di ricerca
-│   │   └── styles/                 tema lipgloss condiviso
+│   │   └── styles/                 stili lipgloss derivati dal tema attivo
 │   ├── mail/
 │   │   ├── store.go                interfaccia MailStore (+ tipi Message, Query…)
 │   │   ├── imap/                   implementazione IMAP (lettura, flag, label)
 │   │   ├── smtp/                   implementazione invio
 │   │   └── cache/                  cache bbolt di corpi e header
 │   ├── config/                     caricamento/validazione config, first-run wizard
+│   ├── theme/                      sistema temi: struct Theme, registry,
+│   │                               loader TOML, temi embedded (themes/*.toml)
 │   └── msg/                        enmime → struct interna normalizzata, HTML→testo
 └── docs/
 ```
@@ -145,6 +147,29 @@ allegati, anteprima pre-invio, firma da config.
 
 **Allegati**: elencati con dimensione; `:save` (filepicker) e `:open` (app di sistema).
 
+## Temi
+
+Supporto ai temi **classici da TUI**, selezionabili da config, flag o comando:
+
+- **Set iniziale**: `default` (stile Charm), `catppuccin-latte`, `catppuccin-frappe`,
+  `catppuccin-macchiato`, `catppuccin-mocha`, `dracula`, `one-dark`, `one-light`,
+  `nord`, `gruvbox-dark`, `gruvbox-light`, `tokyo-night`.
+- Un tema è un file **TOML embedded** (`internal/theme/themes/<nome>.toml`) che
+  mappa **slot semantici** — `primary`, `accent`, `border`, `unread`, `starred`,
+  `quoted`, `help`, `error`, `success`… — a colori. La UI usa solo slot
+  semantici, mai colori diretti: qualunque tema funziona con qualunque vista.
+- Palette ufficiali dei rispettivi progetti, con attribuzione in
+  `internal/theme/themes/README.md` (tutte con licenza MIT/Apache-compatible).
+- **Selezione**: `theme = "catppuccin-mocha"` in config, flag `--theme` da CLI,
+  comando `:theme <nome>` a runtime (con anteprima immediata e persistenza in
+  config); `:theme` senza argomenti elenca i temi disponibili.
+- Colori come `lipgloss.AdaptiveColor` (varianti light/dark) dove il tema li
+  prevede; degradazione automatica per terminali senza true color via
+  `colorprofile` di lipgloss v2 — zero codice custom.
+- **Contribuire un tema nuovo = un file TOML + una riga in un test tabellare**
+  che verifica slot completi e hex validi: PR banali, ideali per chi vuole
+  iniziare a contribuire al progetto community.
+
 ## Config e sicurezza
 
 ```toml
@@ -152,6 +177,7 @@ allegati, anteprima pre-invio, firma da config.
 address   = "tu@gmail.com"
 name      = "Andrea"
 signature = "Inviato con gmail-tui"
+theme     = "catppuccin-mocha"
 # host imap/smtp: preset Gmail, non esposti nella config
 ```
 
@@ -174,7 +200,8 @@ signature = "Inviato con gmail-tui"
 ## Test
 
 - **Unitari**: parser query ricerca, HTML→testo (golden file), envelope→struct,
-  caricamento config.
+  caricamento config, validazione temi embedded (slot completi + hex validi per
+  ogni file, test tabellare).
 - **UI**: `MailStore` mock in-memory; la TUI è testabile senza rete.
 - **Integrazione**: GreenMail in Docker (IMAP+SMTP locali) in CI.
 - **Smoke manuale**: checklist contro Gmail reale (documento in `docs/`).
