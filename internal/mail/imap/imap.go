@@ -28,6 +28,11 @@ type Options struct {
 // le label sono cartelle; COPY sulla cartella aggiunge la label;
 // \Deleted+EXPUNGE nella cartella rimuove la label (= archivia da INBOX,
 // il messaggio resta in All Mail).
+//
+// NOTA: l'assert di conformenza `var _ mail.MailStore = (*Store)(nil)`
+// previsto dalla verifica finale del piano viene aggiunto nel Task 8:
+// dopo Search (Task 6) mancano ancora all'interfaccia Watch (Task 7) ed
+// Send (Task 8).
 type Store struct {
 	opts   Options
 	client *imapclient.Client
@@ -94,27 +99,10 @@ func (s *Store) connected() (*imapclient.Client, error) {
 //     thread, il raggruppamento è responsabilità della UI);
 //  5. ritorno dal più nuovo al più vecchio.
 func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	c, err := s.connected()
+	mailbox, uids, err := s.selectAndSearch(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-
-	mailbox := "INBOX"
-	if q.Label != "" {
-		mailbox = q.Label
-	}
-	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
-	}
-
-	data, err := c.UIDSearch(searchCriteria(q), nil).Wait()
-	if err != nil {
-		return nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
-	}
-	uids := data.AllUIDs() // ascendente
 
 	limit := pg.Limit
 	if limit == 0 {
@@ -124,9 +112,50 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 	if start >= end {
 		return nil, nil
 	}
-	pageUIDs := uids[start:end]
+	return s.fetchRefs(mailbox, uids[start:end])
+}
 
-	cmd := c.Fetch(imap.UIDSetNum(pageUIDs...), &imap.FetchOptions{
+// selectAndSearch è il passo 1-2 condiviso da ListMessages e Search:
+// Select della mailbox di q (q.Label o "INBOX" se vuota: la label seleziona
+// la mailbox, non è un criterio SEARCH) e UIDSearch con i criteri tradotti
+// da searchCriteria(q). Ritorna gli UID matchanti in ordine ascendente.
+func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []imap.UID, error) {
+	if err := ctx.Err(); err != nil {
+		return "", nil, err
+	}
+	c, err := s.connected()
+	if err != nil {
+		return "", nil, err
+	}
+
+	mailbox := "INBOX"
+	if q.Label != "" {
+		mailbox = q.Label
+	}
+	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+		return "", nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	}
+
+	data, err := c.UIDSearch(searchCriteria(q), nil).Wait()
+	if err != nil {
+		return "", nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
+	}
+	return mailbox, data.AllUIDs(), nil // UID ascendenti
+}
+
+// fetchRefs è il passo 3-5 condiviso da ListMessages e Search: UIDFetch
+// ENVELOPE+FLAGS+INTERNALDATE degli uid (nella mailbox già selezionata) e
+// mapping in msg.MessageRef, dal più nuovo al più vecchio.
+func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
+	if len(uids) == 0 {
+		return nil, nil
+	}
+	c, err := s.connected()
+	if err != nil {
+		return nil, err
+	}
+
+	cmd := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,
 		Envelope:      true,
 		Flags:         true,
@@ -141,10 +170,9 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		byUID[b.UID] = b
 	}
 
-	refs := make([]msg.MessageRef, 0, len(pageUIDs))
-	for i := len(pageUIDs) - 1; i >= 0; i-- { // dal più nuovo al più vecchio
-		uid := pageUIDs[i]
-		refs = append(refs, toRef(mailbox, uid, byUID[uid]))
+	refs := make([]msg.MessageRef, 0, len(uids))
+	for i := len(uids) - 1; i >= 0; i-- { // dal più nuovo al più vecchio
+		refs = append(refs, toRef(mailbox, uids[i], byUID[uids[i]]))
 	}
 	return refs, nil
 }
