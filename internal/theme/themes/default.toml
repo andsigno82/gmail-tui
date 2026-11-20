@@ -1,0 +1,45 @@
+# Tema di default — palette neutra ispirata a Charm.
+# Sintassi: ogni slot ha "dark" e/o "light"; se manca un lato, vale l'altro.
+
+[fg]
+dark  = "#e2e2e7"
+light = "#24292f"
+[bg]
+dark  = "#16161e"
+light = "#ffffff"
+[muted]
+dark  = "#8b8b9e"
+light = "#6e7781"
+[border]
+dark  = "#3a3a4e"
+light = "#d0d7de"
+[primary]
+dark  = "#906cf2"
+light = "#6f42c1"
+[accent]
+dark  = "#f778ba"
+light = "#bf3989"
+[error]
+dark  = "#f38ba8"
+light = "#cf222e"
+[success]
+dark  = "#a6e3a1"
+light = "#116329"
+[warning]
+dark  = "#f9e2af"
+light = "#9a6700"
+[unread]
+dark  = "#f9e2af"
+light = "#9a6700"
+[starred]
+dark  = "#fab387"
+light = "#bc4c00"
+[quoted]
+dark  = "#7d8590"
+light = "#57606a"
+[help]
+dark  = "#8b8b9e"
+light = "#6e7781"
+[selection]
+dark  = "#2e2e42"
+light = "#ddf4ff"
