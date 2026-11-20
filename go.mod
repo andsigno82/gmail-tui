@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.9
 	github.com/jhillyerd/enmime v1.3.0
 	github.com/k3a/html2text v1.5.1
 	go.etcd.io/bbolt v1.5.0
