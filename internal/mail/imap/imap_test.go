@@ -89,6 +89,14 @@ func (ts *testServer) seedMail(from, subject, body string, seen, flagged bool) u
 // connessione di rete).
 func (ts *testServer) seedInMailbox(name, from, subject, body string, seen, flagged bool) uint32 {
 	ts.t.Helper()
+	return ts.seedRaw(name, rawMail(from, subject, body), seen, flagged)
+}
+
+// seedRaw appende un messaggio RFC822 già formato (grezzo) nella mailbox e
+// ne restituisce l'UID: variant della harness per messaggi arbitrarî
+// (es. multipart, Task 4).
+func (ts *testServer) seedRaw(name string, raw []byte, seen, flagged bool) uint32 {
+	ts.t.Helper()
 
 	var flags []imap.Flag
 	if seen {
@@ -97,7 +105,7 @@ func (ts *testServer) seedInMailbox(name, from, subject, body string, seen, flag
 	if flagged {
 		flags = append(flags, imap.FlagFlagged)
 	}
-	data, err := ts.user.Append(name, rawLiteral{r: bytes.NewReader(rawMail(from, subject, body))}, &imap.AppendOptions{
+	data, err := ts.user.Append(name, rawLiteral{r: bytes.NewReader(raw)}, &imap.AppendOptions{
 		Flags: flags,
 		Time:  testDate, // INTERNALDATE deterministica
 	})
