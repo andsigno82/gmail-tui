@@ -203,7 +203,10 @@ theme     = "catppuccin-mocha"
   caricamento config, validazione temi embedded (slot completi + hex validi per
   ogni file, test tabellare).
 - **UI**: `MailStore` mock in-memory; la TUI è testabile senza rete.
-- **Integrazione**: GreenMail in Docker (IMAP+SMTP locali) in CI.
+- **Integrazione**: server IMAP e SMTP **in-process** dalle librerie stesse
+  (`go-imap/v2/imapserver/imapmemserver` e il server di `go-smtp`) — stessa
+  copertura protocollo di GreenMail senza Docker in CI (emendamento
+  2026-11-20, Piano 2).
 - **Smoke manuale**: checklist contro Gmail reale (documento in `docs/`).
 - CI GitHub Actions: `golangci-lint`, `go vet`, `go test`, build cross-platform.
 
