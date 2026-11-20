@@ -3,6 +3,7 @@ package imap
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -31,11 +32,17 @@ type Options struct {
 //
 // NOTA: l'assert di conformenza `var _ mail.MailStore = (*Store)(nil)`
 // previsto dalla verifica finale del piano viene aggiunto nel Task 8:
-// dopo Search (Task 6) mancano ancora all'interfaccia Watch (Task 7) ed
-// Send (Task 8).
+// dopo Watch (Task 7) manca ancora Send all'interfaccia.
 type Store struct {
-	opts   Options
+	opts Options
+
+	// mu protegge client e wakes (granularità GROSSOLANA e deliberata: le
+	// operazioni IMAP vere e proprie restano serializzate dall'encoder del
+	// client; il mutex serve solo a rendere atomici lo swap del client nelle
+	// riconnessioni di Watch e l'installazione del canale dei wake).
+	mu     sync.Mutex
 	client *imapclient.Client
+	wakes  chan watchWake // canale del Watch attivo, nil se nessuno
 }
 
 // NewStore crea uno Store non connesso: chiamare Connect.
@@ -44,16 +51,28 @@ func NewStore(o Options) *Store {
 }
 
 // Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed
-// effettua il login.
+// effettua il login. Se esiste già un client (doppio Connect, o il path di
+// riconnessione di Watch dopo un errore di rete) viene chiuso PRIMA di
+// diallare: così un secondo Connect non leaka la connessione precedente.
 func (s *Store) Connect(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.client != nil {
+		// Già connesso: chiudi la vecchia sessione (il suo errore non è
+		// rilevante, la stiamo sostituendo).
+		_ = s.client.Close()
+		s.client = nil
+	}
+
 	dial := imapclient.DialTLS
 	if s.opts.Insecure {
 		dial = imapclient.DialInsecure
 	}
-	c, err := dial(s.opts.Addr, nil)
+	c, err := dial(s.opts.Addr, s.dialOptions())
 	if err != nil {
 		return fmt.Errorf("imap dial %s: %w", s.opts.Addr, err)
 	}
@@ -65,8 +84,19 @@ func (s *Store) Connect(ctx context.Context) error {
 	return nil
 }
 
+// dialOptions costruisce le imapclient.Options per il dial: installa i
+// gestori dei dati unilaterali (EXISTS/FETCH/EXPUNGE non richiesti da un
+// comando pendente) che alimentano il Watch. Va chiamata con mu presa.
+func (s *Store) dialOptions() *imapclient.Options {
+	return &imapclient.Options{
+		UnilateralDataHandler: s.unilateralHandler(),
+	}
+}
+
 // Close chiude la connessione (LOGOUT). Idempotente.
 func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.client == nil {
 		return nil
 	}
@@ -80,10 +110,13 @@ func (s *Store) Close() error {
 
 // connected restituisce il client collegato o un errore descrittivo.
 func (s *Store) connected() (*imapclient.Client, error) {
-	if s.client == nil {
+	s.mu.Lock()
+	c := s.client
+	s.mu.Unlock()
+	if c == nil {
 		return nil, fmt.Errorf("imap store non connesso: chiamare Connect prima di questa operazione")
 	}
-	return s.client, nil
+	return c, nil
 }
 
 // ListMessages restituisce una pagina di righe di lista secondo q e pg.
@@ -156,10 +189,10 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 	}
 
 	cmd := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
-		UID:           true,
-		Envelope:      true,
-		Flags:         true,
-		InternalDate:  true,
+		UID:          true,
+		Envelope:     true,
+		Flags:        true,
+		InternalDate: true,
 	})
 	bufs, err := cmd.Collect()
 	if err != nil {
