@@ -1,0 +1,28 @@
+[fg]
+dark = "#f8f8f2"
+[bg]
+dark = "#282a36"
+[muted]
+dark = "#6272a4"
+[border]
+dark = "#44475a"
+[primary]
+dark = "#bd93f9"
+[accent]
+dark = "#ff79c6"
+[error]
+dark = "#ff5555"
+[success]
+dark = "#50fa7b"
+[warning]
+dark = "#f1fa8c"
+[unread]
+dark = "#f1fa8c"
+[starred]
+dark = "#ffb86c"
+[quoted]
+dark = "#8be9fd"
+[help]
+dark = "#6272a4"
+[selection]
+dark = "#44475a"

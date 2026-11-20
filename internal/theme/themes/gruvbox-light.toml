@@ -1,0 +1,28 @@
+[fg]
+light = "#3c3836"
+[bg]
+light = "#fbf1c7"
+[muted]
+light = "#928374"
+[border]
+light = "#bdae93"
+[primary]
+light = "#076678"
+[accent]
+light = "#8f3f71"
+[error]
+light = "#9d0006"
+[success]
+light = "#79740e"
+[warning]
+light = "#b57614"
+[unread]
+light = "#b57614"
+[starred]
+light = "#af3a03"
+[quoted]
+light = "#427b58"
+[help]
+light = "#928374"
+[selection]
+light = "#ebdbb2"
