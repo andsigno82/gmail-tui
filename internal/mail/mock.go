@@ -42,7 +42,11 @@ func (m *Mock) init() {
 func (m *Mock) fail() error { return m.Err }
 
 // Connect implementa MailStore.
-func (m *Mock) Connect(context.Context) error { return m.fail() }
+func (m *Mock) Connect(context.Context) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.Err
+}
 
 // ListMessages implementa MailStore: data desc + offset/limit.
 func (m *Mock) ListMessages(_ context.Context, q msg.Query, pg Page) ([]msg.MessageRef, error) {
