@@ -231,3 +231,79 @@ func TestSaveAttachmentPartOutOfRange(t *testing.T) {
 		t.Fatal("SaveAttachment part=9: err = nil, voglio errore (1 solo allegato)")
 	}
 }
+
+// rawDegenerateMultipartMail costruisce un multipart/mixed con: parte
+// text/plain, una parte DEGENERE (application/octet-stream senza filename e
+// con corpo vuoto — enmime la classifica tra gli attachment grezzi) SEGUITA
+// da un allegato reale. msg.Parse salta la parte degenere e rinumera:
+// l'allegato reale ha PartIndex 0.
+func rawDegenerateMultipartMail(from, subject, textBody, filename string, content []byte) []byte {
+	var b bytes.Buffer
+	b.WriteString("From: " + from + "\r\n")
+	b.WriteString("To: tester@example.org\r\n")
+	b.WriteString("Subject: " + subject + "\r\n")
+	b.WriteString("Date: " + testDate.Format("Mon, 02 Jan 2006 15:04:05 -0700") + "\r\n")
+	b.WriteString("Message-ID: <degen-" + strings.ToLower(strings.ReplaceAll(subject, " ", "-")) + "@example.org>\r\n")
+	b.WriteString("MIME-Version: 1.0\r\n")
+	b.WriteString("Content-Type: multipart/mixed; boundary=\"bnd42\"\r\n")
+	b.WriteString("\r\n")
+	b.WriteString("--bnd42\r\n")
+	b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	b.WriteString("\r\n")
+	b.WriteString(textBody + "\r\n")
+	// Parte degenere: octet-stream senza nome e senza corpo.
+	b.WriteString("--bnd42\r\n")
+	b.WriteString("Content-Type: application/octet-stream\r\n")
+	b.WriteString("\r\n")
+	b.WriteString("--bnd42\r\n")
+	b.WriteString("Content-Type: application/pdf; name=\"" + filename + "\"\r\n")
+	b.WriteString("Content-Disposition: attachment; filename=\"" + filename + "\"\r\n")
+	b.WriteString("Content-Transfer-Encoding: base64\r\n")
+	b.WriteString("\r\n")
+	enc := base64.StdEncoding.EncodeToString(content)
+	for len(enc) > 0 {
+		n := min(76, len(enc))
+		b.WriteString(enc[:n] + "\r\n")
+		enc = enc[n:]
+	}
+	b.WriteString("--bnd42--\r\n")
+	return b.Bytes()
+}
+
+// TestSaveAttachmentSkipsDegenerateParts (FIX PartIndex): con una parte
+// degenere PRIMA dell'allegato reale, msg.Parse dà all'allegato reale
+// PartIndex 0 e SaveAttachment(id, 0) deve scrivere i bytes dell'allegato
+// REALE (prima della fix indicizzava gli attachment grezzi e scriveva la
+// parte degenere vuota).
+func TestSaveAttachmentSkipsDegenerateParts(t *testing.T) {
+	ts := startTestServer(t)
+	uid := ts.seedRaw("INBOX",
+		rawDegenerateMultipartMail("Dg <dg@example.org>", "Degenerate part", "corpo", "doc.pdf", pdfContent),
+		false, false)
+	store := connectStore(t, ts)
+	id := msg.NewID("INBOX", uid)
+
+	m, err := store.FetchMessage(t.Context(), id)
+	if err != nil {
+		t.Fatalf("FetchMessage: %v", err)
+	}
+	if len(m.Attachments) != 1 {
+		t.Fatalf("m.Attachments = %d, voglio 1 (msg.Parse salta la parte degenere)", len(m.Attachments))
+	}
+	if m.Attachments[0].PartIndex != 0 || m.Attachments[0].Filename != "doc.pdf" {
+		t.Errorf("m.Attachments[0] = %+v, voglio PartIndex 0 Filename doc.pdf", m.Attachments[0])
+	}
+
+	path := filepath.Join(t.TempDir(), "out.pdf")
+	if err := store.SaveAttachment(t.Context(), id, 0, path); err != nil {
+		t.Fatalf("SaveAttachment(0): %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("leggo %s: %v", path, err)
+	}
+	if !bytes.Equal(got, pdfContent) {
+		t.Errorf("contenuto file = %q (%d byte), voglio l'allegato reale %q (%d byte): PartIndex divergente",
+			got, len(got), pdfContent, len(pdfContent))
+	}
+}

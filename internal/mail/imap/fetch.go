@@ -85,6 +85,10 @@ func (s *Store) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Messag
 // messaggio id. Scarica il messaggio grezzo con PEEK bypassando la cache (il
 // corpo potrebbe non esservi mai finito o esservi senza allegati): il
 // contenuto grezzo è parsato con enmime e la parte è scritta con 0o644.
+// part è un indice in msg.Message.Attachments: prima di indicizzare, gli
+// attachment grezzi di enmime passano dallo STESSO filtro degeneri di
+// msg.Parse (parti vuote senza nome saltate e indici rinumerati), così i
+// PartIndex prodotti dal parse selezionano qui le stesse parti.
 // part fuori range ⇒ errore.
 func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, path string) error {
 	if err := ctx.Err(); err != nil {
@@ -103,13 +107,31 @@ func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, 
 	if err != nil {
 		return fmt.Errorf("imap save attachment, parse %s: %w", id, err)
 	}
-	if part < 0 || part >= len(env.Attachments) {
-		return fmt.Errorf("imap save attachment %s: parte %d fuori range (%d allegati)", id, part, len(env.Attachments))
+	atts := usefulAttachments(env)
+	if part < 0 || part >= len(atts) {
+		return fmt.Errorf("imap save attachment %s: parte %d fuori range (%d allegati)", id, part, len(atts))
 	}
-	if err := os.WriteFile(path, env.Attachments[part].Content, 0o644); err != nil {
+	if err := os.WriteFile(path, atts[part].Content, 0o644); err != nil {
 		return fmt.Errorf("imap save attachment, scrivi %s: %w", path, err)
 	}
 	return nil
+}
+
+// usefulAttachments replica il filtro di msg.Parse sugli attachment grezzi
+// di enmime (msg/parse.go): le parti degeneri — senza filename,
+// application/octet-stream e con corpo vuoto — sono saltate e gli indici
+// rinumerati. TENERE SINCRONIZZATO con il filtro di msg.Parse: i PartIndex
+// di msg.Message.Attachments valgono su questa lista, non su
+// env.Attachments.
+func usefulAttachments(env *enmime.Envelope) []*enmime.Part {
+	atts := make([]*enmime.Part, 0, len(env.Attachments))
+	for _, part := range env.Attachments {
+		if part.FileName == "" && part.ContentType == "application/octet-stream" && len(part.Content) == 0 {
+			continue // parte degenere: saltata anche da msg.Parse
+		}
+		atts = append(atts, part)
+	}
+	return atts
 }
 
 // fetchRaw seleziona mailbox e scarica il messaggio grezzo (HEADER+BODY
