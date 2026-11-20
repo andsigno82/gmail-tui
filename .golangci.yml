@@ -5,3 +5,11 @@ linters:
     - govet
     - staticcheck
     - unused
+  settings:
+    errcheck:
+      exclude-functions:
+        # output diagnostico CLI su io.Writer fornito dal chiamante:
+        # errori di scrittura non azionabili (doctor/themes).
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln

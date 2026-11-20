@@ -22,6 +22,9 @@ type Mock struct {
 	changes chan Change
 }
 
+// Mock implementa MailStore a compile time (conformance assert).
+var _ MailStore = (*Mock)(nil)
+
 // Emit invia un change a tutti i watcher (per i test).
 func (m *Mock) Emit(c Change) {
 	m.mu.Lock()
@@ -101,6 +104,7 @@ func (m *Mock) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error
 
 // MarkRead implementa MailStore.
 func (m *Mock) MarkRead(_ context.Context, ids []msg.MessageID, read bool) error {
+	ids = append([]msg.MessageID(nil), ids...) // copia: il chiamante può riusare la slice
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
@@ -123,6 +127,7 @@ func (m *Mock) MarkRead(_ context.Context, ids []msg.MessageID, read bool) error
 
 // Archive implementa MailStore: rimuove dalla lista (via da INBOX).
 func (m *Mock) Archive(_ context.Context, ids []msg.MessageID) error {
+	ids = append([]msg.MessageID(nil), ids...) // copia: il chiamante può riusare la slice
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
@@ -151,6 +156,7 @@ func (m *Mock) Archive(_ context.Context, ids []msg.MessageID) error {
 
 // Star implementa MailStore.
 func (m *Mock) Star(_ context.Context, ids []msg.MessageID, on bool) error {
+	ids = append([]msg.MessageID(nil), ids...) // copia: il chiamante può riusare la slice
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
@@ -162,6 +168,11 @@ func (m *Mock) Star(_ context.Context, ids []msg.MessageID, on bool) error {
 				mm.Ref.Starred = on
 			}
 		}
+	}
+	m.init()
+	select {
+	case m.changes <- Change{Kind: ChangeFlags, IDs: ids}:
+	default:
 	}
 	return nil
 }

@@ -59,8 +59,11 @@ func (c Config) Save(path string) error {
 	if err != nil {
 		return fmt.Errorf("apro %s: %w", path, err)
 	}
-	defer f.Close()
-	return toml.NewEncoder(f).Encode(c)
+	err = toml.NewEncoder(f).Encode(c)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	return err
 }
 
 // Validate controlla i campi con formato noto.

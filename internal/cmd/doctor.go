@@ -51,6 +51,9 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string) int {
 		}
 	}
 
+	if problems > 1 {
+		problems = 1 // contratto documentato: exit code 0/1
+	}
 	return problems
 }
 

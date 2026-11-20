@@ -5,10 +5,12 @@ package cache
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
+	bbolterrors "go.etcd.io/bbolt/errors"
 
 	"gmail-tui/internal/msg"
 )
@@ -36,7 +38,7 @@ func (c *Cache) SetMessage(mailbox string, uidValidity uint32, m *msg.Message) e
 			return err
 		}
 		if prev := meta.Get([]byte("uidvalidity")); prev != nil && binaryUint32(prev) != uidValidity {
-			if err := tx.DeleteBucket([]byte("msgs:" + mailbox)); err != nil && err != bolt.ErrBucketNotFound {
+			if err := tx.DeleteBucket([]byte("msgs:" + mailbox)); err != nil && !errors.Is(err, bbolterrors.ErrBucketNotFound) {
 				return err
 			}
 		}
@@ -100,10 +102,10 @@ func (c *Cache) UIDValidity(mailbox string) (uint32, bool, error) {
 // DropMailbox svuota i dati della mailbox.
 func (c *Cache) DropMailbox(mailbox string) error {
 	return c.db.Update(func(tx *bolt.Tx) error {
-		if err := tx.DeleteBucket([]byte("msgs:" + mailbox)); err != nil && err != bolt.ErrBucketNotFound {
+		if err := tx.DeleteBucket([]byte("msgs:" + mailbox)); err != nil && !errors.Is(err, bbolterrors.ErrBucketNotFound) {
 			return err
 		}
-		if err := tx.DeleteBucket([]byte("meta:" + mailbox)); err != nil && err != bolt.ErrBucketNotFound {
+		if err := tx.DeleteBucket([]byte("meta:" + mailbox)); err != nil && !errors.Is(err, bbolterrors.ErrBucketNotFound) {
 			return err
 		}
 		return nil
