@@ -82,6 +82,26 @@ func TestParseHTMLFallback(t *testing.T) {
 	}
 }
 
+// TestParseBodyHTML: con solo-HTML il corpo HTML originale resta nel campo
+// BodyHTML (serve alla TUI per "apri nel browser"); con text/plain resta
+// vuoto.
+func TestParseBodyHTML(t *testing.T) {
+	html, err := Parse(NewID("INBOX", 44), strings.NewReader(htmlOnlyMail))
+	if err != nil {
+		t.Fatalf("Parse html: %v", err)
+	}
+	if !strings.Contains(html.BodyHTML, "<a href=\"https://example.org\">") {
+		t.Errorf("BodyHTML = %q, voglio l'HTML originale non convertito", html.BodyHTML)
+	}
+	txt, err := Parse(NewID("INBOX", 45), strings.NewReader(multipartMail))
+	if err != nil {
+		t.Fatalf("Parse text: %v", err)
+	}
+	if txt.BodyHTML != "" {
+		t.Errorf("BodyHTML con text/plain = %q, voglio vuoto", txt.BodyHTML)
+	}
+}
+
 func TestIDSplitRoundtrip(t *testing.T) {
 	id := NewID("INBOX", 7)
 	mb, uid, err := id.Split()

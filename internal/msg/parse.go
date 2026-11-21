@@ -40,6 +40,7 @@ func Parse(id MessageID, raw io.Reader) (*Message, error) {
 		m.BodyText = env.Text
 	case strings.TrimSpace(env.HTML) != "":
 		m.HasHTML = true
+		m.BodyHTML = env.HTML // originale, per "apri nel browser" (Task 5)
 		m.BodyText = html2text.HTML2Text(env.HTML)
 	}
 	idx := 0

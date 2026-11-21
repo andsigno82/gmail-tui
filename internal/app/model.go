@@ -13,6 +13,7 @@ import (
 	"gmail-tui/internal/theme"
 	"gmail-tui/internal/ui/inbox"
 	"gmail-tui/internal/ui/styles"
+	"gmail-tui/internal/ui/thread"
 )
 
 // view identifica la vista attiva (routing del Model radice).
@@ -30,7 +31,8 @@ type Model struct {
 	store   mail.MailStore
 	styles  styles.Styles
 	spinner spinner.Model
-	inbox   inbox.Model // lista messaggi (Task 4): la radice delega tasti/mouse
+	inbox   inbox.Model  // lista messaggi (Task 4): la radice delega tasti/mouse
+	thread  thread.Model // lettura messaggio (Task 5): costruito al msgLoaded
 
 	view       view
 	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
@@ -95,9 +97,20 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = statusMsg{text: fmt.Sprintf("apertura messaggio: %v", ev.err), isErr: true}
 			return m, nil
 		}
-		// Il consumo vero (thread view) arriva in Task 5: finché non esiste
-		// la vista il messaggio caricato non ha effetto visivo.
-		_ = ev.m
+		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
+		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
+		m.thread = thread.New(m.pendingRef, ev.m, m.styles)
+		if m.width > 0 {
+			m.thread.SetSize(m.width, max(0, m.height-1))
+		}
+		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
+		// concatenata, errore SOLO in status (non fatale). La copia locale
+		// del ref passa a letta subito; la lista si aggiornerà al back o via
+		// Watch (Task 8) — scelta deliberata: niente re-list qui.
+		if ev.m.Ref.Unread {
+			m.thread.MarkRead()
+			return m, markRead(m.store, ev.m.Ref.ID)
+		}
 		return m, nil
 
 	case opDone:
@@ -116,10 +129,35 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case inbox.SelectedMsg:
-		// Il fetch del messaggio arriva in Task 5: per ora la radice custodisce
-		// il ref e mostra la stub della thread view.
+		// Apertura dal thread: si custodisce il ref e si fetcha fuori dal
+		// loop UI (spinner attivo finché msgLoaded non arriva).
 		m.pendingRef = ev.Ref
 		m.view = viewThread
+		m.pending++ // fetch in flight
+		return m, tea.Batch(fetchMsg(m.store, ev.Ref.ID), m.spinner.Tick)
+
+	case thread.BackMsg:
+		// Uscita dal thread: si torna all'inbox così com'era — nessun
+		// re-list, la lista conserva ref, cursore e stato.
+		m.view = viewInbox
+		return m, nil
+
+	case thread.OpenRequested:
+		// `o` nel thread: il tmpfile HTML è pronto (o la preparazione è
+		// fallita). La exec vera sospende la TUI via tea.ExecProcess.
+		if ev.Err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("apertura browser: %v", ev.Err), isErr: true}
+			return m, nil
+		}
+		return m, thread.OpenCmd(ev.Path)
+
+	case thread.OpenedMsg:
+		// Il browser è uscito: solo feedback in status bar.
+		if ev.Err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("browser: %v", ev.Err), isErr: true}
+			return m, nil
+		}
+		m.status = statusMsg{text: "aperto nel browser"}
 		return m, nil
 
 	case spinner.TickMsg:
@@ -132,8 +170,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = ev.Width, ev.Height
-		// L'inbox occupa il corpo: l'ultima riga resta alla status bar.
+		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
 		m.inbox.SetSize(ev.Width, max(0, m.height-1))
+		m.thread.SetSize(ev.Width, max(0, m.height-1))
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -144,7 +183,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == viewInbox {
 				return m, tea.Quit // tea.Quit in v2 è una Msg-function: usata come Cmd
 			}
-			m.view = viewInbox // in thread/search si torna alla lista
+			if m.view == viewThread {
+				// Nel thread esc/q sono delegati al modello, che risponde con
+				// BackMsg (la radice torna all'inbox al messaggio).
+				var cmd tea.Cmd
+				m.thread, cmd = m.thread.Update(ev)
+				return m, cmd
+			}
+			m.view = viewInbox // in search si annulla (Task 6)
 			return m, nil
 		case "/":
 			if m.view == viewInbox {
@@ -157,22 +203,33 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		// Le altre pressioni nell'inbox sono delegati alla lista (j/k,
-		// frecce, paginazione; enter è gestito dall'inbox → SelectedMsg).
+		// Le altre pressioni sono delegati alla vista attiva: nell'inbox alla
+		// lista (j/k, frecce, paginazione; enter è gestito dall'inbox →
+		// SelectedMsg), nel thread alla viewport (j/k, `o`).
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
+			return m, cmd
+		}
+		if m.view == viewThread {
+			var cmd tea.Cmd
+			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
 		return m, nil
 
 	case tea.MouseClickMsg, tea.MouseWheelMsg:
 		// Mouse first-class: nell'inbox la lista gestisce rotella e click
-		// (selezione; doppio click → SelectedMsg). Fuori dall'inbox: noop
-		// finché le viste del Task 5/6 non ne hanno bisogno.
+		// (selezione; doppio click → SelectedMsg); nel thread la viewport
+		// gestisce la rotella nativamente.
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
+			return m, cmd
+		}
+		if m.view == viewThread {
+			var cmd tea.Cmd
+			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
 		return m, nil
@@ -204,6 +261,23 @@ func loadRefs(st mail.MailStore) tea.Cmd {
 	}
 }
 
+// fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).
+func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
+	return func() tea.Msg {
+		mm, err := st.FetchMessage(context.Background(), id)
+		return msgLoaded{m: mm, err: err}
+	}
+}
+
+// markRead marca i messaggi come letti fuori dal loop UI. L'errore NON è
+// fatale (auto MarkRead in background): finisce in status bar via opDone.
+func markRead(st mail.MailStore, id msg.MessageID) tea.Cmd {
+	return func() tea.Msg {
+		err := st.MarkRead(context.Background(), []msg.MessageID{id}, true)
+		return opDone{label: "letta", err: err}
+	}
+}
+
 // content rende corpo + status bar, con il corpo esteso fino alla riga sopra
 // la barra (la barra resta sull'ultima riga del terminale).
 func (m Model) content() string {
@@ -218,12 +292,16 @@ func (m Model) content() string {
 	return body + "\n" + bar
 }
 
-// body rende la vista attiva: l'inbox è la lista messaggi (Task 4);
-// thread/search restano stub di scheletro (Task 5/6).
+// body rende la vista attiva: l'inbox è la lista messaggi (Task 4), il
+// thread è la lettura del messaggio (Task 5, placeholder durante il fetch);
+// search resta stub di scheletro (Task 6).
 func (m Model) body() string {
 	switch m.view {
 	case viewThread:
-		return fmt.Sprintf("Thread — stub (Task 5)\nref: %s — %s", m.pendingRef.ID, m.pendingRef.Subject)
+		if !m.thread.Loaded() {
+			return "Caricamento messaggio…"
+		}
+		return m.thread.View()
 	case viewSearch:
 		return "Ricerca — stub (Task 6)"
 	default:

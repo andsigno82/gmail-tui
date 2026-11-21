@@ -13,6 +13,7 @@ import (
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
 	"gmail-tui/internal/ui/inbox"
+	"gmail-tui/internal/ui/thread"
 )
 
 // newTestModel costruisce il Model radice contro il Mock e il tema default.
@@ -23,6 +24,31 @@ func newTestModel(tb testing.TB, msgs ...*msg.Message) Model {
 		tb.Fatalf("tema default: %v", err)
 	}
 	return New(&mail.Mock{Msgs: msgs}, th)
+}
+
+// newTestModelMock come newTestModel ma restituisce anche il Mock (per gli
+// assert sulle chiamate store, es. auto MarkRead).
+func newTestModelMock(tb testing.TB, msgs ...*msg.Message) (Model, *mail.Mock) {
+	tb.Helper()
+	th, err := theme.Load("default")
+	if err != nil {
+		tb.Fatalf("tema default: %v", err)
+	}
+	mock := &mail.Mock{Msgs: msgs}
+	return New(mock, th), mock
+}
+
+// fullMessage costruisce un messaggio completo per il Mock: corpo lungo
+// (per lo scroll), una riga citata, un allegato. ref decide Unread/star.
+func fullMessage(ref msg.MessageRef) *msg.Message {
+	return &msg.Message{
+		Ref:      ref,
+		To:       []string{"bob@example.com"},
+		BodyText: strings.TrimSuffix(strings.Repeat("riga corpo\n", 40), "\n") + "\n> riga citata",
+		Attachments: []msg.Attachment{
+			{PartIndex: 0, Filename: "f.pdf", ContentType: "application/pdf", Size: 1536},
+		},
+	}
 }
 
 func testRefs(tb testing.TB) []msg.MessageRef {
@@ -38,6 +64,24 @@ func testRefs(tb testing.TB) []msg.MessageRef {
 func step(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.Update(msg)
 	return next.(Model), cmd
+}
+
+// runCmd esegue una cmd e restituisce tutti i Msg prodotti, srotolando
+// ricorsivamente i tea.BatchMsg (il runtime li esegue nello stesso modo).
+func runCmd(c tea.Cmd) []tea.Msg {
+	if c == nil {
+		return nil
+	}
+	res := c()
+	batch, ok := res.(tea.BatchMsg)
+	if !ok {
+		return []tea.Msg{res}
+	}
+	var out []tea.Msg
+	for _, c := range batch {
+		out = append(out, runCmd(c)...)
+	}
+	return out
 }
 
 func pressKey(k string) tea.KeyPressMsg {
@@ -115,15 +159,24 @@ func TestQAndEscInInboxQuit(t *testing.T) {
 }
 
 func TestEscAndQInThreadReturnToInbox(t *testing.T) {
+	// Task 5: esc/q nel thread sono delegati al modello thread, che risponde
+	// con BackMsg; la radice torna all'inbox al messaggio (lista preservata).
 	for _, key := range []string{"esc", "q"} {
 		m := newTestModel(t)
 		m.view = viewThread
 		mm, cmd := step(m, pressKey(key))
-		if cmd != nil {
-			t.Errorf("%s in thread: cmd = %v, voglio nil", key, cmd)
+		if cmd == nil {
+			t.Fatalf("%s in thread: cmd nil, voglio BackMsg", key)
+		}
+		if _, ok := cmd().(thread.BackMsg); !ok {
+			t.Fatalf("%s in thread: msg = %T, voglio BackMsg", key, cmd())
+		}
+		mm, cmd2 := step(mm, thread.BackMsg{})
+		if cmd2 != nil {
+			t.Errorf("%s: cmd dopo BackMsg = %v, voglio nil", key, cmd2)
 		}
 		if mm.currentView() != viewInbox {
-			t.Errorf("%s in thread: vista = %v, voglio inbox", key, mm.currentView())
+			t.Errorf("%s in thread: dopo BackMsg vista = %v, voglio inbox", key, mm.currentView())
 		}
 	}
 }
@@ -258,22 +311,66 @@ func TestMsgsLoadedUpdatesInbox(t *testing.T) {
 	}
 }
 
-func TestSelectedMsgOpensThreadStub(t *testing.T) {
-	m := newTestModel(t)
-	ref := testRefs(t)[0]
-	mm, cmd := step(m, inbox.SelectedMsg{Ref: ref})
-	if cmd != nil {
-		t.Errorf("SelectedMsg: cmd = %v, voglio nil", cmd)
-	}
+// TestSelectedMsgFetchesThenBuildsThread: selezionare un messaggio passa alla
+// thread view, incrementa pending (spinner) ed emette la Cmd di fetch; il
+// risultato (msgLoaded) costruisce la thread view vera.
+func TestSelectedMsgFetchesThenBuildsThread(t *testing.T) {
+	ref := testRefs(t)[1] // già letto: qui niente markread
+	m, _ := newTestModelMock(t, fullMessage(ref))
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
+
+	mm, cmd := step(mm, inbox.SelectedMsg{Ref: ref})
 	if mm.currentView() != viewThread {
 		t.Errorf("vista dopo SelectedMsg = %v, voglio viewThread", mm.currentView())
 	}
 	if mm.pendingRef.ID != ref.ID {
-		t.Errorf("pendingRef = %v, voglio %v (Task 5 lo apre davvero)", mm.pendingRef.ID, ref.ID)
+		t.Errorf("pendingRef = %v, voglio %v", mm.pendingRef.ID, ref.ID)
 	}
-	content := mm.View().Content
-	if !strings.Contains(content, ref.Subject) {
-		t.Errorf("stub thread = %q, voglio il soggetto del ref aperto", content)
+	if mm.pending != 1 {
+		t.Errorf("pending dopo SelectedMsg = %d, voglio 1 (fetch in flight)", mm.pending)
+	}
+	if cmd == nil {
+		t.Fatal("SelectedMsg: cmd nil, voglio fetchMsg")
+	}
+	if !strings.Contains(mm.body(), "Caricamento") {
+		t.Errorf("body durante il fetch = %q, voglio il placeholder", mm.body())
+	}
+
+	// La cmd è Batch(fetch, spinner.Tick): si srotola come fa il runtime.
+	var loaded msgLoaded
+	found := false
+	for _, ms := range runCmd(cmd) {
+		if l, ok := ms.(msgLoaded); ok {
+			loaded, found = l, true
+		}
+	}
+	if !found {
+		t.Fatalf("cmd di SelectedMsg: msg = %T dentro il batch, voglio msgLoaded", cmd())
+	}
+	if loaded.err != nil {
+		t.Fatalf("msgLoaded.err = %v, voglio nil", loaded.err)
+	}
+	if loaded.m == nil || loaded.m.BodyText == "" {
+		t.Errorf("msgLoaded.m = %v, voglio il messaggio dal Mock", loaded.m)
+	}
+
+	mm, cmd2 := step(mm, loaded)
+	if cmd2 != nil {
+		t.Errorf("msgLoaded di un messaggio letto: cmd = %v, voglio nil", cmd2)
+	}
+	if mm.pending != 0 {
+		t.Errorf("pending dopo msgLoaded = %d, voglio 0", mm.pending)
+	}
+	body := mm.body()
+	if !strings.Contains(body, ref.Subject) {
+		t.Errorf("body thread = %q, voglio l'oggetto nell'header", body)
+	}
+	if !strings.Contains(body, "riga corpo") {
+		t.Errorf("body thread = %q, voglio il corpo nella viewport", body)
+	}
+	if !strings.Contains(body, "📎 f.pdf (1.5 KiB)") {
+		t.Errorf("body thread = %q, voglio l'allegato in coda", body)
 	}
 }
 
@@ -314,15 +411,164 @@ func TestMouseClickForwardedToInbox(t *testing.T) {
 	}
 }
 
-func TestMouseIgnoredOutsideInbox(t *testing.T) {
-	m := newTestModel(t)
-	m.view = viewThread
-	mm, cmd := step(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+// TestMouseWheelScrollsThread: nel thread la rotella è delegata alla
+// viewport, che scorre il corpo (cmd nil, vista invariata).
+func TestMouseWheelScrollsThread(t *testing.T) {
+	ref := testRefs(t)[0]
+	m, _ := newTestModelMock(t, fullMessage(ref))
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
+	mm, cmd := step(mm, inbox.SelectedMsg{Ref: ref})
+	for _, ms := range runCmd(cmd) { // msgLoaded costruisce la thread view
+		mm, _ = step(mm, ms)
+	}
+
+	mm, cmd = step(mm, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
 	if cmd != nil {
 		t.Errorf("wheel in thread: cmd = %v, voglio nil", cmd)
 	}
+	if mm.thread.YOffset() != 3 {
+		t.Errorf("YOffset thread dopo wheel = %d, voglio 3", mm.thread.YOffset())
+	}
 	if mm.currentView() != viewThread {
-		t.Errorf("vista dopo wheel in thread = %v, voglio thread", mm.currentView())
+		t.Errorf("vista dopo wheel = %v, voglio thread", mm.currentView())
+	}
+}
+
+// TestMouseIgnoredInSearch: fuori da inbox e thread il mouse resta noop.
+func TestMouseIgnoredInSearch(t *testing.T) {
+	m := newTestModel(t)
+	m.view = viewSearch
+	mm, cmd := step(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if cmd != nil {
+		t.Errorf("wheel in search: cmd = %v, voglio nil", cmd)
+	}
+	if mm.currentView() != viewSearch {
+		t.Errorf("vista dopo wheel in search = %v, voglio search", mm.currentView())
+	}
+}
+
+// --- thread: auto MarkRead, errori, back, open ------------------------------
+
+// TestSelectedMsgAutoMarkRead: il fetch di un messaggio NON letto emette la
+// Cmd di MarkRead in cascata (errore silenzioso in status, non fatale); la
+// copia locale del ref nel thread passa a letta e il Mock registra la chiamata.
+func TestSelectedMsgAutoMarkRead(t *testing.T) {
+	ref := testRefs(t)[0] // Unread: true
+	mock := &mail.Mock{Msgs: []*msg.Message{fullMessage(ref)}}
+	th, err := theme.Load("default")
+	if err != nil {
+		t.Fatalf("tema default: %v", err)
+	}
+	m := New(mock, th)
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
+	mm, cmd := step(mm, inbox.SelectedMsg{Ref: ref})
+	var loaded msgLoaded
+	for _, ms := range runCmd(cmd) { // msgLoaded costruisce la thread view
+		if l, ok := ms.(msgLoaded); ok {
+			loaded = l
+		}
+	}
+	mm, cmd2 := step(mm, loaded)
+
+	if cmd2 == nil {
+		t.Fatal("fetch di un messaggio non letto: cmd nil, voglio markRead")
+	}
+	// La copia locale del ref nel thread è già segnata letta (nessun re-list).
+	if mm.thread.Ref().Unread {
+		t.Error("copia locale del ref dopo il fetch: Unread = true, voglio false")
+	}
+	// La cmd concatenata chiama MarkRead sullo store e dà feedback in status.
+	res := cmd2()
+	od, ok := res.(opDone)
+	if !ok {
+		t.Fatalf("cmd di markread: msg = %T, voglio opDone", res)
+	}
+	if od.label != "letta" || od.err != nil {
+		t.Errorf("opDone = %+v, voglio {letta nil}", od)
+	}
+	// Il Mock ha ricevuto la chiamata: il messaggio non è più unread.
+	if mock.Msgs[0].Ref.Unread {
+		t.Error("Mock dopo markRead: Unread = true, voglio false")
+	}
+	mm, _ = step(mm, od)
+	if mm.statusText() != "letta" {
+		t.Errorf("status dopo opDone = %q, voglio \"letta\"", mm.statusText())
+	}
+}
+
+// TestMsgLoadedErrorShowsStatusErr: un fetch fallito finisce in status bar
+// (isErr) e chiude l'op in flight, senza costruire thread view.
+func TestMsgLoadedErrorShowsStatusErr(t *testing.T) {
+	m := newTestModel(t)
+	mm, cmd := step(m, msgLoaded{err: errors.New("rete giù")})
+	if cmd != nil {
+		t.Errorf("cmd = %v, voglio nil", cmd)
+	}
+	if !mm.status.isErr || !strings.Contains(mm.statusText(), "rete giù") {
+		t.Errorf("status = %q (isErr=%v), voglio l'errore del fetch", mm.statusText(), mm.status.isErr)
+	}
+	if mm.pending != 0 {
+		t.Errorf("pending = %d, voglio 0 dopo il risultato", mm.pending)
+	}
+	if mm.thread.Loaded() {
+		t.Error("a fetch fallito non deve esistere una thread view caricata")
+	}
+}
+
+// TestBackMsgPreservesInboxList: il ritorno dal thread NON re-lista — la
+// lista conserva ref, cursore e stato (refresh solo al back esplicito via
+// eventi Watch, Task 8).
+func TestBackMsgPreservesInboxList(t *testing.T) {
+	m := newTestModel(t)
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
+	mm.inbox.Select(1)
+	mm.view = viewThread
+
+	mm, cmd := step(mm, thread.BackMsg{})
+	if cmd != nil {
+		t.Errorf("cmd dopo BackMsg = %v, voglio nil (nessun re-list)", cmd)
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo BackMsg = %v, voglio inbox", mm.currentView())
+	}
+	sel, ok := mm.inbox.SelectedRef()
+	if !ok || sel.ID != testRefs(t)[1].ID {
+		t.Errorf("ref selezionato dopo il back = %v (ok=%v), voglio %v (lista preservata)",
+			sel.ID, ok, testRefs(t)[1].ID)
+	}
+}
+
+// TestOpenRequestedWiresExecCmd: la radice risponde a OpenRequested con la
+// Cmd di exec (tea.ExecProcess, NON eseguita nei test) e a OpenedMsg col
+// feedback in status bar; un errore di preparazione finisce in status isErr.
+func TestOpenRequestedWiresExecCmd(t *testing.T) {
+	m := newTestModel(t)
+	mm, cmd := step(m, thread.OpenRequested{Path: "/tmp/msg.html"})
+	if cmd == nil {
+		t.Fatal("OpenRequested: cmd nil, voglio la exec cmd del browser")
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista = %v, deve restare invariata", mm.currentView())
+	}
+
+	mm, cmd = step(m, thread.OpenRequested{Err: errors.New("disco pieno")})
+	if cmd != nil {
+		t.Errorf("OpenRequested err: cmd = %v, voglio nil", cmd)
+	}
+	if !mm.status.isErr || !strings.Contains(mm.statusText(), "disco pieno") {
+		t.Errorf("status = %q (isErr=%v), voglio l'errore", mm.statusText(), mm.status.isErr)
+	}
+
+	mm, _ = step(m, thread.OpenedMsg{Err: nil})
+	if mm.statusText() != "aperto nel browser" {
+		t.Errorf("status = %q, voglio \"aperto nel browser\"", mm.statusText())
+	}
+	mm, _ = step(m, thread.OpenedMsg{Err: errors.New("open assente")})
+	if !mm.status.isErr || !strings.Contains(mm.statusText(), "open assente") {
+		t.Errorf("status = %q (isErr=%v), voglio l'errore del browser", mm.statusText(), mm.status.isErr)
 	}
 }
 
