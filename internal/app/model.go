@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
@@ -26,17 +29,29 @@ const (
 	viewSearch             // ricerca (Task 6)
 )
 
-// Model è la radice della TUI: routing viste, status bar globale, keymap.
-// Tutte le chiamate MailStore girano in tea.Cmd — la rete non blocca mai.
+// Model è la radice della TUI: routing viste, status bar globale, keymap
+// centrale (Task 9: definizioni in keys.go, help via bubbles/help). Tutte le
+// chiamate MailStore girano in tea.Cmd — la rete non blocca mai.
+//
+// Shutdown (mandato Task 8): q/esc nell'inbox e ctrl+c da qualunque stato
+// escono puliti via quitCmd, che cancella il ctx del feed Watch PRIMA del
+// tea.QuitMsg. LIMITAZIONE nota: una SIGINT esterna (kill -INT, ctrl+c fuori
+// da raw mode) arriva al runtime come tea.InterruptMsg e NON passa da Update —
+// il ctx del feed non viene annullato in quel percorso; il goroutine resta
+// parcheggiato fino all'uscita del processo (innocuo per una CLI). La
+// intercettazione via WithFilter è stata scartata in review (Task 8).
 type Model struct {
 	store     mail.MailStore
 	styles    styles.Styles
 	spinner   spinner.Model
+	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
 	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
 	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
 	labelOpen bool            // prompt label attivo: i tasti vanno all'input
+	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
+	demo      bool            // demo mode (Task 9): banner iniziale in stile DemoBanner
 
 	view       view
 	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
@@ -44,13 +59,14 @@ type Model struct {
 	query      msg.Query        // query corrente della lista (refresh dopo op, Task 7)
 	queryRaw   string           // stringa digitata della query corrente ("" = inbox)
 	status     statusMsg        // ultimo messaggio di status (effimero)
+	startup    bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
 	pending    int              // op store in flight (>0: spinner attivo)
 	refreshing bool             // re-list silenzioso in flight (coalescing, Task 8)
 	dirty      bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
 
-	// Ctx del feed Watch (Task 8): creato in New, annullato all'uscita del
-	// programma — il wiring del cancel sull'uscita è del Task 9 (main): vedi
-	// report Task 8 per l'hook di shutdown raccomandato.
+	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
+	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
+	// bypassa l'Update (tea.InterruptMsg, limitazione documentata sopra).
 	ctx     context.Context
 	cancel  context.CancelFunc
 	watchCh <-chan mail.Change // canale del feed aperto dall'Init (via watchStarted)
@@ -73,6 +89,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		store:   store,
 		styles:  st,
 		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
+		help:    newHelp(st),
 		inbox:   inbox.New(nil, st),
 		search:  newSearchInput(st),
 		label:   newLabelInput(st),
@@ -141,10 +158,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if ev.query != "" {
 				// Badge dei risultati di ricerca: conteggio + query digitata.
 				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+			} else if m.startup {
+				// Status d'avvio (banner demo o warning tema, Task 9): il
+				// load di Init NON lo cancella — resta finché un evento vero
+				// non lo sostituisce. Il flag si consuma qui: i load
+				// successivi (ricerca con query vuota) tornano ad azzerare.
+				m.startup = false
 			} else {
-				// Re-list esplicito (load di Init o ricerca con query vuota):
-				// il badge di una ricerca precedente è ormai stante, lo
-				// status si azzera (Task 6 review).
+				// Re-list esplicito (ricerca con query vuota): il badge di
+				// una ricerca precedente è ormai stante, lo status si
+				// azzera (Task 6 review).
 				m.status = statusMsg{}
 			}
 		}
@@ -292,11 +315,29 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.search.SetWidth(max(0, ev.Width-2))
 		// Idem il mini-prompt label: il prompt occupa len(labelPrompt) colonne.
 		m.label.SetWidth(max(0, ev.Width-len(labelPrompt)))
+		// La barra help breve si tronca alla larghezza disponibile (Task 9).
+		m.help.SetWidth(ev.Width)
 		return m, nil
 
 	case tea.KeyPressMsg:
 		// Nota v2: KeyMsg è un'interfaccia press|release; si matchano solo le
 		// pressioni (KeyPressMsg) per non duplicare le azioni.
+		if ev.String() == "ctrl+c" {
+			// Uscita immediata da qualunque stato (inbox, ricerca, prompt,
+			// overlay): quitCmd cancella il ctx del feed e esce. Il routing
+			// resta identico a Task 3-8 per tutti gli altri tasti (keymap
+			// centrale in keys.go, Task 9).
+			return m, m.quitCmd()
+		}
+		if m.showHelp {
+			// Overlay help aperto (Task 9): ?/esc chiudono, gli altri tasti
+			// sono ignorati — nessuna azione "alla cieca" sotto l'overlay.
+			switch ev.String() {
+			case "?", "esc":
+				m.showHelp = false
+			}
+			return m, nil
+		}
 		if m.labelOpen {
 			// Mini-prompt label attivo (Task 7): TUTTI i tasti vanno al
 			// prompt — enter applica, esc annulla, il resto è testo (i tasti
@@ -314,7 +355,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.view == viewSearch {
 			// In ricerca SOLO enter ed esc sono della radice: ogni altro tasto
-			// (incluso "q") è testo della query e va al textinput.
+			// (incluso "q" e "?") è testo della query e va al textinput.
 			switch ev.String() {
 			case "enter":
 				return m.submitSearch()
@@ -330,14 +371,17 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
-		switch ev.String() {
-		case "a", "s", "v", "l":
+		// Il routing usa la keymap centrale (Task 9): stesse chiavi e stesso
+		// ordine del vecchio switch su ev.String() (a/s/v/l → q/esc → …).
+		switch {
+		case key.Matches(ev, keys.Archive, keys.Star, keys.Read, keys.Label):
 			// Mutazioni (Task 7): agiscono sul ref corrente — nell'inbox la
 			// riga selezionata, nel thread il messaggio aperto.
 			return m.runOp(ev.String())
-		case "q", "esc":
+		case key.Matches(ev, keys.Quit):
 			if m.view == viewInbox {
-				return m, tea.Quit // tea.Quit in v2 è una Msg-function: usata come Cmd
+				// Uscita pulita (Task 9): cancel del feed Watch + QuitMsg.
+				return m, m.quitCmd()
 			}
 			if m.view == viewThread {
 				// Nel thread esc/q sono delegati al modello, che risponde con
@@ -347,13 +391,18 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			return m, nil
-		case "/":
+		case key.Matches(ev, keys.Help):
+			// Overlay help completo (Task 9): si apre sopra il corpo, ?/esc
+			// lo chiudono (gestiti in testa al case KeyPressMsg).
+			m.showHelp = true
+			return m, nil
+		case key.Matches(ev, keys.Search):
 			if m.view == viewInbox {
 				m.view = viewSearch
 				// Focus del textinput: la cmd avvia il blink del cursore.
 				return m, m.search.Focus()
 			}
-		case "c":
+		case key.Matches(ev, keys.Composer):
 			if m.view == viewInbox {
 				m.status = statusMsg{text: "composer in Piano 4"}
 				return m, nil
@@ -409,9 +458,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View compone il corpo della vista attiva e la status bar finale, riempiendo
-// lo schermo fino all'ultima riga (quando la size è nota).
+// lo schermo fino all'ultima riga (quando la size è nota); sotto il minimo
+// 80×24 rende la schermata di avviso dedicata (Task 9). Dichiarano qui anche
+// le capability per-View di tea v2: altscreen (TUI a schermo intero) e mouse
+// cell motion (click + rotella: tutto ciò che list/viewport custom usano —
+// AllMotion aggiungerebbe solo traffico hover).
 func (m Model) View() tea.View {
-	return tea.NewView(m.content())
+	v := tea.NewView(m.content())
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
 }
 
 // doneOp chiude un'op store in flight (non sotto zero).
@@ -457,11 +513,50 @@ func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	}
 }
 
+// Min-size della TUI (Task 9): sotto queste dimensioni la View mostra la
+// schermata di avviso dedicata (View-only: Update resta attivo, q esce comunque).
+const (
+	minWidth  = 80
+	minHeight = 24
+)
+
+// demoBannerText è il banner di avvio in demo mode (nessuna GMAIL_APP_PASSWORD,
+// Task 9): status iniziale impostato dal main via SetDemoBanner, reso con lo
+// stile DemoBanner finché un evento vero non lo sostituisce.
+const demoBannerText = "demo mode — set GMAIL_APP_PASSWORD"
+
+// SetDemoBanner attiva la modalità demo (chiamato dal main PRIMA di avviare il
+// programma, quando lo store è il Mock): lo status iniziale diventa il banner,
+// che sopravvive al load di Init e resta finché il prossimo evento (op,
+// ricerca, Watch) non lo sostituisce.
+func (m *Model) SetDemoBanner() {
+	m.demo = true
+	m.startup = true
+	m.status = statusMsg{text: demoBannerText}
+}
+
+// SetStartupWarning imposta un warning d'avvio (es. tema di fallback, Task 9):
+// status normale (non errore), sostituisce l'eventuale banner demo — il
+// problema più specifico vince. Come il banner, sopravvive al load di Init.
+func (m *Model) SetStartupWarning(text string) {
+	m.startup = true
+	m.status = statusMsg{text: text}
+}
+
 // content rende corpo + status bar, con il corpo esteso fino alla riga sopra
-// la barra (la barra resta sull'ultima riga del terminale).
+// la barra (la barra resta sull'ultima riga del terminale). Con il terminale
+// sotto il minimo rende SOLO la schermata di avviso (Task 9).
 func (m Model) content() string {
+	if m.tooSmall() {
+		return m.minSizeView()
+	}
 	bar := m.statusBar()
 	body := m.body()
+	if m.showHelp {
+		// Overlay help completo (Task 9): sostituisce il corpo, la status bar
+		// resta (l'help breve è sempre visibile).
+		body = m.helpOverlay()
+	}
 	if m.height > 1 {
 		lines := 1 + strings.Count(body, "\n")
 		if pad := m.height - 1 - lines; pad > 0 {
@@ -469,6 +564,33 @@ func (m Model) content() string {
 		}
 	}
 	return body + "\n" + bar
+}
+
+// tooSmall dice se la finestra è sotto il minimo 80×24 (solo quando la size è
+// nota: prima del primo WindowSizeMsg la TUI rende il contenuto normale).
+func (m Model) tooSmall() bool {
+	return m.width > 0 && (m.width < minWidth || m.height < minHeight)
+}
+
+// minSizeView è la schermata di avviso per i terminali troppo piccoli (Task
+// 9, View-only): mostra la size corrente e il minimo richiesto. Nessun corpo
+// né status bar: non c'è nulla di sensato da mostrare a quelle dimensioni.
+func (m Model) minSizeView() string {
+	body := m.styles.ThreadHeader.Render("gmail-tui") + "\n\n" +
+		fmt.Sprintf("terminale troppo piccolo: %d×%d\n", m.width, m.height) +
+		fmt.Sprintf("servono almeno %d×%d colonne\n", minWidth, minHeight) +
+		m.styles.ListDate.Render("allarga la finestra — q esce comunque")
+	return m.styles.Border.Render(body)
+}
+
+// helpOverlay rende l'help completo (toggle `?`, Task 9): il titolo con
+// l'hint di chiusura e le colonne dei gruppi (bubbles/help FullHelpView) in
+// un riquadro a tema.
+func (m Model) helpOverlay() string {
+	title := m.styles.ThreadHeader.Render("aiuto") +
+		m.styles.ListDate.Render("  esc/? chiudi")
+	return title + "\n" +
+		m.styles.Border.Render(m.styles.HelpView.Render(m.help.FullHelpView(m.fullHelpFor(m.labelOpen, m.view))))
 }
 
 // body rende la vista attiva: l'inbox è la lista messaggi (Task 4), il
@@ -489,8 +611,10 @@ func (m Model) body() string {
 }
 
 // statusBar rende l'ultima riga: il mini-prompt label quando è aperto (Task
-// 7), altrimenti spinner se pending > 0, ultimo statusMsg, hint tasti quando
-// non c'è nulla da dire.
+// 7), altrimenti lo spinner se pending > 0, l'ultimo statusMsg e — sempre
+// visibile, Task 9 — l'help breve per la vista corrente (bubbles/help). Un
+// errore riempie la barra da solo (visibilità prima dell'help); il banner
+// demo usa lo stile DemoBanner.
 func (m Model) statusBar() string {
 	if m.labelOpen {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
@@ -500,17 +624,47 @@ func (m Model) statusBar() string {
 	text := m.status.text
 	if m.pending > 0 {
 		text = m.spinner.View() + " " + text
-	} else if text == "" {
-		text = "q esci · / cerca" // help contestuale vera in Task 9
 	}
-	st := m.styles.StatusBar
 	if m.status.isErr {
-		st = m.styles.StatusErr
+		return m.renderBar(m.styles.StatusErr, text)
 	}
+	if m.demo && m.status.text == demoBannerText {
+		return m.renderBar(m.styles.DemoBanner, text)
+	}
+	return m.renderBar(m.styles.StatusBar, m.joinHelp(text))
+}
+
+// joinHelp affianca al testo di status l'help breve (sempre visibile, Task 9):
+// a status vuota resta solo l'help (sostituisce il vecchio hint fisso); con
+// la size nota l'help si spinge a destra e si tronca allo spazio disponibile.
+func (m Model) joinHelp(text string) string {
+	hv := m.help
+	if m.width > 0 {
+		// Il padding della barra (0,1) occupa 2 colonne.
+		hv.SetWidth(max(0, m.width-lipgloss.Width(text)-2))
+	}
+	helpBar := hv.ShortHelpView(m.shortHelpFor(m.labelOpen, m.view))
+	if text == "" {
+		return helpBar
+	}
+	if helpBar == "" {
+		return text
+	}
+	gap := 2
+	if m.width > 0 {
+		if spare := m.width - lipgloss.Width(text) - lipgloss.Width(helpBar) - 2; spare > gap {
+			gap = spare
+		}
+	}
+	return text + strings.Repeat(" ", gap) + helpBar
+}
+
+// renderBar applica lo stile dato (a larghezza piena quando la size è nota).
+func (m Model) renderBar(st lipgloss.Style, s string) string {
 	if m.width > 0 {
 		st = st.Width(m.width)
 	}
-	return st.Render(text)
+	return st.Render(s)
 }
 
 // currentView è un helper per i test: la vista attiva.
