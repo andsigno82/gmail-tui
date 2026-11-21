@@ -141,6 +141,11 @@ func (m Model) SelectedRef() (msg.MessageRef, bool) {
 	return msg.MessageRef{}, false
 }
 
+// SelectedIndex restituisce l'indice globale della riga sotto il cursore:
+// l'app lo usa per ripristinare la posizione del cursore dopo il refresh
+// silenzioso che segue una mutazione (Task 7).
+func (m Model) SelectedIndex() int { return m.list.Index() }
+
 // SetClock sostituisce l'orologio usato per date relative e doppio click:
 // seam per test deterministici.
 func (m *Model) SetClock(f func() time.Time) {

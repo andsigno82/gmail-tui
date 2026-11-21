@@ -124,6 +124,11 @@ func (m *Model) SetSize(width, height int) {
 // preserva la lista).
 func (m *Model) MarkRead() { m.ref.Unread = false }
 
+// SetRef sostituisce la copia locale del ref: sync dopo le mutazioni da
+// thread (Task 7) — l'header non rende i flag, ma i toggle consecutivi
+// dell'utente leggono questo stato. Ricevitore puntatore: muta il modello.
+func (m *Model) SetRef(ref msg.MessageRef) { m.ref = ref }
+
 // Ref restituisce la copia locale del ref (uso test e mutazioni Task 7).
 func (m Model) Ref() msg.MessageRef { return m.ref }
 

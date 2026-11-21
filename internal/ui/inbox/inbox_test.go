@@ -230,6 +230,20 @@ func TestSelectedRef(t *testing.T) {
 	}
 }
 
+// TestSelectedIndexTracksCursor: l'indice globale del cursore (usato dall'app
+// per ripristinare la posizione del cursore dopo il refresh della lista di un
+// op, Task 7).
+func TestSelectedIndexTracksCursor(t *testing.T) {
+	m := newTestModel(t, testRefs())
+	if got := m.SelectedIndex(); got != 0 {
+		t.Errorf("SelectedIndex iniziale = %d, voglio 0", got)
+	}
+	m.Select(2)
+	if got := m.SelectedIndex(); got != 2 {
+		t.Errorf("SelectedIndex dopo Select(2) = %d, voglio 2", got)
+	}
+}
+
 // --- mouse --------------------------------------------------------------------
 
 func TestMouseWheelMovesCursor(t *testing.T) {

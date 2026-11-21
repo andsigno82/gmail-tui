@@ -22,6 +22,7 @@ type recorder struct {
 	mail.MailStore
 	lists  []msg.Query
 	search []msg.Query
+	labels []labelCall // Task 7: ApplyLabel (il Mock è no-op, solo registrazione)
 	err    error
 }
 
@@ -209,10 +210,26 @@ func TestSearchEnterQueriesStoreWithParsedQuery(t *testing.T) {
 }
 
 // TestSearchEmptyQueryRelistsAll: enter con input vuoto NON chiama Search ma
-// re-lista tutto (ListMessages Query{}, come il load di Init), senza badge in
-// status bar.
+// re-lista tutto (ListMessages Query{}, come il load di Init); il badge di una
+// ricerca precedente viene AZZERATO dal re-list (nessun badge stante).
 func TestSearchEmptyQueryRelistsAll(t *testing.T) {
 	mm, rec := searchModel(t, testRefs(t))
+
+	// prima una ricerca vera col badge: il re-list successivo deve azzerarlo
+	mm, _ = step(mm, pressKey("/"))
+	mm = typeKeys(mm, "prima")
+	mm, cmdSearch := step(mm, pressKey("enter"))
+	var searched msgsLoaded
+	for _, ms := range runCmd(cmdSearch) {
+		if l, ok := ms.(msgsLoaded); ok {
+			searched = l
+		}
+	}
+	mm, _ = step(mm, searched)
+	if got := mm.statusText(); got != `1 risultati per "prima"` {
+		t.Fatalf("badge dopo ricerca = %q, voglio %q", got, `1 risultati per "prima"`)
+	}
+
 	mm, _ = step(mm, pressKey("/"))
 
 	mm, cmd := step(mm, pressKey("enter"))
@@ -232,8 +249,8 @@ func TestSearchEmptyQueryRelistsAll(t *testing.T) {
 	if len(loaded.refs) != 3 {
 		t.Errorf("refs re-list = %d, voglio 3 (tutti i messaggi del Mock)", len(loaded.refs))
 	}
-	if len(rec.search) != 0 {
-		t.Errorf("chiamate Search = %d, voglio 0 con query vuota", len(rec.search))
+	if len(rec.search) != 1 {
+		t.Errorf("chiamate Search = %d, voglio 1 (solo la ricerca con badge)", len(rec.search))
 	}
 	if len(rec.lists) != 1 || rec.lists[0] != (msg.Query{}) {
 		t.Errorf("ListMessages = %+v, voglio [Query{}] (re-list completo)", rec.lists)
@@ -241,7 +258,7 @@ func TestSearchEmptyQueryRelistsAll(t *testing.T) {
 
 	mm, _ = step(mm, loaded)
 	if mm.status.text != "" {
-		t.Errorf("status dopo re-list = %q, voglio vuoto (nessun badge)", mm.status.text)
+		t.Errorf("status dopo re-list = %q, voglio vuoto (badge di ricerca azzerato)", mm.status.text)
 	}
 	if len(mm.refs) != 3 {
 		t.Errorf("refs inbox = %d, voglio 3", len(mm.refs))

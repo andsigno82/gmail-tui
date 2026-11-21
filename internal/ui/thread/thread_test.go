@@ -366,6 +366,21 @@ func TestMarkReadMutatesRef(t *testing.T) {
 	}
 }
 
+// TestSetRefSyncsLocalRef: SetRef sostituisce la copia locale del ref (sync
+// dopo le mutazioni Task 7: i toggle consecutivi leggono lo stato aggiornato).
+func TestSetRefSyncsLocalRef(t *testing.T) {
+	m := newModel(t, testMsg())
+	ref := m.Ref()
+	ref.Starred = true
+	m.SetRef(ref)
+	if !m.Ref().Starred {
+		t.Error("dopo SetRef: Starred = false, voglio true (copia locale aggiornata)")
+	}
+	if m.Ref().ID != testRef().ID {
+		t.Error("SetRef deve preservare l'identità del messaggio")
+	}
+}
+
 // TestNewNilMessageNoPanic: un New con full nil (difesa) non panica e rende
 // comunque l'header; Loaded() segnala l'assenza del corpo.
 func TestNewNilMessageNoPanic(t *testing.T) {

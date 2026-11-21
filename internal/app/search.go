@@ -16,18 +16,15 @@ import (
 	"gmail-tui/internal/ui/styles"
 )
 
-// newSearchInput costruisce il textinput della ricerca: prompt "/ " in Accent
-// e placeholder attenuato con la sintassi dei token riconosciuti da
-// ParseQuery. Nasce NON focalizzato: il focus arriva quando `/` apre la vista.
-func newSearchInput(st styles.Styles) textinput.Model {
+// newPromptInput costruisce un textinput da mini-prompt (ricerca, label):
+// prompt in Accent (slot SearchInput), placeholder attenuato (slot ListDate),
+// testo col colore di default del terminale (la variante dark/light si
+// risolve al rendering), cursore blocco lampeggiante. Nasce NON focalizzato:
+// il focus arriva quando il prompt viene aperto. CharLimit è del chiamante.
+func newPromptInput(prompt, placeholder string, st styles.Styles) textinput.Model {
 	ti := textinput.New()
-	ti.Prompt = "/ "
-	ti.Placeholder = "from:x to:y is:unread is:starred has:attachment label:x testo"
-	ti.CharLimit = 256
-	// Stili SOLO da slot del tema (Accent per il prompt, Muted per il
-	// placeholder); il testo resta col colore di default del terminale, così
-	// la variante dark/light si risolve al rendering. Il cursore è il blocco
-	// lampeggiante di default di bubbles.
+	ti.Prompt = prompt
+	ti.Placeholder = placeholder
 	var s textinput.Styles
 	s.Focused.Prompt = st.SearchInput
 	s.Focused.Placeholder = st.ListDate
@@ -35,6 +32,14 @@ func newSearchInput(st styles.Styles) textinput.Model {
 	s.Blurred.Placeholder = st.ListDate
 	s.Cursor = textinput.CursorStyle{Shape: tea.CursorBlock, Blink: true}
 	ti.SetStyles(s)
+	return ti
+}
+
+// newSearchInput costruisce il textinput della ricerca: prompt "/ " e
+// placeholder con la sintassi dei token riconosciuti da ParseQuery.
+func newSearchInput(st styles.Styles) textinput.Model {
+	ti := newPromptInput("/ ", "from:x to:y is:unread is:starred has:attachment label:x testo", st)
+	ti.CharLimit = 256
 	return ti
 }
 

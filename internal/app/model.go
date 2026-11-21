@@ -29,16 +29,20 @@ const (
 // Model è la radice della TUI: routing viste, status bar globale, keymap.
 // Tutte le chiamate MailStore girano in tea.Cmd — la rete non blocca mai.
 type Model struct {
-	store   mail.MailStore
-	styles  styles.Styles
-	spinner spinner.Model
-	inbox   inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
-	thread  thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
-	search  textinput.Model // query di ricerca (Task 6): la radice delega i tasti
+	store     mail.MailStore
+	styles    styles.Styles
+	spinner   spinner.Model
+	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
+	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
+	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
+	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
+	labelOpen bool            // prompt label attivo: i tasti vanno all'input
 
 	view       view
 	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
 	pendingRef msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
+	query      msg.Query        // query corrente della lista (refresh dopo op, Task 7)
+	queryRaw   string           // stringa digitata della query corrente ("" = inbox)
 	status     statusMsg        // ultimo messaggio di status (effimero)
 	pending    int              // op store in flight (>0: spinner attivo)
 	width      int
@@ -57,6 +61,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
 		inbox:   inbox.New(nil, st),
 		search:  newSearchInput(st),
+		label:   newLabelInput(st),
 		view:    viewInbox,
 		// Il load iniziale emesso sempre da Init è già in flight: pending
 		// parte da 1 così la status bar mostra lo spinner finché msgsLoaded
@@ -92,16 +97,55 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		// Il refresh dopo un'op (silent) deve ritrovare il cursore: la
+		// selezione va catturata PRIMA di SetRefs (gli item vengono
+		// sostituiti) — id e indice della riga corrente.
+		var selID msg.MessageID
+		hadSel := false
+		oldIdx := 0
+		if ev.silent {
+			oldIdx = m.inbox.SelectedIndex()
+			if r, ok := m.inbox.SelectedRef(); ok {
+				selID, hadSel = r.ID, true
+			}
+		}
 		m.refs = ev.refs
-		if ev.query != "" {
-			// Badge dei risultati di ricerca: conteggio + query digitata.
-			m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+		if !ev.silent {
+			if ev.query != "" {
+				// Badge dei risultati di ricerca: conteggio + query digitata.
+				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+			} else {
+				// Re-list esplicito (load di Init o ricerca con query vuota):
+				// il badge di una ricerca precedente è ormai stante, lo
+				// status si azzera (Task 6 review).
+				m.status = statusMsg{}
+			}
 		}
 		// L'inbox riceve i ref direttamente qui (update di campo): con
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
 		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
 		// nulla. La cmd viene comunque propagata per fedeltà all'API.
-		return m, m.inbox.SetRefs(ev.refs)
+		cmd := m.inbox.SetRefs(ev.refs)
+		if ev.silent && len(ev.refs) > 0 {
+			// Ripristino del cursore dopo il refresh di un'op: stesso
+			// messaggio se c'è ancora nell'elenco (anche se si è spostato),
+			// altrimenti lo stesso indice clampato alla nuova lunghezza (il
+			// messaggio operato può essere sparito, es. archiviato).
+			idx := -1
+			if hadSel {
+				for i, r := range ev.refs {
+					if r.ID == selID {
+						idx = i
+						break
+					}
+				}
+			}
+			if idx < 0 {
+				idx = min(oldIdx, len(ev.refs)-1)
+			}
+			m.inbox.Select(idx)
+		}
+		return m, cmd
 
 	case msgLoaded:
 		m.doneOp()
@@ -123,11 +167,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
 		// concatenata, errore SOLO in status (non fatale). La copia locale
-		// del ref passa a letta subito; il refresh lista avviene via
-		// Watch/nuova ricerca, il back preserva la lista — niente re-list qui.
+		// del ref passa a letta subito; refresh=false (Task 5): niente
+		// re-list, la lista si aggiorna via Watch/nuova ricerca, il back
+		// preserva la lista.
 		if ev.m.Ref.Unread {
 			m.thread.MarkRead()
-			return m, markRead(m.store, ev.m.Ref.ID)
+			return m, markRead(m.store, ev.m.Ref.ID, true, false)
 		}
 		return m, nil
 
@@ -138,6 +183,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = statusMsg{text: ev.label}
+		if ev.refresh {
+			// Mutazione utente riuscita (Task 7): rilista la lista corrente
+			// (query corrente) in silenzio — refs e cursore aggiornati, il
+			// feedback resta in status.
+			m.pending++
+			return m, tea.Batch(refreshRefs(m.store, m.query, m.queryRaw), m.spinner.Tick)
+		}
 		return m, nil
 
 	case changeEvt:
@@ -193,11 +245,28 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.thread.SetSize(ev.Width, max(0, m.height-1))
 		// L'input di ricerca non trabocca: il prompt "/ " occupa 2 colonne.
 		m.search.SetWidth(max(0, ev.Width-2))
+		// Idem il mini-prompt label: il prompt occupa len(labelPrompt) colonne.
+		m.label.SetWidth(max(0, ev.Width-len(labelPrompt)))
 		return m, nil
 
 	case tea.KeyPressMsg:
 		// Nota v2: KeyMsg è un'interfaccia press|release; si matchano solo le
 		// pressioni (KeyPressMsg) per non duplicare le azioni.
+		if m.labelOpen {
+			// Mini-prompt label attivo (Task 7): TUTTI i tasti vanno al
+			// prompt — enter applica, esc annulla, il resto è testo (i tasti
+			// op non possono scattare mentre si digita il nome).
+			switch ev.String() {
+			case "enter":
+				return m.confirmLabel()
+			case "esc":
+				return m.cancelLabel()
+			default:
+				var cmd tea.Cmd
+				m.label, cmd = m.label.Update(ev)
+				return m, cmd
+			}
+		}
 		if m.view == viewSearch {
 			// In ricerca SOLO enter ed esc sono della radice: ogni altro tasto
 			// (incluso "q") è testo della query e va al textinput.
@@ -217,6 +286,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		switch ev.String() {
+		case "a", "s", "v", "l":
+			// Mutazioni (Task 7): agiscono sul ref corrente — nell'inbox la
+			// riga selezionata, nel thread il messaggio aperto.
+			return m.runOp(ev.String())
 		case "q", "esc":
 			if m.view == viewInbox {
 				return m, tea.Quit // tea.Quit in v2 è una Msg-function: usata come Cmd
@@ -280,6 +353,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.search, cmd = m.search.Update(ev)
 			return m, cmd
 		}
+		// Idem per il mini-prompt label mentre è aperto (blink del cursore).
+		if m.labelOpen {
+			var cmd tea.Cmd
+			m.label, cmd = m.label.Update(ev)
+			return m, cmd
+		}
 		return m, nil
 	}
 }
@@ -300,11 +379,18 @@ func (m *Model) doneOp() {
 // submitSearch esce dalla vista ricerca ed esegue la query corrente: la
 // ricerca (o il re-list, se vuota) gira in Cmd e l'inbox riceverà i
 // risultati via msgsLoaded. L'input si azzera: il prossimo / parte pulito.
+// La query si custodisce sul modello: è lo stato del refresh silenzioso che
+// segue le mutazioni (Task 7) — il re-list gira con la query corrente.
 func (m Model) submitSearch() (Model, tea.Cmd) {
 	raw := strings.TrimSpace(m.search.Value())
 	m.view = viewInbox
 	m.search.Blur()
 	m.search.Reset()
+	m.queryRaw = raw
+	m.query = msg.Query{}
+	if raw != "" {
+		m.query = msg.ParseQuery(raw)
+	}
 	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
 	return m, tea.Batch(submitQuery(m.store, raw), m.spinner.Tick)
 }
@@ -323,15 +409,6 @@ func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	return func() tea.Msg {
 		mm, err := st.FetchMessage(context.Background(), id)
 		return msgLoaded{m: mm, err: err}
-	}
-}
-
-// markRead marca i messaggi come letti fuori dal loop UI. L'errore NON è
-// fatale (auto MarkRead in background): finisce in status bar via opDone.
-func markRead(st mail.MailStore, id msg.MessageID) tea.Cmd {
-	return func() tea.Msg {
-		err := st.MarkRead(context.Background(), []msg.MessageID{id}, true)
-		return opDone{label: "letta", err: err}
 	}
 }
 
@@ -366,9 +443,15 @@ func (m Model) body() string {
 	}
 }
 
-// statusBar rende l'ultima riga: spinner se pending > 0, ultimo statusMsg,
-// hint tasti quando non c'è nulla da dire.
+// statusBar rende l'ultima riga: il mini-prompt label quando è aperto (Task
+// 7), altrimenti spinner se pending > 0, ultimo statusMsg, hint tasti quando
+// non c'è nulla da dire.
 func (m Model) statusBar() string {
+	if m.labelOpen {
+		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
+		// stesso al posto dello status, che resta custodito sotto.
+		return m.label.View()
+	}
 	text := m.status.text
 	if m.pending > 0 {
 		text = m.spinner.View() + " " + text

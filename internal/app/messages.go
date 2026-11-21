@@ -14,11 +14,15 @@ import (
 // msgsLoaded è il risultato di ListMessages/Search (list/search). query è la
 // stringa digitata dall'utente quando il risultato viene da una ricerca
 // (badge "N risultati per …" in status bar); vuota per il load/re-list della
-// lista.
+// lista. silent contraddistingue il refresh automatico dopo una mutazione
+// (Task 7): aggiorna lista e cursore ma NON tocca lo status (il feedback
+// dell'op deve restare visibile; il badge/clear sono solo per azioni
+// esplicite dell'utente).
 type msgsLoaded struct {
-	refs  []msg.MessageRef
-	err   error
-	query string
+	refs   []msg.MessageRef
+	err    error
+	query  string
+	silent bool
 }
 
 // msgLoaded è il risultato di FetchMessage.
@@ -27,10 +31,15 @@ type msgLoaded struct {
 	err error
 }
 
-// opDone è il risultato di una mutazione (feedback in status bar).
+// opDone è il risultato di una mutazione (feedback in status bar). refresh
+// chiede il re-list della lista corrente al risultato (le op dell'utente,
+// Task 7); le op automatiche — es. auto MarkRead al fetch (Task 5) — non
+// rilistano (lo status resta l'unico feedback, la lista si aggiorna via
+// Watch/nuova ricerca).
 type opDone struct {
-	label string
-	err   error
+	label   string
+	err     error
+	refresh bool
 }
 
 // changeEvt è un evento push del feed Watch.
