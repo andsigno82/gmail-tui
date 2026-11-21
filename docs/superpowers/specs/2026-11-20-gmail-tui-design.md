@@ -182,7 +182,9 @@ theme     = "catppuccin-mocha"
 ```
 
 - Password: `GMAIL_APP_PASSWORD` env var **o** `gmail-tui login` → keychain
-  di sistema (go-keyring). Mai in chiaro nel file config.
+  di sistema. Mai in chiaro nel file config. (Emendamento 2026-11-21: il
+  keychain usa le CLI di sistema `security`/`secret-tool` invece di
+  go-keyring, che richiede CGO — incompatibile col build CGO_ENABLED=0.)
 - **First-run wizard**: niente config → la TUI guida: link a
   myaccount.google.com/apppasswords, inserimento password, test connessione,
   scrittura config. Requisito documentato: 2FA attiva.
