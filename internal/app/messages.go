@@ -11,10 +11,14 @@ import (
 // Tipi Msg di risultato delle Cmd: uno per operazione, con errore incorporato.
 // Contratto condiviso da tutte le viste (fonte: piano 3, "Contratto messaggi").
 
-// msgsLoaded è il risultato di ListMessages/Search (list/search).
+// msgsLoaded è il risultato di ListMessages/Search (list/search). query è la
+// stringa digitata dall'utente quando il risultato viene da una ricerca
+// (badge "N risultati per …" in status bar); vuota per il load/re-list della
+// lista.
 type msgsLoaded struct {
-	refs []msg.MessageRef
-	err  error
+	refs  []msg.MessageRef
+	err   error
+	query string
 }
 
 // msgLoaded è il risultato di FetchMessage.

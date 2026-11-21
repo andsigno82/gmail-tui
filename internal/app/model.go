@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/spinner"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
 	"gmail-tui/internal/mail"
@@ -31,8 +32,9 @@ type Model struct {
 	store   mail.MailStore
 	styles  styles.Styles
 	spinner spinner.Model
-	inbox   inbox.Model  // lista messaggi (Task 4): la radice delega tasti/mouse
-	thread  thread.Model // lettura messaggio (Task 5): costruito al msgLoaded
+	inbox   inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
+	thread  thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
+	search  textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 
 	view       view
 	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
@@ -54,6 +56,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		styles:  st,
 		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
 		inbox:   inbox.New(nil, st),
+		search:  newSearchInput(st),
 		view:    viewInbox,
 		// Il load iniziale emesso sempre da Init è già in flight: pending
 		// parte da 1 così la status bar mostra lo spinner finché msgsLoaded
@@ -81,10 +84,19 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	case msgsLoaded:
 		m.doneOp()
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("lettura messaggi: %v", ev.err), isErr: true}
+			// La query distingue l'errore di ricerca da quello di list.
+			if ev.query != "" {
+				m.status = statusMsg{text: fmt.Sprintf("ricerca %q: %v", ev.query, ev.err), isErr: true}
+			} else {
+				m.status = statusMsg{text: fmt.Sprintf("lettura messaggi: %v", ev.err), isErr: true}
+			}
 			return m, nil
 		}
 		m.refs = ev.refs
+		if ev.query != "" {
+			// Badge dei risultati di ricerca: conteggio + query digitata.
+			m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+		}
 		// L'inbox riceve i ref direttamente qui (update di campo): con
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
 		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
@@ -179,11 +191,31 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
 		m.inbox.SetSize(ev.Width, max(0, m.height-1))
 		m.thread.SetSize(ev.Width, max(0, m.height-1))
+		// L'input di ricerca non trabocca: il prompt "/ " occupa 2 colonne.
+		m.search.SetWidth(max(0, ev.Width-2))
 		return m, nil
 
 	case tea.KeyPressMsg:
 		// Nota v2: KeyMsg è un'interfaccia press|release; si matchano solo le
 		// pressioni (KeyPressMsg) per non duplicare le azioni.
+		if m.view == viewSearch {
+			// In ricerca SOLO enter ed esc sono della radice: ogni altro tasto
+			// (incluso "q") è testo della query e va al textinput.
+			switch ev.String() {
+			case "enter":
+				return m.submitSearch()
+			case "esc":
+				// Annulla: si torna all'inbox senza cercare; la bozza resta
+				// nell'input per un eventuale ritorno con /.
+				m.view = viewInbox
+				m.search.Blur()
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.search, cmd = m.search.Update(ev)
+				return m, cmd
+			}
+		}
 		switch ev.String() {
 		case "q", "esc":
 			if m.view == viewInbox {
@@ -196,12 +228,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.thread, cmd = m.thread.Update(ev)
 				return m, cmd
 			}
-			m.view = viewInbox // in search si annulla (Task 6)
 			return m, nil
 		case "/":
 			if m.view == viewInbox {
 				m.view = viewSearch
-				return m, nil
+				// Focus del textinput: la cmd avvia il blink del cursore.
+				return m, m.search.Focus()
 			}
 		case "c":
 			if m.view == viewInbox {
@@ -241,6 +273,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	default:
+		// In ricerca anche i messaggi non-tasto (es. blink del cursore del
+		// textinput) passano al modello: senza, il cursore resterebbe fermo.
+		if m.view == viewSearch {
+			var cmd tea.Cmd
+			m.search, cmd = m.search.Update(ev)
+			return m, cmd
+		}
 		return m, nil
 	}
 }
@@ -256,6 +295,18 @@ func (m *Model) doneOp() {
 	if m.pending > 0 {
 		m.pending--
 	}
+}
+
+// submitSearch esce dalla vista ricerca ed esegue la query corrente: la
+// ricerca (o il re-list, se vuota) gira in Cmd e l'inbox riceverà i
+// risultati via msgsLoaded. L'input si azzera: il prossimo / parte pulito.
+func (m Model) submitSearch() (Model, tea.Cmd) {
+	raw := strings.TrimSpace(m.search.Value())
+	m.view = viewInbox
+	m.search.Blur()
+	m.search.Reset()
+	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
+	return m, tea.Batch(submitQuery(m.store, raw), m.spinner.Tick)
 }
 
 // loadRefs esegue ListMessages fuori dal loop UI. Il contesto è background
@@ -299,8 +350,8 @@ func (m Model) content() string {
 }
 
 // body rende la vista attiva: l'inbox è la lista messaggi (Task 4), il
-// thread è la lettura del messaggio (Task 5, placeholder durante il fetch);
-// search resta stub di scheletro (Task 6).
+// thread è la lettura del messaggio (Task 5, placeholder durante il fetch),
+// la ricerca è il textinput della query (Task 6).
 func (m Model) body() string {
 	switch m.view {
 	case viewThread:
@@ -309,7 +360,7 @@ func (m Model) body() string {
 		}
 		return m.thread.View()
 	case viewSearch:
-		return "Ricerca — stub (Task 6)"
+		return m.searchBody()
 	default:
 		return m.inbox.View()
 	}
