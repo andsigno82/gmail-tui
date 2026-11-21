@@ -3,6 +3,8 @@ module gmail-tui
 go 1.26.0
 
 require (
+	charm.land/bubbles/v2 v2.2.2
+	charm.land/bubbletea/v2 v2.1.2
 	charm.land/lipgloss/v2 v2.1.1
 	github.com/BurntSushi/toml v1.6.0
 	github.com/emersion/go-imap/v2 v2.0.0-beta.9
@@ -14,8 +16,6 @@ require (
 )
 
 require (
-	charm.land/bubbles/v2 v2.2.2 // indirect
-	charm.land/bubbletea/v2 v2.1.2 // indirect
 	github.com/cention-sany/utf7 v0.0.0-20170124080048-26cad61bd60a // indirect
 	github.com/charmbracelet/colorprofile v0.4.3 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20261008173134-6b8d4baf91b4 // indirect
