@@ -95,6 +95,12 @@ type watchState struct {
 // chiuso. Canale buffer 16, send non bloccante: se il consumer è lento gli
 // eventi si perdono e deve re-listare.
 //
+// Gate (Piano 3, Task 1): la baseline sincrona e la ri-verifica nella
+// riconnessione sono comandi watch-side FUORI dai round di idle e girano
+// dentro un round acquire→release del gate (una op alla volta: non
+// interleaveano con op in flight); la ri-verifica DENTRO un round di idle
+// gira sotto il hold implicito del round (idling=true), senza acquire.
+//
 // Nota: con più Watch contemporanei sull'ultimo Store i dati unilaterali
 // alimentano solo il più recente (s.wakes è unico): l'uso previsto è UN
 // Watch per volta (un solo canale per chiamata).
@@ -113,7 +119,16 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 
 	// Baseline sincrona: Select INBOX + UID più alto esistente. Fallire qui
 	// (mailbox rotta, connessione morta) è un errore di Watch, non un evento.
+	//
+	// Gate round (Piano 3, Task 1): la baseline è un comando watch-side FUORI
+	// dai round di idle (fa SELECT: senza gate un'op concorrente potrebbe
+	// selezionare un'altra mailbox in mezzo) — gira dentro acquire→release
+	// per non interleaveare con op in flight. Nessun rischio di deadlock con
+	// l'idle loop: qui il watch-goroutine non esiste ancora (niente idling
+	// possibile), acquire può solo attendere ops in flight.
+	release := s.gate.acquire()
 	st, err := baselineState(c)
+	release()
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +249,9 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 
 	// Ri-verifica dei nuovi messaggi (economica: un UID SEARCH) dopo ogni
 	// termine dell'idle: copre wakeMailbox, wake persi e il ritorno dalla
-	// riconnessione.
+	// riconnessione. Nessun acquire qui (Piano 3, Task 1): siamo DENTRO il
+	// round — idling=true È il hold della connessione da parte del watch —
+	// e acquire attenderebbe !idling: deadlock per definizione.
 	if err := s.recheckNewMail(c, ch, st); err != nil {
 		return err
 	}
@@ -326,7 +343,17 @@ func (s *Store) reconnect(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 		}
 		// La ri-verifica post-riconnessione emette anche i ChangeNewMail
 		// per le mail arrivate mentre eravamo offline (search da lastUID).
-		if err := s.recheckNewMail(c, ch, st); err != nil {
+		//
+		// Gate round (Piano 3, Task 1): comando watch-side FUORI dai round
+		// di idle (fa SELECT) — acquire→release lo esclude da op in flight.
+		// Nessun deadlock: qui idling è GIÀ false (idleDone è girato alla
+		// fine dell'idleRound fallito, prima della riconnessione) e il watch
+		// non detiene nulla mentre attende: il round parte quando le ops in
+		// flight hanno finito.
+		release := s.gate.acquire()
+		err = s.recheckNewMail(c, ch, st)
+		release()
+		if err != nil {
 			continue // connessione ancora instabile: riprova
 		}
 		return true

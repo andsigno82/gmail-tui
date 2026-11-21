@@ -7,8 +7,10 @@ package imap
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -304,6 +306,87 @@ func TestListMessagesLabelSelectsMailbox(t *testing.T) {
 	}
 	if refs[1].Unread || refs[1].Starred {
 		t.Errorf("refs[1] (Archived one): Unread=%v Starred=%v, voglio false/false", refs[1].Unread, refs[1].Starred)
+	}
+}
+
+// TestConcurrentListMessagesNoCrossMailbox (Piano 3, Task 1: mutua esclusione
+// op-vs-op del gate): due ListMessages CONCORRENTI su mailbox diverse devono
+// restituire SOLO i ref della propria mailbox. Pre-fix il gate serializzava
+// solo watch-vs-op: le due op potevano interleaveare i SELECT — SEARCH/FETCH
+// agiscono sulla mailbox correntemente selezionata, quindi l'op vedeva (o
+// restituiva) i messaggi dell'ALTRA mailbox. Post-fix le operazioni sono
+// serializzate dal gate: una op alla volta.
+//
+// Nota sul RED: la finestra di interleave (tra il SELECT di un'op e il suo
+// UIDSearch) dipende dallo scheduling; il test ripete molti round per
+// allargarla, ma un RED deterministico non è garantito — in quel caso il test
+// resta l'asserzione di correttezza post-fix (cfr. task-p2-7-report.md,
+// "P3 Task 1: gate mutual exclusion").
+func TestConcurrentListMessagesNoCrossMailbox(t *testing.T) {
+	ts := startTestServer(t)
+	ts.createMailbox("Archive")
+	for i := 1; i <= 5; i++ {
+		ts.seedMail(fmt.Sprintf("In%d <in%d@example.org>", i, i), fmt.Sprintf("Inbox %d", i), "corpo", false, false)
+		ts.seedInMailbox("Archive", fmt.Sprintf("Arc%d <arc%d@example.org>", i, i), fmt.Sprintf("Archive %d", i), "corpo", false, false)
+	}
+	store := connectStore(t, ts)
+
+	// checkMailbox: refs deve contenere SOLO messaggi della mailbox richiesta
+	// (5, uno per seed) — un ref di un'altra mailbox è la firma dell'interleave
+	// dei SELECT pre-fix.
+	checkMailbox := func(mailbox string, refs []msg.MessageRef, err error) error {
+		if err != nil {
+			return fmt.Errorf("ListMessages %s: %w", mailbox, err)
+		}
+		if len(refs) != 5 {
+			return fmt.Errorf("ListMessages %s: %d ref, voglio 5 (%v)", mailbox, len(refs), subjects(refs))
+		}
+		wantPrefix := "Archive"
+		if mailbox == "INBOX" {
+			wantPrefix = "Inbox"
+		}
+		for _, r := range refs {
+			mb, _, err := r.ID.Split()
+			if err != nil || mb != mailbox {
+				return fmt.Errorf("ListMessages %s: ref nella mailbox sbagliata: %s (SELECT interlacciata)", mailbox, r.ID)
+			}
+			if !strings.HasPrefix(r.Subject, wantPrefix) {
+				return fmt.Errorf("ListMessages %s: subject %q di un'altra mailbox", mailbox, r.Subject)
+			}
+		}
+		return nil
+	}
+
+	const rounds = 25
+	start := make(chan struct{}) // barriera: le due op partono insieme
+	var wg sync.WaitGroup
+	errs := make(chan error, 2)
+	for _, mailbox := range []string{"INBOX", "Archive"} {
+		wg.Add(1)
+		go func(mailbox string) {
+			defer wg.Done()
+			<-start
+			q := msg.Query{} // label vuota = INBOX
+			if mailbox != "INBOX" {
+				q.Label = mailbox
+			}
+			for i := 0; i < rounds; i++ {
+				refs, err := store.ListMessages(t.Context(), q, mail.Page{})
+				if err := checkMailbox(mailbox, refs, err); err != nil {
+					errs <- err
+					return
+				}
+			}
+			errs <- nil
+		}(mailbox)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
 

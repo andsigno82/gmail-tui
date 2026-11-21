@@ -29,6 +29,12 @@ type Change struct {
 }
 
 // MailStore è l'astrazione di backend posta.
+//
+// Thread-safety (Piano 3, Task 1): le operazioni sono SERIALIZZATE — UNA OP
+// ALLA VOLTA. Il backend IMAP ha una connessione e SEARCH/STORE/EXPUNGE
+// agiscono sulla mailbox correntemente selezionata: chiamate concorrenti
+// (es. multiple tea.Cmd della TUI) sono corrette — il gate del backend le
+// mette in coda, ma non interleaveano i comandi sulla connessione.
 type MailStore interface {
 	Connect(ctx context.Context) error
 
@@ -75,6 +81,9 @@ type MailStore interface {
 	//   - gli eventi sono best-effort: il canale è bufferizzato, se il
 	//     consumer è lento gli eventi si perdono e il consumer deve
 	//     re-listare;
-	//   - ChangeDisconnected viene emesso prima di una riconnessione.
+	//   - ChangeDisconnected viene emesso prima di una riconnessione;
+	//   - la baseline iniziale e la ri-verifica post-riconnessione girano
+	//     dentro un round del gate (come le op: una alla volta) — la
+	//     chiamata può attendere ops in flight, senza interleave.
 	Watch(ctx context.Context) (<-chan Change, error)
 }

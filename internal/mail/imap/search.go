@@ -30,9 +30,11 @@ const maxAttachmentCandidates = 200
 // Le API go-imap v2 (beta.9) non prendono context: come per Connect, Search
 // controlla solo ctx.Err() in ingresso.
 //
-// Gate (fix review): come ListMessages, l'intera sequenza (incluso il
-// post-filtro, che ri-acquisisce per ogni FetchMessage: acquire è annidabile)
-// corre sotto lo stesso holder per non intersecare le SELECT del Watch.
+// Gate (fix review + Piano 3 Task 1): come ListMessages, l'intera sequenza —
+// incluso il post-filtro HasAttachment — corre sotto lo STESSO holder: il
+// fetch di corpo del post-filtro NON ri-acquisisce (con la mutua esclusione
+// piena acquire non è rientrante: sarebbe deadlock), gira come
+// fetchMessage(heldGate=true) sotto l'holder di Search.
 func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error) {
 	defer s.gate.acquire()()
 
@@ -53,7 +55,8 @@ func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, erro
 // filterWithAttachment è il post-filtro best-effort di Query.HasAttachment:
 // IMAP SEARCH non ha un criterio per gli allegati, quindi per ogni ref
 // candidato (al più maxAttachmentCandidates, i più recenti) si chiama
-// FetchMessage — cache-first, quindi a buon mercato sulle ripetizioni — e
+// fetchMessage(heldGate=true) — cache-first, quindi a buon mercato sulle
+// ripetizioni; gira sotto l'holder di Search, senza ri-acquisire — e
 // si tengono solo i messaggi con len(Attachments) > 0. I ref oltre il cap
 // non sono esaminati né restituiti: con HasAttachment la ricerca restituisce
 // al più maxAttachmentCandidates risultati. Un messaggio sparito tra SEARCH
@@ -65,7 +68,7 @@ func (s *Store) filterWithAttachment(ctx context.Context, refs []msg.MessageRef)
 	}
 	out := make([]msg.MessageRef, 0, len(refs))
 	for _, ref := range refs {
-		m, err := s.FetchMessage(ctx, ref.ID)
+		m, err := s.fetchMessage(ctx, ref.ID, true)
 		if err != nil {
 			if errors.Is(err, ErrMessageNotFound) {
 				continue // espunto tra SEARCH e FETCH: best-effort, skip

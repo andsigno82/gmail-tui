@@ -41,10 +41,13 @@ type Store struct {
 	client *imapclient.Client
 	wakes  chan watchWake // canale del Watch attivo, nil se nessuno
 
-	// gate arbitra connessione vs IDLE: go-imap beta.9 non permette di
+	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
-	// alla violazione), quindi le ops acquisiscono il gate — che rompe
-	// l'IDLE del Watch — prima di toccare la rete (cfr. idleGate).
+	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox
+	// correntemente selezionata (due op che interleaveano i SELECT leggerebbero
+	// o scriverebbero nella mailbox sbagliata): le ops acquisiscono il gate —
+	// che rompe l'IDLE del Watch ED esclude le altre op — prima di toccare la
+	// rete (cfr. idleGate).
 	gate idleGate
 }
 
@@ -53,34 +56,50 @@ type Store struct {
 var _ mail.MailStore = (*Store)(nil)
 
 // idleGate arbitra l'uso della connessione tra le operazioni dello Store
-// (comandi IMAP) e l'IDLE del Watch: in go-imap v2.0.0-beta.9 non si possono
-// inviare comandi mentre l'IDLE è in corso e il server chiude la connessione
-// alla violazione. Le ops chiamano acquire (che, se il Watch è in IDLE,
-// chiude breakCh per chiederne l'uscita e attende che l'idle sia terminato);
-// il Watch chiama waitToIdle prima di ogni Idle e idleDone alla fine di ogni
-// round (qualunque causa).
+// (comandi IMAP) e l'IDLE del Watch, E tra le operazioni stesse (Piano 3,
+// Task 1): in go-imap v2.0.0-beta.9 non si possono inviare comandi mentre
+// l'IDLE è in corso (il server chiude la connessione alla violazione) e
+// SEARCH/STORE/EXPUNGE agiscono sulla mailbox CORRENTEMENTE selezionata —
+// due op concorrenti che interleaveano i SELECT leggerebbero o scriverebbero
+// nella mailbox sbagliata. Contratto: OPERAZIONI SERIALIZZATE — UNA OP ALLA
+// VOLTA (l'attesa della TUI su ops in coda è accettabile: ops brevi). Le ops
+// chiamano acquire (che, se il Watch è in IDLE, chiude breakCh per chiederne
+// l'uscita e attende che l'idle sia terminato, quindi attende anche che
+// l'holder precedente abbia rilasciato); il Watch chiama waitToIdle prima di
+// ogni Idle e idleDone alla fine di ogni round (qualunque causa). I comandi
+// watch-side FUORI dai round di idle (baseline in Watch, ri-verifica nella
+// riconnessione) girano anch'essi dentro un round acquire→release (cfr.
+// watch.go).
 type idleGate struct {
 	mu      sync.Mutex
 	cond    *sync.Cond    // derivata da mu
-	holders int           // ops che vogliono la connessione
+	holders int           // ops che vogliono la connessione (attive + in attesa): waitToIdle attende 0
+	active  bool          // UNA op detiene la connessione (mutua esclusione op-vs-op)
 	idling  bool          // il watch è dentro Idle()
 	breakCh chan struct{} // chiuso per chiedere al watch di uscire dall'idle
 	closed  bool          // Close(): acquire diventa no-op, il watch esce
 }
 
 // acquire blocca l'accesso alla connessione per un'operazione e ritorna la
-// funzione di release (da chiamare con defer). holders è incrementato PRIMA
-// di attendere: finché l'op non rilascia, waitToIdle non può rientrare in
-// IDLE — senza questo, tra la idleDone del round rotto e la ripresa dell'op
-// il Watch potrebbe rimarcare idling, l'op risvegliato vedrebbe idling di
-// nuovo true e chiuderebbe il NUOVO breakCh a vuoto, restando in attesa
-// (livelock osservato in debug). Se il Watch è in IDLE, acquire chiude
-// breakCh (una volta: ricreato al prossimo waitToIdle) e attende su cond
-// finché l'idle non è terminato; l'attesa è limitata dal tempo di uscita
-// dall'IDLE (DONE su connessione sana: sub-second). Dopo Close acquire è un
-// no-op (release nil-safe): il client è comunque nil e l'op fallirà con
-// l'errore "non connesso"; la scelta evita di bloccare i chiamanti in fase di
-// shutdown.
+// funzione di release (da chiamare con defer). MUTUA ESCLUSIONE TOTALE
+// (Piano 3, Task 1): l'op attende `holders == 0 && !idling`, cioè né un'altra
+// op (active) né l'IDLE devono essere in corso — l'holder della connessione
+// è UNO alla volta; le op serializzate sono accettabili per una TUI.
+// NON è rientrante: l'unico path annidato (Search → post-filtro
+// HasAttachment → fetch di corpo) usa fetchMessage(..., heldGate=true) per
+// girare sotto l'holder già detenuto da Search (cfr. fetch.go).
+//
+// holders è incrementato PRIMA di attendere: finché l'op non rilascia,
+// waitToIdle non può rientrare in IDLE — senza questo, tra la idleDone del
+// round rotto e la ripresa dell'op il Watch potrebbe rimarcare idling,
+// l'op risvegliato vedrebbe idling di nuovo true e chiuderebbe il NUOVO
+// breakCh a vuoto, restando in attesa (livelock osservato in debug, fix
+// Piano 2 Task 7). Se il Watch è in IDLE, acquire chiude breakCh (una volta:
+// ricreato al prossimo waitToIdle) e attende su cond; l'attesa è limitata dal
+// tempo di uscita dall'IDLE (DONE su connessione sana: sub-second). Dopo
+// Close acquire è un no-op (release nil-safe): il client è comunque nil e
+// l'op fallirà con l'errore "non connesso"; la scelta evita di bloccare i
+// chiamanti in fase di shutdown.
 func (g *idleGate) acquire() func() {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -88,8 +107,8 @@ func (g *idleGate) acquire() func() {
 		return func() {} // no-op, cfr. doc
 	}
 	g.holders++ // prima dell'attesa: il Watch non rienta in IDLE (vedi sopra)
-	for g.idling {
-		if g.breakCh != nil {
+	for g.active || g.idling {
+		if g.idling && g.breakCh != nil {
 			close(g.breakCh) // chiedi al watch di uscire dall'IDLE
 			g.breakCh = nil
 		}
@@ -100,18 +119,21 @@ func (g *idleGate) acquire() func() {
 			return func() {} // chiuso mentre attendevamo: no-op
 		}
 	}
+	g.active = true // l'holder è UNO: le altre op restano in attesa qui
 	return func() {
 		g.mu.Lock()
+		g.active = false
 		g.holders--
 		g.mu.Unlock()
 		g.cond.Broadcast()
 	}
 }
 
-// waitToIdle è il lato Watch: attende (cond) finché ci sono ops che tengono
-// la connessione, poi marca idling e ritorna il breakCh del round (una nuova
-// istanza a ogni round: la precedente può essere stata chiusa da acquire).
-// ok=false ⇒ Store chiuso: il Watch deve terminare.
+// waitToIdle è il lato Watch: attende (cond) finché ci sono ops che vogliono
+// la connessione (attive o in attesa: holders == 0), poi marca idling e
+// ritorna il breakCh del round (una nuova istanza a ogni round: la precedente
+// può essere stata chiusa da acquire). ok=false ⇒ Store chiuso: il Watch deve
+// terminare.
 func (g *idleGate) waitToIdle() (breakCh chan struct{}, ok bool) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -151,8 +173,8 @@ func (g *idleGate) close() {
 }
 
 // reset riporta il gate a nuovo dopo un Close (per il riuso dello Store via
-// Connect): closed=false, niente idling. Gli holders non si toccano: le
-// release in volo sono appaiate e si auto-correggono.
+// Connect): closed=false, niente idling. holders e active non si toccano: le
+// release in volo sono appaiate (chiuso-escape incluso) e si auto-correggono.
 func (g *idleGate) reset() {
 	g.mu.Lock()
 	g.closed = false

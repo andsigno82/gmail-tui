@@ -34,6 +34,15 @@ var ErrMessageNotFound = errors.New("messaggio inesistente")
 // Le API go-imap v2 (beta.9) non prendono context: come per Connect,
 // FetchMessage controlla solo ctx.Err() in ingresso.
 func (s *Store) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Message, error) {
+	return s.fetchMessage(ctx, id, false)
+}
+
+// fetchMessage è il corpo di FetchMessage. heldGate=true ⇒ il chiamante
+// DETIENE GIÀ il gate (il post-filtro HasAttachment dentro Search): con la
+// mutua esclusione piena del gate (Piano 3, Task 1) acquire NON è rientrante
+// — ri-acquisire sotto l'holder del chiamante sarebbe un deadlock — quindi
+// qui il gate non si tocca e il fetch gira sotto lo STESSO holder di Search.
+func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate bool) (*msg.Message, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -53,8 +62,12 @@ func (s *Store) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Messag
 	}
 
 	// Miss: da qui si tocca la rete — il gate rompe l'eventuale IDLE del
-	// Watch (fix review) e trattiene la connessione fino alla fine del metodo.
-	defer s.gate.acquire()()
+	// Watch, esclude le altre op (una op alla volta) e trattiene la
+	// connessione fino alla fine del metodo (se non già detenuto dal
+	// chiamante: heldGate).
+	if !heldGate {
+		defer s.gate.acquire()()
+	}
 
 	raw, flags, uidValidity, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
