@@ -14,6 +14,7 @@ import (
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
+	"gmail-tui/internal/cmd"
 	"gmail-tui/internal/msg"
 )
 
@@ -31,6 +32,10 @@ type Options struct {
 type Sender struct {
 	o Options
 }
+
+// Sender soddisfa l'interfaccia minima richiesta dal sottocomando
+// `send` (assert di conformenza).
+var _ cmd.Sender = (*Sender)(nil)
 
 // NewSender crea un Sender con le Options date.
 func NewSender(o Options) *Sender {

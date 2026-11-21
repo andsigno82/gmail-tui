@@ -29,10 +29,6 @@ type Options struct {
 // le label sono cartelle; COPY sulla cartella aggiunge la label;
 // \Deleted+EXPUNGE nella cartella rimuove la label (= archivia da INBOX,
 // il messaggio resta in All Mail).
-//
-// NOTA: l'assert di conformenza `var _ mail.MailStore = (*Store)(nil)`
-// previsto dalla verifica finale del piano viene aggiunto nel Task 8:
-// dopo Watch (Task 7) manca ancora Send all'interfaccia.
 type Store struct {
 	opts Options
 
@@ -51,6 +47,10 @@ type Store struct {
 	// l'IDLE del Watch — prima di toccare la rete (cfr. idleGate).
 	gate idleGate
 }
+
+// Store implementa MailStore a compile time (assert di conformenza:
+// Search/Watch/Send compresi).
+var _ mail.MailStore = (*Store)(nil)
 
 // idleGate arbitra l'uso della connessione tra le operazioni dello Store
 // (comandi IMAP) e l'IDLE del Watch: in go-imap v2.0.0-beta.9 non si possono
