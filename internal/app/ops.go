@@ -103,8 +103,9 @@ func (m *Model) applyLocalRef(updated msg.MessageRef) {
 
 // confirmLabel chiude il prompt e applica la label digitata al ref corrente
 // (on=true). Nome vuoto: nessuna op (come un annullamento). Il ref è letto al
-// momento della conferma: col prompt aperto i tasti vanno all'input, il
-// cursore non può muoversi fra apertura e conferma.
+// momento della conferma: col prompt aperto i tasti vanno all'input e il
+// mouse è ignorato (fix merge-gate), il cursore non può muoversi fra apertura
+// e conferma.
 func (m Model) confirmLabel() (Model, tea.Cmd) {
 	name := strings.TrimSpace(m.label.Value())
 	m.labelOpen = false

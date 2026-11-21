@@ -25,10 +25,15 @@ type msgsLoaded struct {
 	silent bool
 }
 
-// msgLoaded è il risultato di FetchMessage.
+// msgLoaded è il risultato di FetchMessage. requested è l'ID richiesto dalla
+// Cmd di fetch (fix merge-gate anti-race): i fetch non hanno ordine garantito
+// (A lenta, B veloce) e il risultato di A può arrivare DOPO che B è già stato
+// aperto (o dopo il back all'inbox) — il handler confronta requested col ref
+// in attesa e scarta i risultati stanti (niente rebuild, niente auto MarkRead).
 type msgLoaded struct {
-	m   *msg.Message
-	err error
+	m         *msg.Message
+	err       error
+	requested msg.MessageID
 }
 
 // opDone è il risultato di una mutazione (feedback in status bar). refresh

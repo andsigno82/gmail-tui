@@ -306,6 +306,49 @@ func TestLabelEmptyEnterCancels(t *testing.T) {
 	}
 }
 
+// TestMouseClickIgnoredWhileLabelPromptOpen: col prompt label aperto il mouse
+// è bloccato come i tasti (fix merge-gate): un click NON muove il cursore
+// dell'inbox e enter applica la label al ref selezionato all'apertura del
+// prompt — non alla riga colpita dal click (invariante di confirmLabel).
+func TestMouseClickIgnoredWhileLabelPromptOpen(t *testing.T) {
+	rec := &recorder{MailStore: &mail.Mock{Msgs: mockMsgs(t)}}
+	m := opsModel(t, rec)
+
+	mm, _ := step(m, pressKey("l"))
+	if !mm.labelOpen {
+		t.Fatal("il prompt label non è aperto")
+	}
+
+	// click sulla riga 1: col bug muoverebbe il cursore sotto il prompt
+	mm, cmd := step(mm, tea.MouseClickMsg{Y: 1, Button: tea.MouseLeft})
+	if cmd != nil {
+		t.Errorf("click col prompt aperto: cmd = %v, voglio nil", cmd)
+	}
+	sel, ok := mm.inbox.SelectedRef()
+	if !ok || sel.ID != opsRefs(t)[0].ID {
+		t.Fatalf("ref selezionato dopo il click = %v (ok=%v), voglio %v (cursore immobile)",
+			sel.ID, ok, opsRefs(t)[0].ID)
+	}
+
+	// enter applica comunque la label al ref originale
+	mm = typeKeys(mm, "Work")
+	mm, cmdEnter := step(mm, pressKey("enter"))
+	if mm.labelOpen {
+		t.Error("enter non ha chiuso il prompt")
+	}
+	od := opDoneOf(t, runCmd(cmdEnter))
+	if od.label != "etichetta Work applicata" || od.err != nil {
+		t.Errorf("opDone = %+v, voglio {etichetta Work applicata nil}", od)
+	}
+	if len(rec.labels) != 1 {
+		t.Fatalf("chiamate ApplyLabel = %d, voglio 1", len(rec.labels))
+	}
+	if len(rec.labels[0].ids) != 1 || rec.labels[0].ids[0] != opsRefs(t)[0].ID {
+		t.Errorf("ApplyLabel ids = %v, voglio il ref selezionato all'apertura %v",
+			rec.labels[0].ids, opsRefs(t)[0].ID)
+	}
+}
+
 // --- op dalla thread view: agiscono sul ref corrente del thread -------------
 
 // TestOpsFromThreadView: nell'inbox. Nel thread `s`/`v`/`a` agiscono sul ref

@@ -448,6 +448,150 @@ func TestMouseIgnoredInSearch(t *testing.T) {
 	}
 }
 
+// TestMouseIgnoredUnderHelpOverlay: con l'overlay help aperto il mouse è
+// ignorato come i tasti (fix merge-gate): un doppio click NON seleziona righe
+// sotto l'overlay né apre messaggi invisibili dietro l'overlay.
+func TestMouseIgnoredUnderHelpOverlay(t *testing.T) {
+	m := newTestModel(t)
+	refs := testRefs(t)
+	mm, _ := step(m, msgsLoaded{refs: refs})
+	mm, _ = step(mm, tea.WindowSizeMsg{Width: 100, Height: 30})
+	mm, _ = step(mm, pressKey("?"))
+	if !mm.showHelp {
+		t.Fatal("l'overlay help non è aperto")
+	}
+
+	// doppio click sulla riga 1 (stesso Y entro la finestra del doppio click)
+	mm, cmd1 := step(mm, tea.MouseClickMsg{Y: 1, Button: tea.MouseLeft})
+	mm, cmd2 := step(mm, tea.MouseClickMsg{Y: 1, Button: tea.MouseLeft})
+	if cmd1 != nil || cmd2 != nil {
+		t.Errorf("click sotto l'help: cmd = %v / %v, voglio nil / nil", cmd1, cmd2)
+	}
+	if !mm.showHelp {
+		t.Error("il click non deve chiudere l'overlay")
+	}
+	sel, ok := mm.inbox.SelectedRef()
+	if !ok || sel.ID != refs[0].ID {
+		t.Errorf("ref selezionato dopo il doppio click = %v (ok=%v), voglio %v (cursore immobile)",
+			sel.ID, ok, refs[0].ID)
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo il doppio click = %v, voglio inbox (nessuna apertura)", mm.currentView())
+	}
+}
+
+// TestStaleFetchResultIgnoredWhenNewerOpenRendered: open A (fetch lento) →
+// esc → open B (fetch veloce) → B si renderizza; quando il risultato di A
+// arriva PER ULTIMO è scartato: nessun rebuild della thread (il corpo di A
+// sotto l'header di B) e nessun auto MarkRead su A. L'ordine dei fetch è
+// controllato dal test: le Cmd girano solo quando vengono eseguite (runCmd),
+// quindi il test stesso è lo scheduler dell'interleaving (deterministico,
+// senza goroutine né wrapper di gating).
+func TestStaleFetchResultIgnoredWhenNewerOpenRendered(t *testing.T) {
+	refs := testRefs(t) // [0] "prima" unread, [1] "seconda" read
+	msgA := fullMessage(refs[0])
+	msgA.BodyText = "corpo messaggio A lento\n"
+	msgB := fullMessage(refs[1])
+	msgB.BodyText = "corpo messaggio B veloce\n"
+	mock := &mail.Mock{Msgs: []*msg.Message{msgA, msgB}}
+	th, err := theme.Load("default")
+	if err != nil {
+		t.Fatalf("tema default: %v", err)
+	}
+	m := New(mock, th)
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: refs})
+
+	// open A: fetch "lento" — la cmd NON viene eseguita subito
+	mm, cmdA := step(mm, inbox.SelectedMsg{Ref: refs[0]})
+	// esc: back all'inbox col fetch ancora in volo
+	mm, _ = step(mm, thread.BackMsg{})
+	// open B: fetch "veloce"
+	mm, cmdB := step(mm, inbox.SelectedMsg{Ref: refs[1]})
+
+	// il fetch di B completa per primo: B si renderizza
+	var loadedB msgLoaded
+	for _, ms := range runCmd(cmdB) {
+		if l, ok := ms.(msgLoaded); ok {
+			loadedB = l
+		}
+	}
+	mm, _ = step(mm, loadedB)
+	if mm.thread.Ref().ID != refs[1].ID {
+		t.Fatalf("thread dopo il fetch di B = %v, voglio %v", mm.thread.Ref().ID, refs[1].ID)
+	}
+	if body := mm.body(); !strings.Contains(body, "corpo messaggio B veloce") {
+		t.Fatalf("body dopo il fetch di B = %q, voglio il corpo di B", body)
+	}
+
+	// il risultato di A arriva PER ULTIMO: deve essere ignorato
+	var loadedA msgLoaded
+	for _, ms := range runCmd(cmdA) {
+		if l, ok := ms.(msgLoaded); ok {
+			loadedA = l
+		}
+	}
+	mm, cmdLate := step(mm, loadedA)
+	if cmdLate != nil {
+		t.Errorf("risultato stante di A: cmd = %v, voglio nil (niente auto MarkRead su A)", cmdLate)
+	}
+	if mm.thread.Ref().ID != refs[1].ID {
+		t.Errorf("thread dopo il risultato stante = %v, voglio ancora %v (nessun rebuild)",
+			mm.thread.Ref().ID, refs[1].ID)
+	}
+	if body := mm.body(); !strings.Contains(body, "corpo messaggio B veloce") ||
+		strings.Contains(body, "corpo messaggio A lento") {
+		t.Errorf("body dopo il risultato stante = %q, voglio ancora il corpo di B (non A)", body)
+	}
+	if mm.pending != 0 {
+		t.Errorf("pending dopo entrambi i risultati = %d, voglio 0", mm.pending)
+	}
+}
+
+// TestFetchResultAfterBackIgnored: esc durante il fetch — il risultato che
+// arriva dopo NON riapre la thread: nessun auto MarkRead, nessuna thread view
+// costruita, la vista resta inbox e lo status intatto.
+func TestFetchResultAfterBackIgnored(t *testing.T) {
+	ref := testRefs(t)[0] // unread: il risultato stante emetterebbe markRead
+	mock := &mail.Mock{Msgs: []*msg.Message{fullMessage(ref)}}
+	th, err := theme.Load("default")
+	if err != nil {
+		t.Fatalf("tema default: %v", err)
+	}
+	m := New(mock, th)
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
+
+	mm, cmd := step(mm, inbox.SelectedMsg{Ref: ref})
+	mm, _ = step(mm, thread.BackMsg{}) // esc mentre il fetch è in volo
+	if mm.currentView() != viewInbox {
+		t.Fatalf("vista dopo esc = %v, voglio inbox", mm.currentView())
+	}
+
+	var loaded msgLoaded
+	for _, ms := range runCmd(cmd) {
+		if l, ok := ms.(msgLoaded); ok {
+			loaded = l
+		}
+	}
+	mm, cmdLate := step(mm, loaded)
+	if cmdLate != nil {
+		t.Errorf("risultato dopo esc: cmd = %v, voglio nil (nessun MarkRead)", cmdLate)
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo il risultato tardo = %v, voglio inbox", mm.currentView())
+	}
+	if mm.thread.Loaded() {
+		t.Error("il risultato tardo non deve costruire la thread view")
+	}
+	if got := mm.statusText(); got != "" {
+		t.Errorf("status = %q, voglio vuoto (risultato ignorato)", got)
+	}
+	if mm.pending != 0 {
+		t.Errorf("pending = %d, voglio 0 (l'op in flight si chiude lo stesso)", mm.pending)
+	}
+}
+
 // --- thread: auto MarkRead, errori, back, open ------------------------------
 
 // TestSelectedMsgAutoMarkRead: il fetch di un messaggio NON letto emette la
@@ -499,9 +643,13 @@ func TestSelectedMsgAutoMarkRead(t *testing.T) {
 }
 
 // TestMsgLoadedErrorShowsStatusErr: un fetch fallito finisce in status bar
-// (isErr) e chiude l'op in flight, senza costruire thread view.
+// (isErr) e chiude l'op in flight, senza costruire thread view. Il fetch è in
+// volo solo dopo SelectedMsg (vista thread): è lo stato che il handler si
+// aspetta — un risultato con altra vista o altro ID è scartato come stante
+// (fix merge-gate anti-race).
 func TestMsgLoadedErrorShowsStatusErr(t *testing.T) {
 	m := newTestModel(t)
+	m.view = viewThread // fetch in flight (SelectedMsg ha già impostato la vista)
 	mm, cmd := step(m, msgLoaded{err: errors.New("rete giù")})
 	if cmd != nil {
 		t.Errorf("cmd = %v, voglio nil", cmd)

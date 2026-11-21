@@ -206,6 +206,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgLoaded:
 		m.doneOp()
+		// Guardia anti-race (fix merge-gate): il risultato porta l'ID
+		// richiesto. Se non coincide col ref in attesa (open A lenta → esc →
+		// open B veloce: il risultato di A arriva per ultimo) o non siamo più
+		// in thread (esc durante il fetch), il risultato è STANTE — si ignora
+		// del tutto: niente rebuild della thread, niente auto MarkRead,
+		// niente status. Il doneOp sopra è comunque giusto: ogni fetch
+		// incrementa pending e la sua risposta lo chiude.
+		if ev.requested != m.pendingRef.ID || m.view != viewThread {
+			return m, nil
+		}
 		if ev.err != nil {
 			m.status = statusMsg{text: fmt.Sprintf("apertura messaggio: %v", ev.err), isErr: true}
 			return m, nil
@@ -427,6 +437,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Mouse first-class: nell'inbox la lista gestisce rotella e click
 		// (selezione; doppio click → SelectedMsg); nel thread la viewport
 		// gestisce la rotella nativamente.
+		// Con un modale aperto il mouse è ignorato, come i tasti (fix
+		// merge-gate): sotto l'overlay help un doppio click aprirebbe un
+		// messaggio invisibile dietro l'overlay; col prompt label un click
+		// muoverebbe il cursore dell'inbox e enter applicherebbe la label
+		// alla riga sbagliata (rompendo l'invariante di confirmLabel).
+		if m.showHelp || m.labelOpen {
+			return m, nil
+		}
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
@@ -506,10 +524,13 @@ func loadRefs(st mail.MailStore) tea.Cmd {
 }
 
 // fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).
+// L'ID richiesto viaggia DENTRO il risultato: i fetch non hanno ordine
+// garantito e il handler lo usa per scartare le risposte stanti (fix
+// merge-gate anti-race).
 func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	return func() tea.Msg {
 		mm, err := st.FetchMessage(context.Background(), id)
-		return msgLoaded{m: mm, err: err}
+		return msgLoaded{m: mm, err: err, requested: id}
 	}
 }
 
