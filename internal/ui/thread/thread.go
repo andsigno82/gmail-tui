@@ -120,7 +120,8 @@ func (m *Model) SetSize(width, height int) {
 }
 
 // MarkRead marca la copia locale del ref come letta: l'header resta coerente
-// senza re-list (la lista si aggiornerà al back o via Watch, Task 8).
+// senza re-list (il refresh lista avviene via Watch/nuova ricerca; il back
+// preserva la lista).
 func (m *Model) MarkRead() { m.ref.Unread = false }
 
 // Ref restituisce la copia locale del ref (uso test e mutazioni Task 7).
@@ -175,11 +176,13 @@ func (m Model) renderAttachments(full *msg.Message) []string {
 	return lines
 }
 
-// openInBrowser produce la Cmd per `o`: SOLO se il messaggio ha HTML. La Cmd
-// scrive il tmpfile .html (I/O locale istantaneo, fuori dal loop Update) e
-// restituisce OpenRequested; la radice chiama OpenCmd per l'exec vero.
+// openInBrowser produce la Cmd per `o`: solo se il messaggio ha un corpo HTML
+// (BodyHTML, popolato anche per i multipart/alternative — non solo per i
+// messaggi solo-HTML). La Cmd scrive il tmpfile .html (I/O locale istantaneo,
+// fuori dal loop Update) e restituisce OpenRequested; la radice chiama
+// OpenCmd per l'exec vero.
 func (m Model) openInBrowser() tea.Cmd {
-	if m.msg == nil || !m.msg.HasHTML || m.msg.BodyHTML == "" {
+	if m.msg == nil || m.msg.BodyHTML == "" {
 		return nil
 	}
 	html := m.msg.BodyHTML

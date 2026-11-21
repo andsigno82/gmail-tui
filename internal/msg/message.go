@@ -55,8 +55,9 @@ type Message struct {
 	Ref      MessageRef
 	To, Cc   []string
 	BodyText string
-	// BodyHTML è il corpo HTML originale, presente solo quando HasHTML:
-	// serve alla TUI per "apri nel browser" (Piano 3, Task 5).
+	// BodyHTML contiene l'HTML originale se presente (anche per messaggi con
+	// parte testuale); HasHTML resta true solo per messaggi SOLO HTML.
+	// Serve alla TUI per "apri nel browser" (Piano 3, Task 5).
 	BodyHTML    string
 	HasHTML     bool
 	Attachments []Attachment

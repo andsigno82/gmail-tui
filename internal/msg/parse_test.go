@@ -38,6 +38,24 @@ Content-Type: text/html; charset=utf-8
 <html><body><h1>Titolo</h1><p>Leggi <a href="https://example.org">qui</a>.</p></body></html>
 `
 
+const multipartALTMail = `From: Promozioni <promo@example.net>
+To: bob@example.com
+Subject: Offerta di novembre
+Date: Thu, 19 Nov 2026 09:00:00 +0100
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+Sconto del 30%: visita https://example.net/sconto.
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<html><body><p>Sconto del 30%: <a href="https://example.net/sconto">clicca qui</a>.</p></body></html>
+--ALT--
+`
+
 func TestParseMultipart(t *testing.T) {
 	m, err := Parse(NewID("INBOX", 42), strings.NewReader(multipartMail))
 	if err != nil {
@@ -69,6 +87,26 @@ func TestParseMultipart(t *testing.T) {
 	}
 }
 
+// TestParseMultipartAlternative: multipart/alternative (text/plain + text/html)
+// → il corpo resta quello testuale (text/plain vince) e HasHTML resta false
+// (semantica invariata), MA BodyHTML porta l'HTML originale col link per
+// "apri nel browser": la forma dominante della posta reale.
+func TestParseMultipartAlternative(t *testing.T) {
+	m, err := Parse(NewID("INBOX", 46), strings.NewReader(multipartALTMail))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(m.BodyText, "Sconto del 30%") || strings.Contains(m.BodyText, "<a href") {
+		t.Errorf("BodyText = %q, voglio la parte text/plain senza HTML", m.BodyText)
+	}
+	if m.HasHTML {
+		t.Error("HasHTML = true, voglio false (c'è la parte testuale: semantica invariata)")
+	}
+	if !strings.Contains(m.BodyHTML, `href="https://example.net/sconto"`) {
+		t.Errorf("BodyHTML = %q, voglio l'HTML originale col link", m.BodyHTML)
+	}
+}
+
 func TestParseHTMLFallback(t *testing.T) {
 	m, err := Parse(NewID("INBOX", 43), strings.NewReader(htmlOnlyMail))
 	if err != nil {
@@ -83,8 +121,9 @@ func TestParseHTMLFallback(t *testing.T) {
 }
 
 // TestParseBodyHTML: con solo-HTML il corpo HTML originale resta nel campo
-// BodyHTML (serve alla TUI per "apri nel browser"); con text/plain resta
-// vuoto.
+// BodyHTML (serve alla TUI per "apri nel browser"); senza nessuna parte HTML
+// resta vuoto. Con parte testuale MA parte HTML presente non è vuoto (vedi
+// TestParseMultipartAlternative).
 func TestParseBodyHTML(t *testing.T) {
 	html, err := Parse(NewID("INBOX", 44), strings.NewReader(htmlOnlyMail))
 	if err != nil {

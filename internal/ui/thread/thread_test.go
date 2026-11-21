@@ -288,6 +288,39 @@ func TestOEmitsOpenRequested(t *testing.T) {
 	_ = m2
 }
 
+// TestOAlternativeEmitsOpenRequested: messaggio multipart/alternative
+// (BodyText + BodyHTML, HasHTML false): `o` apre comunque il browser — il
+// gate è BodyHTML != "", NON HasHTML (fix: la posta reale è per lo più
+// alternative, prima il tasto non faceva nulla su quella forma).
+func TestOAlternativeEmitsOpenRequested(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	mm := testMsg()
+	mm.BodyHTML = `<html><body><a href="https://example.org">qui</a></body></html>`
+	if mm.HasHTML || mm.BodyHTML == "" {
+		t.Fatal("precondizione: messaggio alternative (HasHTML false, BodyHTML presente)")
+	}
+	m := newModel(t, mm)
+
+	_, cmd := m.Update(pressKey("o"))
+	if cmd == nil {
+		t.Fatal("o su alternative: cmd nil, voglio OpenRequested (gate su BodyHTML)")
+	}
+	req, ok := cmd().(OpenRequested)
+	if !ok {
+		t.Fatalf("o su alternative: msg = %T, voglio OpenRequested", cmd())
+	}
+	if req.Err != nil {
+		t.Fatalf("OpenRequested.Err = %v, voglio nil", req.Err)
+	}
+	data, err := os.ReadFile(req.Path)
+	if err != nil {
+		t.Fatalf("tmpfile non leggibile: %v", err)
+	}
+	if string(data) != mm.BodyHTML {
+		t.Errorf("contenuto tmpfile = %q, voglio il BodyHTML del messaggio", data)
+	}
+}
+
 // TestONoHTMLNilCmd: senza HTML (o senza messaggio) `o` non fa nulla.
 func TestONoHTMLNilCmd(t *testing.T) {
 	m := newModel(t, testMsg()) // HasHTML false
@@ -320,7 +353,8 @@ func TestOpenCmdBrowserBinary(t *testing.T) {
 // --- markread / stato -------------------------------------------------------
 
 // TestMarkReadMutatesRef: MarkRead aggiorna la copia locale del ref (l'header
-// resta coerente senza re-list; la lista si aggiorna al back).
+// resta coerente senza re-list; il back preserva la lista, il refresh avviene
+// via Watch/nuova ricerca).
 func TestMarkReadMutatesRef(t *testing.T) {
 	m := newModel(t, testMsg())
 	if !m.Ref().Unread {

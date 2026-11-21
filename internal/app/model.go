@@ -97,6 +97,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = statusMsg{text: fmt.Sprintf("apertura messaggio: %v", ev.err), isErr: true}
 			return m, nil
 		}
+		if ev.m == nil {
+			// Difensiva (il contratto MailStore non prevede (nil, nil)):
+			// senza guardia thread.New dereferenzerebbe un puntatore nullo.
+			m.status = statusMsg{text: "apertura messaggio: risposta vuota dallo store", isErr: true}
+			return m, nil
+		}
 		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
 		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
 		m.thread = thread.New(m.pendingRef, ev.m, m.styles)
@@ -105,8 +111,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
 		// concatenata, errore SOLO in status (non fatale). La copia locale
-		// del ref passa a letta subito; la lista si aggiornerà al back o via
-		// Watch (Task 8) — scelta deliberata: niente re-list qui.
+		// del ref passa a letta subito; il refresh lista avviene via
+		// Watch/nuova ricerca, il back preserva la lista — niente re-list qui.
 		if ev.m.Ref.Unread {
 			m.thread.MarkRead()
 			return m, markRead(m.store, ev.m.Ref.ID)

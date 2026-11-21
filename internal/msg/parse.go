@@ -18,7 +18,8 @@ var parser = enmime.NewParser(enmime.DisableTextConversion(true))
 
 // Parse normalizza una email MIME grezza in Message.
 // Regola corpo (spec): text/plain vince; se solo HTML → HasHTML=true
-// e BodyText = conversione HTML→testo.
+// e BodyText = conversione HTML→testo. BodyHTML invece è popolato SEMPRE
+// che il MIME contenga una parte HTML, anche con parte testuale.
 // Un allegato non decodificabile non fallisce il messaggio: viene saltato.
 func Parse(id MessageID, raw io.Reader) (*Message, error) {
 	env, err := parser.ReadEnvelope(raw)
@@ -42,6 +43,13 @@ func Parse(id MessageID, raw io.Reader) (*Message, error) {
 		m.HasHTML = true
 		m.BodyHTML = env.HTML // originale, per "apri nel browser" (Task 5)
 		m.BodyText = html2text.HTML2Text(env.HTML)
+	}
+	// BodyHTML riceve l'HTML originale SEMPRE che il MIME contenga una parte
+	// HTML, anche quando text/plain vince come corpo (multipart/alternative):
+	// senza, `o` non partirebbe per la forma dominante della posta reale.
+	// HasHTML resta invece true SOLO per i messaggi solo-HTML (regola sopra).
+	if strings.TrimSpace(env.HTML) != "" {
+		m.BodyHTML = env.HTML
 	}
 	idx := 0
 	for _, part := range env.Attachments {
