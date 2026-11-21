@@ -45,16 +45,30 @@ type Model struct {
 	queryRaw   string           // stringa digitata della query corrente ("" = inbox)
 	status     statusMsg        // ultimo messaggio di status (effimero)
 	pending    int              // op store in flight (>0: spinner attivo)
-	width      int
-	height     int
+	refreshing bool             // re-list silenzioso in flight (coalescing, Task 8)
+	dirty      bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+
+	// Ctx del feed Watch (Task 8): creato in New, annullato all'uscita del
+	// programma — il wiring del cancel sull'uscita è del Task 9 (main): vedi
+	// report Task 8 per l'hook di shutdown raccomandato.
+	ctx     context.Context
+	cancel  context.CancelFunc
+	watchCh <-chan mail.Change // canale del feed aperto dall'Init (via watchStarted)
+
+	width  int
+	height int
 }
 
 // Conformance: il Model radice implementa tea.Model (v2: View rende tea.View).
 var _ tea.Model = Model{}
 
-// New costruisce il Model radice per lo store e il tema dati.
+// New costruisce il Model radice per lo store e il tema dati. Il ctx del feed
+// Watch nasce qui (Task 8): l'Init lo passa a Watch e il loop waitForChange
+// muore quando viene annullato — il wiring del cancel all'uscita del programma
+// è del Task 9 (main); nei test il cancel è esplicito.
 func New(store mail.MailStore, th theme.Theme) Model {
 	st := styles.New(th)
+	ctx, cancel := context.WithCancel(context.Background())
 	return Model{
 		store:   store,
 		styles:  st,
@@ -63,6 +77,8 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		search:  newSearchInput(st),
 		label:   newLabelInput(st),
 		view:    viewInbox,
+		ctx:     ctx,
+		cancel:  cancel,
 		// Il load iniziale emesso sempre da Init è già in flight: pending
 		// parte da 1 così la status bar mostra lo spinner finché msgsLoaded
 		// non arriva. Le op successive incrementeranno al dispatch (Task 6/7).
@@ -70,10 +86,11 @@ func New(store mail.MailStore, th theme.Theme) Model {
 	}
 }
 
-// Init emette il load iniziale della lista (Query vuota, prima pagina da 50)
-// e avvia lo spinner, che resta attivo finché pending > 0.
+// Init emette il load iniziale della lista (Query vuota, prima pagina da 50),
+// avvia lo spinner e apre il feed Watch (Task 8): al watchStarted la radice
+// arma il loop waitForChange che guida il refresh automatico.
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadRefs(m.store), m.spinner.Tick)
+	return tea.Batch(loadRefs(m.store), m.spinner.Tick, startWatch(m.store, m.ctx))
 }
 
 // Update gestisce i messaggi: risultati delle Cmd, tick dello spinner, tasti
@@ -88,6 +105,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgsLoaded:
 		m.doneOp()
+		// Il token del re-list silenzioso si libera a QUALSIASI esito (un
+		// refresh fallito non deve bloccare i successivi); dirty NON viene
+		// consumato: il follow-up partirà alla prima riuscita (self-healing).
+		m.refreshing = false
 		if ev.err != nil {
 			// La query distingue l'errore di ricerca da quello di list.
 			if ev.query != "" {
@@ -96,6 +117,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = statusMsg{text: fmt.Sprintf("lettura messaggi: %v", ev.err), isErr: true}
 			}
 			return m, nil
+		}
+		// L'indicatore di riconnessione (Task 8) si spegne al primo msgsLoaded
+		// riuscito che non lo abbia già sostituito (op, badge di ricerca): la
+		// riconnessione è andata a buon fine e la lista è fresca.
+		if m.status.text == reconnectIndicator && !m.status.isErr {
+			m.status = statusMsg{}
 		}
 		// Il refresh dopo un'op (silent) deve ritrovare il cursore: la
 		// selezione va catturata PRIMA di SetRefs (gli item vengono
@@ -145,7 +172,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.inbox.Select(idx)
 		}
-		return m, cmd
+		// Coalescing (Task 8): se un cambio è arrivato mentre il refresh era
+		// in volo, il follow-up parte ora (lo snapshot appena consumato è
+		// comunque più vecchio del cambio).
+		var follow tea.Cmd
+		if m.dirty {
+			follow = m.requestRefresh()
+		}
+		return m, tea.Batch(cmd, follow)
 
 	case msgLoaded:
 		m.doneOp()
@@ -186,17 +220,28 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.refresh {
 			// Mutazione utente riuscita (Task 7): rilista la lista corrente
 			// (query corrente) in silenzio — refs e cursore aggiornati, il
-			// feedback resta in status.
-			m.pending++
-			return m, tea.Batch(refreshRefs(m.store, m.query, m.queryRaw), m.spinner.Tick)
+			// feedback resta in status. Via requestRefresh (Task 8): con un
+			// refresh già in volo non si accatasta, il follow-up parte al
+			// risultato (dirty).
+			return m, m.requestRefresh()
 		}
 		return m, nil
 
+	case watchStarted:
+		// Apertura del feed Watch (Task 8): si custodisce il canale e si
+		// arma il loop waitForChange. Con errore solo feedback in status: la
+		// TUI resta usabile (re-list espliciti, nessun push).
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("watch: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		m.watchCh = ev.ch
+		return m, waitForChange(m.ctx, ev.ch)
+
 	case changeEvt:
-		// Il consumo vero (refresh guidato + indicatore disconnessione)
-		// arriva in Task 8: qui l'evento viene solo ricevuto e ignorato.
-		_ = ev.c
-		return m, nil
+		// Evento push del feed (Task 8): re-list silenzioso guidato dal tipo
+		// di cambio + loop ri-armato (handleChange in watch.go).
+		return m.handleChange(ev)
 
 	case inbox.SelectedMsg:
 		// Apertura dal thread: si custodisce il ref e si fetcha fuori dal

@@ -176,6 +176,22 @@ func applyLabel(st mail.MailStore, id msg.MessageID, label string, on bool) tea.
 	}
 }
 
+// requestRefresh prepara il re-list silenzioso della lista corrente (query
+// corrente) — il meccanismo condiviso dal refresh dopo le op (Task 7) e dal
+// feed Watch (Task 8). Coalescing: con un re-list già in flight NON si
+// accatasta — marca dirty e il follow-up parte al risultato di quello in
+// corso (msgsLoaded); i cambi arrivati durante il refresh non si perdono.
+func (m *Model) requestRefresh() tea.Cmd {
+	if m.refreshing {
+		m.dirty = true
+		return nil
+	}
+	m.dirty = false // il refresh che parte ora copre anche i cambi pendenti
+	m.refreshing = true
+	m.pending++
+	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw), m.spinner.Tick)
+}
+
 // refreshRefs rilista la lista corrente fuori dal loop UI, nello stato
 // silenzioso (msgsLoaded.silent): aggiorna refs e cursore senza toccare lo
 // status. Riusa il pattern del load: query vuota → ListMessages (prima pagina

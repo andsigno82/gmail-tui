@@ -47,6 +47,15 @@ type changeEvt struct {
 	c mail.Change
 }
 
+// watchStarted è il risultato di startWatch (Task 8): il canale del feed
+// Watch, o l'errore se l'apertura è fallita. Al messaggio la radice custodisce
+// il canale e arma il loop waitForChange; con errore mostra lo status e NON
+// arma (nessun push, la TUI resta usabile con i re-list espliciti).
+type watchStarted struct {
+	ch  <-chan mail.Change
+	err error
+}
+
 // statusMsg è un messaggio effimero per la status bar: resta finché il
 // prossimo evento non lo sostituisce.
 type statusMsg struct {
