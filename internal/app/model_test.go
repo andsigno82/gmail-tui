@@ -12,6 +12,7 @@ import (
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
+	"gmail-tui/internal/ui/inbox"
 )
 
 // newTestModel costruisce il Model radice contro il Mock e il tema default.
@@ -43,6 +44,8 @@ func pressKey(k string) tea.KeyPressMsg {
 	switch k {
 	case "esc":
 		return tea.KeyPressMsg{Code: tea.KeyEscape}
+	case "enter":
+		return tea.KeyPressMsg{Code: tea.KeyEnter}
 	default:
 		return tea.KeyPressMsg{Code: rune(k[0]), Text: k}
 	}
@@ -233,6 +236,93 @@ func TestOpDoneFeedback(t *testing.T) {
 	mm, _ = step(mm, opDone{label: "archivia", err: errors.New("nope")})
 	if !mm.status.isErr || !strings.Contains(mm.statusText(), "nope") {
 		t.Errorf("statusText = %q (isErr=%v), voglio errore \"nope\"", mm.statusText(), mm.status.isErr)
+	}
+}
+
+// --- inbox (Task 4) ---------------------------------------------------------
+
+func TestMsgsLoadedUpdatesInbox(t *testing.T) {
+	m := newTestModel(t)
+	refs := testRefs(t)
+	// Il terminale invia la size all'avvio: senza, la lista ha altezza 0 e
+	// mostra una sola riga per pagina.
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: refs})
+	body := mm.body()
+	i1, i2 := strings.Index(body, "prima"), strings.Index(body, "seconda")
+	if i1 < 0 || i2 < 0 {
+		t.Fatalf("body inbox = %q, voglio le righe dei ref", body)
+	}
+	if i1 > i2 {
+		t.Errorf("ordine inbox alterato: prima=%d seconda=%d (ordine di arrivo deve restare)", i1, i2)
+	}
+}
+
+func TestSelectedMsgOpensThreadStub(t *testing.T) {
+	m := newTestModel(t)
+	ref := testRefs(t)[0]
+	mm, cmd := step(m, inbox.SelectedMsg{Ref: ref})
+	if cmd != nil {
+		t.Errorf("SelectedMsg: cmd = %v, voglio nil", cmd)
+	}
+	if mm.currentView() != viewThread {
+		t.Errorf("vista dopo SelectedMsg = %v, voglio viewThread", mm.currentView())
+	}
+	if mm.pendingRef.ID != ref.ID {
+		t.Errorf("pendingRef = %v, voglio %v (Task 5 lo apre davvero)", mm.pendingRef.ID, ref.ID)
+	}
+	content := mm.View().Content
+	if !strings.Contains(content, ref.Subject) {
+		t.Errorf("stub thread = %q, voglio il soggetto del ref aperto", content)
+	}
+}
+
+func TestEnterInInboxOpensSelected(t *testing.T) {
+	m := newTestModel(t)
+	refs := testRefs(t)
+	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	mm, _ = step(mm, msgsLoaded{refs: refs})
+	mm.inbox.Select(1)
+	mm, cmd := step(mm, pressKey("enter"))
+	if cmd == nil {
+		t.Fatal("enter in inbox: cmd nil, voglio SelectedMsg dalla delega")
+	}
+	sel, ok := cmd().(inbox.SelectedMsg)
+	if !ok {
+		t.Fatalf("enter in inbox: msg = %T, voglio inbox.SelectedMsg", cmd())
+	}
+	if sel.Ref.ID != refs[1].ID {
+		t.Errorf("SelectedMsg.Ref = %v, voglio la riga selezionata %v", sel.Ref.ID, refs[1].ID)
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo enter = %v, voglio ancora inbox (il cambio avviene al msg)", mm.currentView())
+	}
+}
+
+func TestMouseClickForwardedToInbox(t *testing.T) {
+	m := newTestModel(t)
+	refs := testRefs(t)
+	mm, _ := step(m, msgsLoaded{refs: refs})
+	mm, _ = step(mm, tea.WindowSizeMsg{Width: 100, Height: 30})
+	mm, cmd := step(mm, tea.MouseClickMsg{Y: 1, Button: tea.MouseLeft})
+	if cmd != nil {
+		t.Errorf("singolo click: cmd = %v, voglio nil", cmd)
+	}
+	sel, ok := mm.inbox.SelectedRef()
+	if !ok || sel.ID != refs[1].ID {
+		t.Errorf("ref selezionato dopo click = %v (ok=%v), voglio la riga 1", sel.ID, ok)
+	}
+}
+
+func TestMouseIgnoredOutsideInbox(t *testing.T) {
+	m := newTestModel(t)
+	m.view = viewThread
+	mm, cmd := step(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if cmd != nil {
+		t.Errorf("wheel in thread: cmd = %v, voglio nil", cmd)
+	}
+	if mm.currentView() != viewThread {
+		t.Errorf("vista dopo wheel in thread = %v, voglio thread", mm.currentView())
 	}
 }
 

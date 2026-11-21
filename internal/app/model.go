@@ -11,6 +11,7 @@ import (
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
+	"gmail-tui/internal/ui/inbox"
 	"gmail-tui/internal/ui/styles"
 )
 
@@ -29,13 +30,15 @@ type Model struct {
 	store   mail.MailStore
 	styles  styles.Styles
 	spinner spinner.Model
+	inbox   inbox.Model // lista messaggi (Task 4): la radice delega tasti/mouse
 
-	view    view
-	refs    []msg.MessageRef // righe della lista corrente (inbox Task 4)
-	status  statusMsg        // ultimo messaggio di status (effimero)
-	pending int              // op store in flight (>0: spinner attivo)
-	width   int
-	height  int
+	view       view
+	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
+	pendingRef msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
+	status     statusMsg        // ultimo messaggio di status (effimero)
+	pending    int              // op store in flight (>0: spinner attivo)
+	width      int
+	height     int
 }
 
 // Conformance: il Model radice implementa tea.Model (v2: View rende tea.View).
@@ -48,6 +51,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		store:   store,
 		styles:  st,
 		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
+		inbox:   inbox.New(nil, st),
 		view:    viewInbox,
 		// Il load iniziale emesso sempre da Init è già in flight: pending
 		// parte da 1 così la status bar mostra lo spinner finché msgsLoaded
@@ -79,7 +83,11 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.refs = ev.refs
-		return m, nil
+		// L'inbox riceve i ref direttamente qui (update di campo): con
+		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
+		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
+		// nulla. La cmd viene comunque propagata per fedeltà all'API.
+		return m, m.inbox.SetRefs(ev.refs)
 
 	case msgLoaded:
 		m.doneOp()
@@ -107,6 +115,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		_ = ev.c
 		return m, nil
 
+	case inbox.SelectedMsg:
+		// Il fetch del messaggio arriva in Task 5: per ora la radice custodisce
+		// il ref e mostra la stub della thread view.
+		m.pendingRef = ev.Ref
+		m.view = viewThread
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(ev)
@@ -117,6 +132,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = ev.Width, ev.Height
+		// L'inbox occupa il corpo: l'ultima riga resta alla status bar.
+		m.inbox.SetSize(ev.Width, max(0, m.height-1))
 		return m, nil
 
 	case tea.KeyPressMsg:
@@ -139,6 +156,24 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = statusMsg{text: "composer in Piano 4"}
 				return m, nil
 			}
+		}
+		// Le altre pressioni nell'inbox sono delegati alla lista (j/k,
+		// frecce, paginazione; enter è gestito dall'inbox → SelectedMsg).
+		if m.view == viewInbox {
+			var cmd tea.Cmd
+			m.inbox, cmd = m.inbox.Update(ev)
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.MouseClickMsg, tea.MouseWheelMsg:
+		// Mouse first-class: nell'inbox la lista gestisce rotella e click
+		// (selezione; doppio click → SelectedMsg). Fuori dall'inbox: noop
+		// finché le viste del Task 5/6 non ne hanno bisogno.
+		if m.view == viewInbox {
+			var cmd tea.Cmd
+			m.inbox, cmd = m.inbox.Update(ev)
+			return m, cmd
 		}
 		return m, nil
 
@@ -183,20 +218,16 @@ func (m Model) content() string {
 	return body + "\n" + bar
 }
 
-// body rende la vista attiva. Inbox/thread/search sono stub di scheletro:
-// le viste vere arrivano nei Task 4-6.
+// body rende la vista attiva: l'inbox è la lista messaggi (Task 4);
+// thread/search restano stub di scheletro (Task 5/6).
 func (m Model) body() string {
 	switch m.view {
 	case viewThread:
-		return "Thread — stub (Task 5)"
+		return fmt.Sprintf("Thread — stub (Task 5)\nref: %s — %s", m.pendingRef.ID, m.pendingRef.Subject)
 	case viewSearch:
 		return "Ricerca — stub (Task 6)"
 	default:
-		title := "Posta in arrivo"
-		if n := len(m.refs); n > 0 {
-			title += fmt.Sprintf(" — %d messaggi", n)
-		}
-		return title
+		return m.inbox.View()
 	}
 }
 
