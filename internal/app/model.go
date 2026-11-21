@@ -12,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"gmail-tui/internal/config"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
@@ -53,6 +54,12 @@ type Model struct {
 	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
 	demo      bool            // demo mode (Task 9): banner iniziale in stile DemoBanner
 
+	// Percorso della config per la persistenza del tema (Piano 4, Task 2:
+	// `:theme`): risolto in New da config.Path(). "" = non disponibile
+	// (os.UserConfigDir in errore): il tema si applica a runtime ma non si
+	// salva. SetConfigPath lo sostituisce (seam main/test).
+	cfgPath string
+
 	view       view
 	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
 	pendingRef msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
@@ -85,6 +92,13 @@ var _ tea.Model = Model{}
 func New(store mail.MailStore, th theme.Theme) Model {
 	st := styles.New(th)
 	ctx, cancel := context.WithCancel(context.Background())
+	// Percorso config per la persistenza del tema (Piano 4, Task 2): con
+	// UserConfigDir non disponibile resta "" e `:theme` non persiste (tema
+	// runtime comunque applicato). I test lo sostituiscono con SetConfigPath.
+	var cfgPath string
+	if p, err := config.Path(); err == nil {
+		cfgPath = p
+	}
 	return Model{
 		store:   store,
 		styles:  st,
@@ -93,6 +107,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 		inbox:   inbox.New(nil, st),
 		search:  newSearchInput(st),
 		label:   newLabelInput(st),
+		cfgPath: cfgPath,
 		view:    viewInbox,
 		ctx:     ctx,
 		cancel:  cancel,
@@ -308,6 +323,56 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = statusMsg{text: "aperto nel browser"}
 		return m, nil
 
+	case thread.SaveRequested:
+		// `:save`/`:open` della command line (Piano 4, Task 2): il salvataggio
+		// gira fuori dal loop UI (spinner finché attachmentSaved); il feedback
+		// — "salvato in …" (StatusBar; StatusOK adottato in Task 5) o l'exec
+		// del browser per :open — arriva al risultato.
+		m.pending++
+		return m, tea.Batch(saveAttachment(m.store, ev), m.spinner.Tick)
+
+	case attachmentSaved:
+		m.doneOp()
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("salva allegato: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		if ev.open {
+			// `:open`: il tmpfile col nome originale è pronto — stessa exec
+			// del tasto `o`; il feedback viene da OpenedMsg.
+			return m, thread.OpenCmd(ev.path)
+		}
+		m.status = statusMsg{text: "salvato in " + ev.path}
+		return m, nil
+
+	case thread.CommandFeedback:
+		// Esito dei comandi senza effetto store (elenco temi, uso errato,
+		// comando sconosciuto): direttamente in status bar.
+		m.status = statusMsg{text: ev.Text, isErr: ev.IsErr}
+		return m, nil
+
+	case thread.ThemeChanged:
+		// `:theme <nome>` (Piano 4, Task 2): la UI cambia SUBITO — stili della
+		// radice, spinner, help e le due sub-viste (SetStyles ri-renderizza in
+		// place header/corpo/allegati del thread e il delegate dell'inbox,
+		// preservando stato: ref, scroll, lista). La persistenza gira in cmd
+		// (saveThemeCmd): errore → themePersisted → status, tema intatto.
+		m.styles = ev.St
+		m.spinner.Style = ev.St.Spinner
+		m.help = newHelp(ev.St)
+		m.inbox.SetStyles(ev.St)
+		m.thread.SetStyles(ev.St)
+		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name)}
+		return m, saveThemeCmd(m.cfgPath, ev.Th.Name)
+
+	case themePersisted:
+		// Persistenza del tema riuscita: il feedback "tema … applicato" resta.
+		// Fallita: solo status d'errore, il tema runtime non si perde.
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("salvataggio tema: %v", ev.err), isErr: true}
+		}
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(ev)
@@ -363,6 +428,15 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.view == viewThread && m.thread.ModalOpen() {
+			// Modalità comando/filepicker del thread (Piano 4, Task 2):
+			// TUTTI i tasti vanno al thread — enter esegue/conferma, esc
+			// annulla, il resto è testo dell'input o navigazione del picker
+			// (j/k non scorrono, a/s/v/l non operano, come col prompt label).
+			var cmd tea.Cmd
+			m.thread, cmd = m.thread.Update(ev)
+			return m, cmd
+		}
 		if m.view == viewSearch {
 			// In ricerca SOLO enter ed esc sono della radice: ogni altro tasto
 			// (incluso "q" e "?") è testo della query e va al textinput.
@@ -417,6 +491,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = statusMsg{text: "composer in Piano 4"}
 				return m, nil
 			}
+		case key.Matches(ev, keys.Command):
+			// `:` nel thread (Piano 4, Task 2): catturato dalla radice e
+			// delegato al thread, che apre la command line (:save/:open/:theme
+			// — cmdmode.go). Nelle altre viste non significa nulla: la key
+			// cade nella delega di coda senza effetti.
+			if m.view == viewThread {
+				var cmd tea.Cmd
+				m.thread, cmd = m.thread.Update(ev)
+				return m, cmd
+			}
 		}
 		// Le altre pressioni sono delegati alla vista attiva: nell'inbox alla
 		// lista (j/k, frecce, paginazione; enter è gestito dall'inbox →
@@ -441,8 +525,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// merge-gate): sotto l'overlay help un doppio click aprirebbe un
 		// messaggio invisibile dietro l'overlay; col prompt label un click
 		// muoverebbe il cursore dell'inbox e enter applicherebbe la label
-		// alla riga sbagliata (rompendo l'invariante di confirmLabel).
-		if m.showHelp || m.labelOpen {
+		// alla riga sbagliata (rompendo l'invariante di confirmLabel); con la
+		// command line/filepicker del thread (Piano 4, Task 2) click e rotella
+		// non devono toccare ciò che c'è dietro il modale.
+		if m.showHelp || m.labelOpen || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -469,6 +555,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.labelOpen {
 			var cmd tea.Cmd
 			m.label, cmd = m.label.Update(ev)
+			return m, cmd
+		}
+		// Idem per i modali del thread (Piano 4, Task 2): blink della command
+		// line e readDirMsg del filepicker (risultato della sua Init) devono
+		// raggiungere il thread, altrimenti il picker non carica la directory.
+		if m.view == viewThread && m.thread.ModalOpen() {
+			var cmd tea.Cmd
+			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
 		return m, nil
@@ -562,6 +656,14 @@ func (m *Model) SetDemoBanner() {
 func (m *Model) SetStartupWarning(text string) {
 	m.startup = true
 	m.status = statusMsg{text: text}
+}
+
+// SetConfigPath sostituisce il percorso della config usato dalla persistenza
+// del tema (`:theme`, Piano 4, Task 2): seam per i test (config finta in
+// t.TempDir) e per il main, che può volere un percorso esplicito. Il default
+// risolto in New è config.Path().
+func (m *Model) SetConfigPath(path string) {
+	m.cfgPath = path
 }
 
 // content rende corpo + status bar, con il corpo esteso fino alla riga sopra

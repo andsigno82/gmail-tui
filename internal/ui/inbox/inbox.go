@@ -153,6 +153,14 @@ func (m *Model) SetClock(f func() time.Time) {
 	m.list.SetDelegate(delegate{st: m.st, clock: f})
 }
 
+// SetStyles sostituisce gli stili del tema a runtime (cambio tema con `:theme`,
+// Piano 4 Task 2): aggiorna la copia locale e ricostruisce il delegate, che
+// custodisce gli stili per il render delle righe. Lista e cursore restano.
+func (m *Model) SetStyles(st styles.Styles) {
+	m.st = st
+	m.list.SetDelegate(delegate{st: st, clock: m.clock})
+}
+
 // openSelected produce la Cmd che notifica il ref sotto il cursore.
 func (m Model) openSelected() tea.Cmd {
 	ref, ok := m.SelectedRef()

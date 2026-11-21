@@ -23,6 +23,7 @@ import (
 // con la UI. Il campo Help() è l'unica fonte del help generato.
 type appKeys struct {
 	Move      key.Binding // j k ↑ ↓ — cursore lista / scroll thread
+	Scroll    key.Binding // pgup pgdn space f b d u — scroll pagina viewport (thread)
 	OpenSel   key.Binding // invio — apri il messaggio selezionato (inbox)
 	Quit      key.Binding // q esc — esci dall'app (inbox)
 	Back      key.Binding // esc q — torna alla lista (thread)
@@ -34,6 +35,7 @@ type appKeys struct {
 	Read      key.Binding // v — letta/non letta
 	Label     key.Binding // l — etichetta
 	Open      key.Binding // o — apri nel browser (thread)
+	Command   key.Binding // : — command line :save/:open/:theme (thread)
 	Submit    key.Binding // invio — esegui la ricerca
 	Cancel    key.Binding // esc — annulla (ricerca, prompt label)
 	Apply     key.Binding // invio — applica l'etichetta
@@ -45,6 +47,7 @@ type appKeys struct {
 // allineato il routing (e viceversa).
 var keys = appKeys{
 	Move:      key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "sposta")),
+	Scroll:    key.NewBinding(key.WithKeys("pgup", "pgdn", "space", "f", "b", "d", "u"), key.WithHelp("pgup/pgdn/space/f/b/d/u", "scroll pagina")),
 	OpenSel:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "apri")),
 	Quit:      key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q/esc", "esci")),
 	Back:      key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "torna alla lista")),
@@ -56,6 +59,7 @@ var keys = appKeys{
 	Read:      key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "letta/non letta")),
 	Label:     key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "etichetta")),
 	Open:      key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "apri nel browser")),
+	Command:   key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "comandi")),
 	Submit:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "cerca")),
 	Cancel:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "annulla")),
 	Apply:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "applica etichetta")),
@@ -93,7 +97,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 	case viewSearch:
 		return []key.Binding{keys.Submit, keys.Cancel}
 	case viewThread:
-		return []key.Binding{keys.Back, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Help}
+		return []key.Binding{keys.Back, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
 	default: // inbox
 		return []key.Binding{keys.Quit, keys.Search, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Composer, keys.Help}
 	}
@@ -110,8 +114,8 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 		return [][]key.Binding{{keys.Submit, keys.Cancel}, {keys.Help}}
 	case viewThread:
 		return [][]key.Binding{
-			{keys.Move, keys.Open, keys.Back},
-			{keys.Archive, keys.Star, keys.Read, keys.Label},
+			{keys.Move, keys.Scroll, keys.Open, keys.Back},
+			{keys.Archive, keys.Star, keys.Read, keys.Label, keys.Command},
 			{keys.Help},
 		}
 	default: // inbox

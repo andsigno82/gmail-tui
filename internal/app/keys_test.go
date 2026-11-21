@@ -53,7 +53,10 @@ var routedKeys = []string{
 	"a", "s", "v", "l", // mutazioni
 	"enter",  // apri messaggio (inbox), cerca (search), applica (label)
 	"j", "k", // cursore lista / scroll thread
+	"pgup", "pgdn", "space", // scroll pagina viewport (thread, P3 polish)
+	"f", "b", "d", "u", // scroll pagina viewport (thread, P3 polish)
 	"o", // apri nel browser (thread)
+	":", // command line :save/:open/:theme (thread, P4 Task 2)
 	"?", // help completo
 }
 

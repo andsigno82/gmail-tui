@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
@@ -47,7 +49,9 @@ type OpenedMsg struct {
 
 // Model è la vista thread: header pre-stilizzato + viewport del corpo +
 // righe allegati. Il contenuto è pre-stilizzato (quote incluse) PRIMA di
-// entrare nel viewport, che lo scorre senza toccare gli stili.
+// entrare nel viewport, che lo scorre senza toccare gli stili. Con la command
+// line `:` aperta (cmdmode.go) una riga extra sotto il corpo ospita l'input;
+// col filepicker di :save il picker sostituisce corpo e allegati.
 type Model struct {
 	ref      msg.MessageRef // copia del ref (MarkRead la muta in locale)
 	msg      *msg.Message   // messaggio completo (nil finché non caricato)
@@ -57,6 +61,13 @@ type Model struct {
 	st       styles.Styles
 	width    int
 	height   int
+
+	// Modalità comando `:` (Piano 4, Task 2): stato e logica in cmdmode.go.
+	cmdOpen    bool            // command line aperta: i tasti vanno all'input
+	cmdInput   textinput.Model // riga di comando inline sotto il corpo
+	pickerOpen bool            // filepicker di :save aperto
+	picker     filepicker.Model
+	pickPart   int // PartIndex dell'allegato da salvare (n-1)
 }
 
 // New costruisce la vista thread per il messaggio appena caricato. full nil
@@ -65,6 +76,7 @@ func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
 	m := Model{ref: ref, msg: full, st: st}
 	m.vp = viewport.New()
 	m.vp.SoftWrap = true // le righe lunghe vanno a capo (lettura email)
+	m.cmdInput = newCommandInput(st)
 	m.header = m.renderHeader()
 	if full != nil {
 		m.vp.SetContent(m.renderBody(full))
@@ -73,49 +85,89 @@ func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
 	return m
 }
 
-// Update gestisce esc/q (BackMsg), `o` (open nel browser, solo con HTML) e
-// delega tutto il resto alla viewport, che gestisce nativamente j/k/frecce/
-// paginazione e la rotella del mouse (MouseWheelEnabled di default, delta 3).
+// Update gestisce i modali del thread PRIMA della vista: con la command line
+// o il filepicker aperti TUTTI i messaggi vanno a loro (tasti = testo/
+// navigazione, come il prompt label della radice). Poi esc/q (BackMsg), `:`
+// (apre la command line), `o` (open nel browser, solo con HTML) e delega al
+// viewport, che gestisce nativamente j/k/frecce/paginazione e la rotella del
+// mouse (MouseWheelEnabled di default, delta 3).
 func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
+	mm := m
+	if m.pickerOpen {
+		cmd := mm.updatePicker(ev)
+		return mm, cmd
+	}
+	if m.cmdOpen {
+		cmd := mm.updateCommand(ev)
+		return mm, cmd
+	}
 	switch ev := ev.(type) {
 	case tea.KeyPressMsg:
 		switch ev.String() {
 		case "esc", "q":
 			return m, func() tea.Msg { return BackMsg{} }
+		case ":":
+			return mm, mm.openCommand()
 		case "o":
 			return m, m.openInBrowser()
 		}
 	}
 	var cmd tea.Cmd
-	m.vp, cmd = m.vp.Update(ev) // la viewport v2 restituisce sempre cmd nil
-	return m, cmd
+	mm.vp, cmd = mm.vp.Update(ev) // la viewport v2 restituisce sempre cmd nil
+	return mm, cmd
 }
 
 // View rende header + corpo scorrevole + allegati come stringa: le sub-viste
-// v2 restano string, solo la radice le incapsula in tea.NewView.
+// v2 restano string, solo la radice le incapsula in tea.NewView. Col picker
+// aperto il picker sostituisce corpo e allegati (con hint di conferma); con
+// la command line aperta l'input sta su una riga in fondo.
 func (m Model) View() string {
 	var b strings.Builder
 	b.WriteString(m.header)
+	if m.pickerOpen {
+		b.WriteString("\n\n")
+		b.WriteString(m.picker.View())
+		b.WriteString("\n")
+		b.WriteString(m.st.HelpView.Render(pickerHint))
+		return b.String()
+	}
 	b.WriteString("\n\n")
 	b.WriteString(m.vp.View())
 	if len(m.attLines) > 0 {
 		b.WriteString("\n\n")
 		b.WriteString(strings.Join(m.attLines, "\n"))
 	}
+	if m.cmdOpen {
+		b.WriteString("\n")
+		b.WriteString(m.cmdInput.View())
+	}
 	return b.String()
 }
 
 // SetSize propaga le dimensioni del corpo (la radice riserva l'ultima riga
-// alla status bar): la viewport ottiene l'altezza che resta dopo header e
-// allegati. Ricevitore puntatore: viewport.SetWidth/SetHeight mutano lo stato.
+// alla status bar): la viewport ottiene l'altezza che resta dopo header,
+// allegati e — se aperta — command line. Ricevitore puntatore: i modelli
+// bubbles (viewport/filepicker) mutano lo stato con i loro Set*.
 func (m *Model) SetSize(width, height int) {
 	m.width, m.height = width, height
+	m.resize()
+	if m.pickerOpen {
+		m.picker = m.pickerHeight(m.picker)
+	}
+}
+
+// resize ricalcola l'altezza della viewport dai vincoli correnti (chiamata da
+// SetSize e all'apertura/chiusura della command line, che occupa/ffre una riga).
+func (m *Model) resize() {
 	used := headerLines
 	if len(m.attLines) > 0 {
 		used += 1 + len(m.attLines)
 	}
-	vh := max(0, height-used)
-	m.vp.SetWidth(max(0, width))
+	if m.cmdOpen {
+		used++
+	}
+	vh := max(0, m.height-used)
+	m.vp.SetWidth(max(0, m.width))
 	m.vp.SetHeight(vh)
 }
 

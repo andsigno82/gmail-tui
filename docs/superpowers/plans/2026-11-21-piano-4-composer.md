@@ -68,7 +68,7 @@ func New() (Store, error) // sceglie il backend disponibile
 - Mappatura n → PartIndex: usa `m.Attachments[n-1].PartIndex` (il PartIndex è l'indice filtrato — coerenza garantita dal fix Piano 2)
 - Test: parse comandi (validi/invalidi/argomenti mancanti), save con percorso esplicito (Mock.Raw), open produce il tmpfile giusto, theme change propaga stili nuovi (assert su un colore che cambia), persistenza chiamata (config salvata con theme aggiornato, altri campi preservati), routing esc/enter, help thread aggiornato (inclusi i viewport keys j/k/pgup/pgdn/space/f/b/d/u — polish P3)
 
-- [ ] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(thread): command mode :save/:open/:theme with persistence`
+- [x] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(thread): command mode :save/:open/:theme with persistence`
 
 ### Task 3: composer — model + reply/forward/new
 

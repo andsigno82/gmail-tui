@@ -14,9 +14,11 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"gmail-tui/internal/config"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/ui/styles"
+	"gmail-tui/internal/ui/thread"
 )
 
 // labelPrompt è il prompt del mini-input delle label (render nella status
@@ -174,6 +176,39 @@ func applyLabel(st mail.MailStore, id msg.MessageID, label string, on bool) tea.
 	return func() tea.Msg {
 		err := st.ApplyLabel(context.Background(), []msg.MessageID{id}, label, on)
 		return opDone{label: feedback, err: err, refresh: true}
+	}
+}
+
+// saveAttachment esegue store.SaveAttachment fuori dal loop UI (Piano 4,
+// Task 2: `:save`/`:open` del thread): il messaggio di richiesta viaggia con
+// i dati già risolti dal thread (PartIndex filtrato, percorso destinazione).
+// Il risultato attachmentSaved distingue `:save` (feedback "salvato in …")
+// da `:open` (la radice risponde con l'exec del browser, come `o`).
+func saveAttachment(st mail.MailStore, req thread.SaveRequested) tea.Cmd {
+	return func() tea.Msg {
+		err := st.SaveAttachment(context.Background(), req.ID, req.Part, req.Path)
+		return attachmentSaved{path: req.Path, open: req.Open, err: err}
+	}
+}
+
+// saveThemeCmd persiste il tema applicato a runtime (Piano 4, Task 2:
+// `:theme <nome>`): load della config dal percorso dato → set Theme → Save,
+// così gli altri campi (address/name/signature) restano quelli su disco anche
+// se cambiati fuori dall'app. Percorso vuoto (os.UserConfigDir non
+// disponibile) → nessuna persistenza (il tema runtime resta applicato).
+// L'errore torna come themePersisted: gestito in statusMsg senza perdere il
+// tema già in uso.
+func saveThemeCmd(path, name string) tea.Cmd {
+	if path == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		cfg, err := config.Load(path)
+		if err == nil {
+			cfg.Theme = name
+			err = cfg.Save(path)
+		}
+		return themePersisted{err: err}
 	}
 }
 

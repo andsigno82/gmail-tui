@@ -67,3 +67,20 @@ type statusMsg struct {
 	text  string
 	isErr bool
 }
+
+// attachmentSaved è il risultato di store.SaveAttachment (Piano 4, Task 2:
+// :save/:open del thread). open è true per `:open` — il salvataggio è la
+// preparazione del tmpfile e la radice risponde con thread.OpenCmd (exec del
+// browser, stesso meccanismo del tasto `o`); il feedback viene da OpenedMsg.
+type attachmentSaved struct {
+	path string
+	open bool
+	err  error
+}
+
+// themePersisted è il risultato della persistenza del tema nella config dopo
+// un thread.ThemeChanged. Errore → statusMsg non fatale: il tema runtime
+// resta applicato (il salvataggio ripartirà al prossimo cambio tema).
+type themePersisted struct {
+	err error
+}
