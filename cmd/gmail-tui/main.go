@@ -83,6 +83,7 @@ func runTUI(args []string) int {
 	th, warn := loadTheme(themeFlag, cfg.Theme)
 	store, demo := selectStore(cfg, os.Getenv, openCache())
 	m := app.New(store, th)
+	m.SetIdentity(cfg.Address, cfg.Signature) // composer r/f/c (Piano 4, Task 3)
 	if demo {
 		m.SetDemoBanner()
 	}

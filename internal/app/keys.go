@@ -23,13 +23,15 @@ import (
 // con la UI. Il campo Help() è l'unica fonte del help generato.
 type appKeys struct {
 	Move      key.Binding // j k ↑ ↓ — cursore lista / scroll thread
-	Scroll    key.Binding // pgup pgdn space f b d u — scroll pagina viewport (thread)
+	Scroll    key.Binding // pgup pgdn space d u — scroll pagina viewport (thread; f/b liberati dal rebind, P4 Task 3)
 	OpenSel   key.Binding // invio — apri il messaggio selezionato (inbox)
 	Quit      key.Binding // q esc — esci dall'app (inbox)
 	Back      key.Binding // esc q — torna alla lista (thread)
 	ForceQuit key.Binding // ctrl+c — uscita immediata da qualunque stato
 	Search    key.Binding // / — cerca
-	Composer  key.Binding // c — scrivi (placeholder, composer in Piano 4)
+	Reply     key.Binding // r — rispondi (inbox: ref selezionato, thread: msg caricato; P4 Task 3)
+	Forward   key.Binding // f — inoltra (idem; f liberato dal rebind scroll, P4 Task 3)
+	Composer  key.Binding // c — scrivi: nuovo messaggio (P4 Task 3)
 	Archive   key.Binding // a — archivia
 	Star      key.Binding // s — stella on/off
 	Read      key.Binding // v — letta/non letta
@@ -37,7 +39,7 @@ type appKeys struct {
 	Open      key.Binding // o — apri nel browser (thread)
 	Command   key.Binding // : — command line :save/:open/:theme (thread)
 	Submit    key.Binding // invio — esegui la ricerca
-	Cancel    key.Binding // esc — annulla (ricerca, prompt label)
+	Cancel    key.Binding // esc — annulla (ricerca, prompt label, composer)
 	Apply     key.Binding // invio — applica l'etichetta
 	Help      key.Binding // ? — aiuto completo
 }
@@ -47,12 +49,14 @@ type appKeys struct {
 // allineato il routing (e viceversa).
 var keys = appKeys{
 	Move:      key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "sposta")),
-	Scroll:    key.NewBinding(key.WithKeys("pgup", "pgdn", "space", "f", "b", "d", "u"), key.WithHelp("pgup/pgdn/space/f/b/d/u", "scroll pagina")),
+	Scroll:    key.NewBinding(key.WithKeys("pgup", "pgdn", "space", "d", "u"), key.WithHelp("pgup/pgdn/space/d/u", "scroll pagina")),
 	OpenSel:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "apri")),
 	Quit:      key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q/esc", "esci")),
 	Back:      key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "torna alla lista")),
 	ForceQuit: key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "esci subito")),
 	Search:    key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "cerca")),
+	Reply:     key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rispondi")),
+	Forward:   key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "inoltra")),
 	Composer:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "scrivi")),
 	Archive:   key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "archivia")),
 	Star:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "stella")),
@@ -97,9 +101,13 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 	case viewSearch:
 		return []key.Binding{keys.Submit, keys.Cancel}
 	case viewThread:
-		return []key.Binding{keys.Back, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
+		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
+	case viewComposer:
+		// Nel composer i tasti operativi sono nella riga d'uso del modello
+		// (tab/ctrl+e/ctrl+s): la barra documenta solo annulla e aiuto.
+		return []key.Binding{keys.Cancel, keys.Help}
 	default: // inbox
-		return []key.Binding{keys.Quit, keys.Search, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Composer, keys.Help}
+		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Help}
 	}
 }
 
@@ -115,12 +123,14 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	case viewThread:
 		return [][]key.Binding{
 			{keys.Move, keys.Scroll, keys.Open, keys.Back},
-			{keys.Archive, keys.Star, keys.Read, keys.Label, keys.Command},
+			{keys.Reply, keys.Forward, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Command},
 			{keys.Help},
 		}
+	case viewComposer:
+		return [][]key.Binding{{keys.Cancel, keys.Help}}
 	default: // inbox
 		return [][]key.Binding{
-			{keys.Move, keys.OpenSel, keys.Search, keys.Composer, keys.Quit},
+			{keys.Move, keys.OpenSel, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Quit},
 			{keys.Archive, keys.Star, keys.Read, keys.Label},
 			{keys.Help},
 		}

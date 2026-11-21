@@ -16,6 +16,7 @@ import (
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
+	"gmail-tui/internal/ui/composer"
 	"gmail-tui/internal/ui/inbox"
 	"gmail-tui/internal/ui/styles"
 	"gmail-tui/internal/ui/thread"
@@ -25,9 +26,10 @@ import (
 type view int
 
 const (
-	viewInbox  view = iota // lista messaggi (Task 4)
-	viewThread             // lettura thread (Task 5)
-	viewSearch             // ricerca (Task 6)
+	viewInbox    view = iota // lista messaggi (Task 4)
+	viewThread               // lettura thread (Task 5)
+	viewSearch               // ricerca (Task 6)
+	viewComposer             // scrittura messaggio (Piano 4, Task 3)
 )
 
 // Model è la radice della TUI: routing viste, status bar globale, keymap
@@ -48,11 +50,21 @@ type Model struct {
 	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
 	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
+	composer  composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
 	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
 	labelOpen bool            // prompt label attivo: i tasti vanno all'input
 	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
 	demo      bool            // demo mode (Task 9): banner iniziale in stile DemoBanner
+
+	// Composer (Piano 4, Task 3): identity mittente/firma (SetIdentity, il
+	// wiring dalla config arriva in Task 4), vista di provenienza per il back,
+	// conferma discard aperta e ultima bozza richiesta (SendRequestedMsg,
+	// placeholder finché Task 4 non collega il sender).
+	from, signature string
+	composeBack     view
+	discardOpen     bool
+	draft           msg.Outgoing
 
 	// Percorso della config per la persistenza del tema (Piano 4, Task 2:
 	// `:theme`): risolto in New da config.Path(). "" = non disponibile
@@ -373,6 +385,44 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case composeLoaded:
+		// Risultato del fetch per r/f nell'inbox (Piano 4, Task 3). Come per
+		// msgLoaded: i fetch non hanno ordine garantito — se l'utente ha
+		// cambiato vista nel frattempo (es. ha aperto un messaggio) il
+		// risultato è STANTE e si ignora (nessun yank nel composer); il
+		// doneOp sopra chiude comunque l'op.
+		m.doneOp()
+		if m.view != viewInbox {
+			return m, nil
+		}
+		if ev.err != nil {
+			label := "risposta"
+			if ev.forward {
+				label = "inoltro"
+			}
+			m.status = statusMsg{text: fmt.Sprintf("%s: %v", label, ev.err), isErr: true}
+			return m, nil
+		}
+		if ev.m == nil {
+			// Difensiva (il contratto MailStore non prevede (nil, nil)).
+			m.status = statusMsg{text: "risposta: messaggio vuoto dallo store", isErr: true}
+			return m, nil
+		}
+		cfg := replyFor(ev.ref, ev.m)
+		if ev.forward {
+			cfg = forwardFor(ev.ref, ev.m)
+		}
+		m.openComposer(cfg)
+		return m, nil
+
+	case composer.SendRequestedMsg:
+		// ctrl+s nel composer (Piano 4, Task 3): la bozza viene custodita e
+		// il feedback è il placeholder — conferma modale e sendCmd con il
+		// Sender arrivano in Task 4 (m.draft verrà sostituito dal flusso vero).
+		m.draft = ev.Out
+		m.status = statusMsg{text: "composer pronto — invio in Task 4"}
+		return m, nil
+
 	case spinner.TickMsg:
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(ev)
@@ -386,6 +436,11 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
 		m.inbox.SetSize(ev.Width, max(0, m.height-1))
 		m.thread.SetSize(ev.Width, max(0, m.height-1))
+		if m.view == viewComposer {
+			// Il composer è la vista attiva: ridimensiona campi e corpo
+			// (meno l'ultima riga, riservata alla status bar).
+			m.composer.SetSize(ev.Width, max(0, m.height-1))
+		}
 		// L'input di ricerca non trabocca: il prompt "/ " occupa 2 colonne.
 		m.search.SetWidth(max(0, ev.Width-2))
 		// Idem il mini-prompt label: il prompt occupa len(labelPrompt) colonne.
@@ -428,6 +483,19 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.discardOpen {
+			// Conferma discard del composer (Piano 4, Task 3): s scarta la
+			// bozza, esc riprende — gli altri tasti sono ignorati (nessuna
+			// azione "alla cieca", come sotto l'overlay help).
+			switch ev.String() {
+			case "s":
+				m.discardDraft()
+				return m, nil
+			case "esc":
+				m.discardOpen = false
+			}
+			return m, nil
+		}
 		if m.view == viewThread && m.thread.ModalOpen() {
 			// Modalità comando/filepicker del thread (Piano 4, Task 2):
 			// TUTTI i tasti vanno al thread — enter esegue/conferma, esc
@@ -435,6 +503,21 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// (j/k non scorrono, a/s/v/l non operano, come col prompt label).
 			var cmd tea.Cmd
 			m.thread, cmd = m.thread.Update(ev)
+			return m, cmd
+		}
+		if m.view == viewComposer {
+			// Composer attivo (Piano 4, Task 3): TUTTI i tasti vanno al
+			// composer — esc chiede il cancel (back diretto o conferma
+			// discard), tab/frecce navigano i campi, il resto è testo: i
+			// tasti op dell'app (r/f/a/…) non possono scattare mentre si
+			// scrive. La richiesta di cancel viene consumata QUI: corpo
+			// vuoto → back diretto, corpo pieno → conferma discard.
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(ev)
+			if m.composer.CancelRequested() {
+				m.handleComposerCancel()
+				return m, nil
+			}
 			return m, cmd
 		}
 		if m.view == viewSearch {
@@ -458,6 +541,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il routing usa la keymap centrale (Task 9): stesse chiavi e stesso
 		// ordine del vecchio switch su ev.String() (a/s/v/l → q/esc → …).
 		switch {
+		case key.Matches(ev, keys.Reply, keys.Forward):
+			// r/f (Piano 4, Task 3): nell'inbox fetch-then-compose (cache-
+			// first via store.FetchMessage), nel thread composer immediato
+			// dal messaggio già caricato. Il composer precompilato sostituisce
+			// la vista corrente (il back del composer torna lì).
+			return m.startCompose(ev.String() == "f")
 		case key.Matches(ev, keys.Archive, keys.Star, keys.Read, keys.Label):
 			// Mutazioni (Task 7): agiscono sul ref corrente — nell'inbox la
 			// riga selezionata, nel thread il messaggio aperto.
@@ -488,7 +577,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(ev, keys.Composer):
 			if m.view == viewInbox {
-				m.status = statusMsg{text: "composer in Piano 4"}
+				// c (Piano 4, Task 3): nuovo messaggio — il composer vuoto
+				// (identity via SetIdentity) sostituisce la vista corrente.
+				m.openComposer(newMessage(config.Config{}))
 				return m, nil
 			}
 		case key.Matches(ev, keys.Command):
@@ -504,7 +595,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Le altre pressioni sono delegati alla vista attiva: nell'inbox alla
 		// lista (j/k, frecce, paginazione; enter è gestito dall'inbox →
-		// SelectedMsg), nel thread alla viewport (j/k, `o`).
+		// SelectedMsg), nel thread alla viewport (j/k, `o`), nel composer al
+		// campo focalizzato (gate sopra).
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
@@ -527,8 +619,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// muoverebbe il cursore dell'inbox e enter applicherebbe la label
 		// alla riga sbagliata (rompendo l'invariante di confirmLabel); con la
 		// command line/filepicker del thread (Piano 4, Task 2) click e rotella
-		// non devono toccare ciò che c'è dietro il modale.
-		if m.showHelp || m.labelOpen || m.thread.ModalOpen() {
+		// non devono toccare ciò che c'è dietro il modale; nel composer
+		// (P4 Task 3) il mouse non tocca i campi (keyboard-first) e sotto la
+		// conferma discard è ignorato come i tasti.
+		if m.showHelp || m.labelOpen || m.discardOpen || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -563,6 +657,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view == viewThread && m.thread.ModalOpen() {
 			var cmd tea.Cmd
 			m.thread, cmd = m.thread.Update(ev)
+			return m, cmd
+		}
+		// Idem per il composer (Piano 4, Task 3): blink dei cursori dei
+		// textinput/textarea e readDirMsg del filepicker allegati devono
+		// raggiungere il modello.
+		if m.view == viewComposer {
+			var cmd tea.Cmd
+			m.composer, cmd = m.composer.Update(ev)
 			return m, cmd
 		}
 		return m, nil
@@ -718,7 +820,8 @@ func (m Model) helpOverlay() string {
 
 // body rende la vista attiva: l'inbox è la lista messaggi (Task 4), il
 // thread è la lettura del messaggio (Task 5, placeholder durante il fetch),
-// la ricerca è il textinput della query (Task 6).
+// la ricerca è il textinput della query (Task 6), il composer i campi di
+// scrittura (Piano 4, Task 3).
 func (m Model) body() string {
 	switch m.view {
 	case viewThread:
@@ -728,6 +831,8 @@ func (m Model) body() string {
 		return m.thread.View()
 	case viewSearch:
 		return m.searchBody()
+	case viewComposer:
+		return m.composer.View()
 	default:
 		return m.inbox.View()
 	}
@@ -743,6 +848,11 @@ func (m Model) statusBar() string {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
 		// stesso al posto dello status, che resta custodito sotto.
 		return m.label.View()
+	}
+	if m.discardOpen {
+		// Conferma discard del composer (Piano 4, Task 3): occupa la barra
+		// per intero (stile StatusErr: azione distruttiva, ben visibile).
+		return m.renderBar(m.styles.StatusErr, "scartare la bozza? s conferma · esc annulla")
 	}
 	text := m.status.text
 	if m.pending > 0 {

@@ -47,14 +47,15 @@ func TestKeyMapBindingsComplete(t *testing.T) {
 // documentato da ALMENO una binding della keymap centrale — se un giorno un
 // tasto cambia, il test ricorda di aggiornare help e keymap insieme.
 var routedKeys = []string{
-	"q", "esc", // uscita (inbox) / back (thread)
+	"q", "esc", // uscita (inbox) / back (thread) / cancel (composer)
 	"ctrl+c", // uscita immediata
-	"/", "c", // ricerca, composer placeholder
+	"/", "c", // ricerca, composer (P4 Task 3)
+	"r", "f", // risposta / inoltro (P4 Task 3: f liberato dal rebind scroll)
 	"a", "s", "v", "l", // mutazioni
 	"enter",  // apri messaggio (inbox), cerca (search), applica (label)
 	"j", "k", // cursore lista / scroll thread
 	"pgup", "pgdn", "space", // scroll pagina viewport (thread, P3 polish)
-	"f", "b", "d", "u", // scroll pagina viewport (thread, P3 polish)
+	"d", "u", // scroll mezza pagina viewport (thread: f/b liberati dal rebind, P4 Task 3)
 	"o", // apri nel browser (thread)
 	":", // command line :save/:open/:theme (thread, P4 Task 2)
 	"?", // help completo

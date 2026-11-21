@@ -201,11 +201,14 @@ func TestEscInSearchReturnsToInbox(t *testing.T) {
 	}
 }
 
-func TestCShowsComposerPlaceholder(t *testing.T) {
+// TestCOpensComposer (Piano 4, Task 3: il placeholder è diventato reale): `c`
+// nell'inbox apre la vista composer (empty draft; il dettaglio entry path è
+// in compose_test.go).
+func TestCOpensComposer(t *testing.T) {
 	m := newTestModel(t)
 	mm, _ := step(m, pressKey("c"))
-	if got := mm.statusText(); got != "composer in Piano 4" {
-		t.Errorf("status dopo c = %q, voglio \"composer in Piano 4\"", got)
+	if mm.currentView() != viewComposer {
+		t.Errorf("vista dopo c = %v, voglio viewComposer", mm.currentView())
 	}
 }
 

@@ -96,7 +96,7 @@ type SendRequestedMsg struct{ Out msg.Outgoing }
 - Root: `c` = composer vuoto; `r`/`f` in inbox (su ref selezionato: richiede il full msg — se non in cache il fetch già avvenuto all'apertura NO: r/f in inbox non hanno il full → fetch-then-compose cmd; in thread r/f usano il msg già caricato) → composer view
 - Test: navigazione campi, Draft corretto (firma appended, campi mappati), reply/forward builders (idempotenza Re:, citazione, header citazione), filepicker add/remove, cancel con body vuoto/non vuoto
 
-- [ ] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(composer): pop-style composer with reply/forward builders`
+- [x] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(composer): pop-style composer with reply/forward builders`
 
 ### Task 4: invio — conferma, Sender integration, feedback
 

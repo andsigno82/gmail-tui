@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/filepicker"
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -76,6 +77,14 @@ func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
 	m := Model{ref: ref, msg: full, st: st}
 	m.vp = viewport.New()
 	m.vp.SoftWrap = true // le righe lunghe vanno a capo (lettura email)
+	// Rebind scroll (Piano 4, Task 3, decisione controller): il keymap default
+	// di bubbles viewport lega f (page giù) e b (page su) — tasti che il
+	// spec keymap riserva a inoltra (f) e libera (b). Restano pgup/pgdn/space
+	// (pagina) e d/u (mezza pagina); f/b non significano più nulla qui.
+	km := viewport.DefaultKeyMap()
+	km.PageDown = key.NewBinding(key.WithKeys("pgdown", "pgdn", "space"), key.WithHelp("pgdn/space", "page giù"))
+	km.PageUp = key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "page su"))
+	m.vp.KeyMap = km
 	m.cmdInput = newCommandInput(st)
 	m.header = m.renderHeader()
 	if full != nil {
@@ -187,6 +196,11 @@ func (m Model) Ref() msg.MessageRef { return m.ref }
 // Loaded dice se il corpo del messaggio è disponibile (false durante il fetch).
 func (m Model) Loaded() bool { return m.msg != nil }
 
+// Msg restituisce il messaggio completo (nil finché non caricato): serve alla
+// radice per i composer precompilati r/f (Piano 4, Task 3) — il reply/forward
+// usa il msg già caricato senza rifetch.
+func (m Model) Msg() *msg.Message { return m.msg }
+
 // YOffset è la posizione di scorrimento del corpo (seam per i test).
 func (m Model) YOffset() int { return m.vp.YOffset() }
 
@@ -204,7 +218,7 @@ func (m Model) renderHeader() string {
 		kv("Da", m.ref.From),
 		kv("A", to),
 		kv("Oggetto", m.ref.Subject),
-		kv("Data", formatDate(m.ref.Date)),
+		kv("Data", FormatDate(m.ref.Date)),
 	}
 	return strings.Join(lines, "\n")
 }
@@ -285,9 +299,11 @@ func writeHTMLTemp(html string) (string, error) {
 	return f.Name(), nil
 }
 
-// formatDate rende la data assoluta dell'header in italiano, deterministica:
-// "20 nov 2026 10:00" (nel fuso del messaggio).
-func formatDate(d time.Time) string {
+// FormatDate rende la data assoluta in italiano, deterministica:
+// "20 nov 2026 10:00" (nel fuso del messaggio). Esportata per riuso:
+// l'header citazione del composer (Piano 4, Task 3) usa lo stesso formato
+// dell'header del thread.
+func FormatDate(d time.Time) string {
 	if d.IsZero() {
 		return "—"
 	}

@@ -551,9 +551,10 @@ func TestThemeWithoutPathNoPersist(t *testing.T) {
 
 // --- help ------------------------------------------------------------------------
 
-// TestThreadHelpIncludesViewportAndCommandKeys (polish P3 + Task 2): l'help
-// completo del thread documenta le chiavi viewport j/k, pgup/pgdn, space,
-// f/b/d/u e il comando `:`; la barra breve include `: comandi`.
+// TestThreadHelpIncludesViewportAndCommandKeys (polish P3 + Task 2, rebind
+// P4 Task 3): l'help completo del thread documenta le chiavi viewport j/k,
+// pgup/pgdn, space, d/u e il comando `:`; f/b NON sono più documentati
+// (rebind: f = inoltra, b liberato). La barra breve include `: comandi`.
 func TestThreadHelpIncludesViewportAndCommandKeys(t *testing.T) {
 	m := newTestModel(t)
 	var doc map[string]bool
@@ -567,10 +568,30 @@ func TestThreadHelpIncludesViewportAndCommandKeys(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"j", "k", "pgup", "pgdn", "space", "f", "b", "d", "u", ":", "o"} {
+	for _, want := range []string{"j", "k", "pgup", "pgdn", "space", "d", "u", ":", "o", "r", "f"} {
 		if !doc[want] {
 			t.Errorf("help completo thread senza il tasto %q", want)
 		}
+	}
+	// b è liberato dal rebind: nessuna binding del thread lo documenta più.
+	if doc["b"] {
+		t.Error("help completo thread documenta ancora \"b\" (rebind: b libero)")
+	}
+	// f è documentato SOLO come inoltro (Forward): la binding Scroll non
+	// deve più annoverarlo (check per descrizione, non per chiave).
+	var scrollDoc map[string]bool
+	for _, g := range m.fullHelpFor(false, viewThread) {
+		for _, b := range g {
+			if b.Help().Desc == "scroll pagina" {
+				scrollDoc = map[string]bool{}
+				for _, k := range b.Keys() {
+					scrollDoc[k] = true
+				}
+			}
+		}
+	}
+	if scrollDoc == nil || scrollDoc["f"] || scrollDoc["b"] {
+		t.Errorf("binding Scroll = %v, voglio senza f/b (rebind)", scrollDoc)
 	}
 	short := bindingDescs(m.shortHelpFor(false, viewThread))
 	if !short["comandi"] {
