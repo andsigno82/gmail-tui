@@ -101,6 +101,22 @@ func (s *Store) ApplyLabel(ctx context.Context, ids []msg.MessageID, label strin
 
 	// off = rimozione dalla cartella-label: espunge gli uid degli id dalla
 	// mailbox-label (cfr. Archive per la semantica label/expunge).
+	// Guard (fix review, anti data-loss): gli id DEVONO referenziare la
+	// mailbox-label (come restituiti da un list lì); un id di un'altra
+	// mailbox verrebbe espunto con il suo uid DENTRO la mailbox-label — o
+	// peggio, colpirebbe il messaggio sbagliato. Rifiuta PRIMA di toccare
+	// il server.
+	for _, id := range ids {
+		mailbox, _, err := id.Split()
+		if err != nil {
+			return fmt.Errorf("imap ApplyLabel off: %w", err)
+		}
+		if mailbox != label {
+			return fmt.Errorf(
+				"imap ApplyLabel off: id %s è nella mailbox %q, non nella mailbox-label %q: rifiuto senza toccare il server",
+				id, mailbox, label)
+		}
+	}
 	return s.deleteAndExpunge(ctx, ids, label)
 }
 

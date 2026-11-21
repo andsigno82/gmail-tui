@@ -254,6 +254,46 @@ func TestApplyLabelOffRemovesFromLabelMailbox(t *testing.T) {
 	}
 }
 
+// TestApplyLabelOffWrongMailboxGuard (fix review): ApplyLabel off con id che
+// NON referenziano la mailbox-label (vengono da INBOX, label = "Work") ⇒
+// errore che menziona entrambe le mailbox e NESSUNA operazione lato server:
+// mail intatta in INBOX e copia intatta in Work (guard anti data-loss).
+func TestApplyLabelOffWrongMailboxGuard(t *testing.T) {
+	ts := startTestServer(t)
+	uid := ts.seedMail("G <g@example.org>", "Guard me", "corpo", false, false)
+	store := connectStore(t, ts)
+
+	if err := store.ApplyLabel(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}, "Work", true); err != nil {
+		t.Fatalf("ApplyLabel on: %v", err)
+	}
+
+	err := store.ApplyLabel(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}, "Work", false)
+	if err == nil {
+		t.Fatal("want errore guard (id non nella mailbox-label), got nil")
+	}
+	for _, want := range []string{"INBOX", "Work"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("errore senza %q: %v", want, err)
+		}
+	}
+
+	// Stato server invariato: originale in INBOX e copia in Work al loro posto.
+	inbox, err := store.ListMessages(t.Context(), msg.Query{}, mail.Page{})
+	if err != nil {
+		t.Fatalf("ListMessages INBOX: %v", err)
+	}
+	if len(inbox) != 1 || inbox[0].Subject != "Guard me" {
+		t.Errorf("INBOX dopo guard = %v, voglio [Guard me] intatta", subjects(inbox))
+	}
+	work, err := store.ListMessages(t.Context(), msg.Query{Label: "Work"}, mail.Page{})
+	if err != nil {
+		t.Fatalf("ListMessages Work: %v", err)
+	}
+	if len(work) != 1 || work[0].Subject != "Guard me" {
+		t.Errorf("Work dopo guard = %v, voglio [Guard me] (copia intatta)", subjects(work))
+	}
+}
+
 // TestMutationsKeepCacheCoherent (FIX cache stale flags): fetch riempie la
 // cache, MarkRead/Star mutano i flag, kill del server: un nuovo fetch deve
 // riuscire DALLA CACHE con i flag aggiornati (Unread=false, Starred=true).

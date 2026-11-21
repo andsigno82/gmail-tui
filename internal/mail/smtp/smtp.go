@@ -14,7 +14,6 @@ import (
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
-	"gmail-tui/internal/cmd"
 	"gmail-tui/internal/msg"
 )
 
@@ -26,6 +25,10 @@ type Options struct {
 	Username string
 	Password string
 	Insecure bool
+	// TLSConfig sostituisce la tls.Config usata per STARTTLS; nil = default
+	// (&tls.Config{ServerName: Host}). Utile nei test (certificato
+	// self-signed, ServerName custom).
+	TLSConfig *tls.Config
 }
 
 // Sender invia msg.Outgoing via SMTP. Invariabile: una connessione per Send.
@@ -33,9 +36,13 @@ type Sender struct {
 	o Options
 }
 
-// Sender soddisfa l'interfaccia minima richiesta dal sottocomando
-// `send` (assert di conformenza).
-var _ cmd.Sender = (*Sender)(nil)
+// Assert di conformenza all'interfaccia minima richiesta dal sottocomando
+// `send` (gmail-tui/internal/cmd.Sender), espresso come interfaccia anonima:
+// il package smtp non dipende da internal/cmd (inversione delle dipendenze:
+// è il comando che conosce il sender, non il viceversa).
+var _ interface {
+	Send(context.Context, msg.Outgoing) error
+} = (*Sender)(nil)
 
 // NewSender crea un Sender con le Options date.
 func NewSender(o Options) *Sender {
@@ -67,9 +74,20 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 	if s.o.Insecure {
 		c = gosmtp.NewClient(conn)
 	} else {
-		c, err = gosmtp.NewClientStartTLS(conn, &tls.Config{ServerName: s.o.Host})
+		tlsCfg := s.o.TLSConfig
+		if tlsCfg == nil {
+			tlsCfg = &tls.Config{ServerName: s.o.Host}
+		}
+		c, err = gosmtp.NewClientStartTLS(conn, tlsCfg)
 		if err != nil {
 			_ = conn.Close()
+			return fmt.Errorf("smtp: starttls: %w", err)
+		}
+		// go-smtp v0.26 rinvia l'handshake TLS al primo I/O successivo
+		// (lazy): l'EHLO post-STARTTLS lo completa qui, così un errore di
+		// verifica TLS (ServerName errato, cert non fidato) esce wrapped
+		// con fase `starttls` e non sfuma in mail/auth.
+		if err := c.Hello("localhost"); err != nil {
 			return fmt.Errorf("smtp: starttls: %w", err)
 		}
 	}

@@ -1,8 +1,15 @@
 package smtp
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -10,6 +17,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
@@ -102,6 +110,46 @@ func startSMTPServer(t *testing.T, reject []string) (addr string, cap *capture) 
 	cap = &capture{}
 	srv := gosmtp.NewServer(&capBackend{cap: cap, reject: reject})
 	srv.AllowInsecureAuth = true // AUTH PLAIN in chiaro: solo test
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(l) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	return l.Addr().String(), cap
+}
+
+// startTLSTestServer avvia un server go-smtp con STARTTLS abilitato
+// (srv.TLSConfig con certificato self-signed generato in-test, solo stdlib).
+// Stesso harness cattura di startSMTPServer; il client di test usa
+// Options.TLSConfig personalizzata (Insecure=false).
+func startTLSTestServer(t *testing.T) (addr string, cap *capture) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(24 * time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:     []string{"localhost"},
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cap = &capture{}
+	srv := gosmtp.NewServer(&capBackend{cap: cap})
+	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{
+		{Certificate: [][]byte{der}, PrivateKey: key},
+	}}
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -260,5 +308,58 @@ func TestSendDialError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "dial") {
 		t.Errorf("errore senza fase dial: %v", err)
+	}
+}
+
+// TestSendStartTLS: STARTTLS end-to-end — server go-smtp con TLSConfig
+// (self-signed in-test), client Options{Insecure:false, TLSConfig} di test:
+// handshake ok, AUTH PLAIN sul canale cifrato, backend cattura il messaggio.
+func TestSendStartTLS(t *testing.T) {
+	addr, cap := startTLSTestServer(t)
+	h, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSender(Options{
+		Host:      h,
+		Port:      mustPort(t, p),
+		Username:  "user",
+		Password:  "pass",
+		TLSConfig: &tls.Config{ServerName: "localhost", InsecureSkipVerify: true}, // solo test
+	})
+
+	if err := s.Send(t.Context(), sampleOutgoing()); err != nil {
+		t.Fatalf("Send (STARTTLS): %v", err)
+	}
+	from, rcpts, data := cap.snapshot()
+	if from != "me@example.com" {
+		t.Errorf("from = %q, want me@example.com", from)
+	}
+	if len(rcpts) == 0 || rcpts[0] != "a@b.com" {
+		t.Errorf("rcpts = %v, voglio primo a@b.com", rcpts)
+	}
+	if !strings.Contains(string(data), "Subject: Ciao\r\n") {
+		t.Errorf("data privo di Subject: %s", data)
+	}
+}
+
+// TestSendStartTLSWrongServerName (failure path): ServerName che non
+// corrisponde al certificato (verifica hostname attiva) → handshake TLS
+// fallisce → errore wrapped con fase `starttls`.
+func TestSendStartTLSWrongServerName(t *testing.T) {
+	addr, _ := startTLSTestServer(t)
+	h, p, err := net.SplitHostPort(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewSender(Options{
+		Host:      h,
+		Port:      mustPort(t, p),
+		TLSConfig: &tls.Config{ServerName: "wrong.example.org"}, // mismatch hostname
+	})
+	if err := s.Send(t.Context(), sampleOutgoing()); err == nil {
+		t.Fatal("want errore starttls (hostname mismatch), got nil")
+	} else if !strings.Contains(err.Error(), "starttls") {
+		t.Errorf("errore senza fase starttls: %v", err)
 	}
 }
