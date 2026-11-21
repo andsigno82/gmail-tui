@@ -17,6 +17,8 @@ import (
 // MarkRead marca i messaggi come letti (read=true: UID STORE ADD \Seen) o
 // come non letti (false: REMOVE), sulla mailbox di appartenenza di ogni id.
 func (s *Store) MarkRead(ctx context.Context, ids []msg.MessageID, read bool) error {
+	defer s.gate.acquire()() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
+
 	op := imap.StoreFlagsAdd
 	if !read {
 		op = imap.StoreFlagsDel
@@ -28,6 +30,8 @@ func (s *Store) MarkRead(ctx context.Context, ids []msg.MessageID, read bool) er
 // Star aggiunge (on=true: UID STORE ADD \Flagged) o rimuove la stella,
 // sulla mailbox di appartenenza di ogni id.
 func (s *Store) Star(ctx context.Context, ids []msg.MessageID, on bool) error {
+	defer s.gate.acquire()() // gate (fix review): STORE rompe l'IDLE del Watch
+
 	op := imap.StoreFlagsAdd
 	if !on {
 		op = imap.StoreFlagsDel
@@ -43,6 +47,8 @@ func (s *Store) Star(ctx context.Context, ids []msg.MessageID, on bool) error {
 // (nel memserver dei test l'expunge lo rimuove fisicamente dalla mailbox:
 // il comportamento IMAP verificato dai test è proprio questo).
 func (s *Store) Archive(ctx context.Context, ids []msg.MessageID) error {
+	defer s.gate.acquire()() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
+
 	return s.deleteAndExpunge(ctx, ids, "")
 }
 
@@ -55,7 +61,13 @@ func (s *Store) Archive(ctx context.Context, ids []msg.MessageID) error {
 //	          EXPUNGE sugli uid degli id (si intende che gli id referenzino
 //	          la mail NELLA cartella-label, come restituiti da un list lì:
 //	          il uid assegnato dal COPY è quello della copia in label).
+//
+// Gate (fix review): acquire copre entrambi i rami (COPY + CREATE, e la
+// deleteAndExpunge del ramo off) — LIST/CREATE/COPY/STORE romperebbero
+// l'IDLE del Watch.
 func (s *Store) ApplyLabel(ctx context.Context, ids []msg.MessageID, label string, on bool) error {
+	defer s.gate.acquire()()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}

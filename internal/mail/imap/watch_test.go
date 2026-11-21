@@ -234,6 +234,142 @@ func TestWatchDisconnected(t *testing.T) {
 	}
 }
 
+// waitIdling attende che il Watch entri in IDLE secondo il gate, con l'hook
+// di test idleGate.isIdling (poll con deadline). NOTA: isIdling è marcato
+// prima della registrazione dell'idle lato server, quindi prima di SEMINARE
+// va aggiunto anche settleIdle (gap noto del memserver).
+func waitIdling(t *testing.T, s *Store) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !s.gate.isIdling() {
+		if time.Now().After(deadline) {
+			t.Fatal("il Watch non è entrato in IDLE entro 5s")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// opWithin esegue fn con un watchdog: nei test del gate serve a trasformare
+// un'operazione bloccata dall'IDLE attivo (bug pre-fix: l'encoder del client
+// è trattenuto dall'IDLE) in un fallimento pulito invece di appendere l'intero
+// binary di test.
+func opWithin(t *testing.T, d time.Duration, fn func() error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		t.Fatalf("operazione non completata entro %v (bloccata dall'IDLE attivo?)", d)
+		return nil // irraggiungibile
+	}
+}
+
+// TestStoreOpDuringIdleSucceeds (fix review: idle gate): con il Watch in IDLE,
+// un'operazione dello Store sulla STESSA connessione deve riuscire — rompe
+// l'IDLE, completa, e NON uccide la connessione (nessun ChangeDisconnected).
+func TestStoreOpDuringIdleSucceeds(t *testing.T) {
+	ts := startTestServer(t)
+	ts.seedMail("Base <base@example.org>", "Base", "corpo base", false, false)
+	store := connectStore(t, ts)
+
+	ch, err := store.Watch(t.Context())
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	waitIdling(t, store)
+
+	// L'operazione parte mentre l'IDLE è attivo.
+	err = opWithin(t, 10*time.Second, func() error {
+		refs, err := store.ListMessages(t.Context(), msg.Query{}, mail.Page{})
+		if err == nil && len(refs) == 0 {
+			t.Error("ListMessages: nessun ref, attesa la mail seminata")
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatalf("ListMessages durante l'idle: %v", err)
+	}
+
+	// La connessione dev'essere viva: l'operazione successiva riesce.
+	if err := opWithin(t, 10*time.Second, func() error {
+		_, err := store.ListMessages(t.Context(), msg.Query{}, mail.Page{})
+		return err
+	}); err != nil {
+		t.Fatalf("ListMessages successiva all'operazione: %v (connessione morta?)", err)
+	}
+
+	// Nessun ChangeDisconnected nella finestra generosa dopo l'operazione:
+	// un drop sarebbe arrivato entro millisecondi dalla violazione.
+	select {
+	case c, ok := <-ch:
+		if ok && c.Kind == mail.ChangeDisconnected {
+			t.Fatal("ChangeDisconnected ricevuto: l'operazione ha ucciso la connessione")
+		}
+	case <-time.After(1 * time.Second):
+	}
+}
+
+// TestWatchSurvivesManyOps (fix review: idle gate): una sequenza di operazioni
+// con il Watch attivo rompe e riappre l'IDLE più volte; il Watch deve restare
+// vivo e ri-idlarsi: una mail seminata DOPO le operazioni produce comunque
+// ChangeNewMail.
+func TestWatchSurvivesManyOps(t *testing.T) {
+	ts := startTestServer(t)
+	ts.seedMail("Base <base@example.org>", "Base", "corpo base", false, false)
+	store := connectStore(t, ts)
+
+	ch, err := store.Watch(t.Context())
+	if err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	waitIdling(t, store)
+
+	for i := 0; i < 5; i++ {
+		if err := opWithin(t, 10*time.Second, func() error {
+			_, err := store.ListMessages(t.Context(), msg.Query{}, mail.Page{})
+			return err
+		}); err != nil {
+			t.Fatalf("operazione %d durante il watch: %v", i+1, err)
+		}
+	}
+
+	// Il watch dev'essere di nuovo in IDLE. Due attese: waitIdling sul gate,
+	// poi settleIdle perché isIdling è marcato PRIMA della registrazione
+	// dell'idle lato server (gap noto del memserver: seminare in quella
+	// finestra non notifica — vedi settleIdle).
+	waitIdling(t, store)
+	settleIdle()
+	uid := ts.seedMail("After <after@example.org>", "After ops", "corpo", false, false)
+
+	want := msg.NewID("INBOX", uid)
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case c, ok := <-ch:
+			if !ok {
+				t.Fatal("canale Watch chiuso mentre attendevo ChangeNewMail")
+			}
+			if c.Kind != mail.ChangeNewMail {
+				continue // eventi spuri (non attesi): interessa solo NewMail
+			}
+			found := false
+			for _, id := range c.IDs {
+				if id == want {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("ChangeNewMail IDs = %v, voglio %s", c.IDs, want)
+			}
+			return // watch vivo e re-idlato dopo 5 rotture di IDLE
+		case <-deadline:
+			t.Fatal("nessun ChangeNewMail entro 10s: il watch non è sopravvissuto alle operazioni")
+		}
+	}
+}
+
 // TestWatchReconnects: kill del server → ChangeDisconnected → un nuovo server
 // risorge sullo STESSO indirizzo → il backoff riconnette (credenziali di
 // Options riusate da Connect) → una mail seminata sul nuovo server produce

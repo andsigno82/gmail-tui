@@ -98,6 +98,10 @@ type watchState struct {
 // Nota: con più Watch contemporanei sull'ultimo Store i dati unilaterali
 // alimentano solo il più recente (s.wakes è unico): l'uso previsto è UN
 // Watch per volta (un solo canale per chiamata).
+//
+// Nota: chiudere il ctx di Watch PRIMA di chiamare Close: Close rompe
+// l'IDLE e marca il gate come chiuso, ma finché il ctx resta vivo il loop
+// può ancora tentare riconnessioni sul client già chiuso.
 func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -123,7 +127,12 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	go func() {
 		defer func() {
 			s.mu.Lock()
-			s.wakes = nil
+			// Solo il watch più recente può azzerare s.wakes: se un vecchio
+			// goroutine esce dopo l'avvio di un nuovo Watch non deve cancellare
+			// il canale del nuovo.
+			if s.wakes == wakes {
+				s.wakes = nil
+			}
 			s.mu.Unlock()
 			close(ch)
 		}()
@@ -154,14 +163,23 @@ func (s *Store) watchLoop(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 	}
 }
 
-// idleRound esegue un ciclo: IDLE su INBOX già selezionata, attesa di
-// wake/refresh/chiusura, gestione dei cambiamenti. Ritorna nil per ripartire,
-// errWatchDone su ctx cancellato, altro errore per il path di riconnessione.
+// idleRound esegue un ciclo: attesa del gate (niente ops in volo), IDLE su
+// INBOX già selezionata, attesa di wake/refresh/chiusura/break, gestione dei
+// cambiamenti. Ritorna nil per ripartire, errWatchDone su ctx cancellato o
+// Store chiuso, altro errore per il path di riconnessione.
 func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-chan watchWake, st *watchState) error {
 	c, err := s.connected()
 	if err != nil {
 		return err
 	}
+
+	// Gate: l'IDLE parte solo senza ops in volo (holders == 0); breakCh è
+	// chiuso da idleGate.acquire quando un'op vuole la connessione.
+	breakCh, ok := s.gate.waitToIdle()
+	if !ok {
+		return errWatchDone // Store chiuso (Close): il watch termina
+	}
+	defer s.gate.idleDone() // fine del round, qualunque sia la causa
 
 	idle, err := c.Idle()
 	if err != nil {
@@ -193,6 +211,11 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 
 	case w := <-wakes:
 		flagUIDs = collectWakes(wakes, w)
+
+	case <-breakCh:
+		// Un'op dello Store vuole la connessione (idleGate.acquire): si esce
+		// dall'IDLE con il DONE standard; nessuna azione dedicata, il round
+		// prosegue (ri-verifica SEARCH) e al giro successivo si re-idla.
 
 	case <-timer.C:
 		// Limite di protocollo: si riapre l'IDLE con un NOOP in mezzo (il

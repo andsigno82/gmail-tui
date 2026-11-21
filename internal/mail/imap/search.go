@@ -29,7 +29,13 @@ const maxAttachmentCandidates = 200
 //
 // Le API go-imap v2 (beta.9) non prendono context: come per Connect, Search
 // controlla solo ctx.Err() in ingresso.
+//
+// Gate (fix review): come ListMessages, l'intera sequenza (incluso il
+// post-filtro, che ri-acquisisce per ogni FetchMessage: acquire è annidabile)
+// corre sotto lo stesso holder per non intersecare le SELECT del Watch.
 func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error) {
+	defer s.gate.acquire()()
+
 	mailbox, uids, err := s.selectAndSearch(ctx, q)
 	if err != nil {
 		return nil, err

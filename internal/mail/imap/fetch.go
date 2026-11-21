@@ -48,9 +48,13 @@ func (s *Store) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Messag
 			return nil, fmt.Errorf("cache get %s: %w", id, err)
 		}
 		if ok {
-			return m, nil
+			return m, nil // hit: zero rete, NESSUNA attesa sul gate
 		}
 	}
+
+	// Miss: da qui si tocca la rete — il gate rompe l'eventuale IDLE del
+	// Watch (fix review) e trattiene la connessione fino alla fine del metodo.
+	defer s.gate.acquire()()
 
 	raw, flags, uidValidity, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
@@ -98,6 +102,9 @@ func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, 
 	if err != nil {
 		return fmt.Errorf("imap save attachment: %w", err)
 	}
+
+	// Gate (fix review): il download tocca la rete — rompe l'eventuale IDLE.
+	defer s.gate.acquire()()
 
 	raw, _, _, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
