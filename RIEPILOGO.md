@@ -186,6 +186,15 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Login e config con valori non validi non perdono più nome e firma
 - `/code-review` + prova manuale: 12 rilievi corretti con test rossi verificati
 
+### Piano 7.3 — Notifiche toast (branch `feat/piano-7-3`)
+- Esiti delle azioni come toast in alto a destra (compositor nativo lipgloss
+  v2, nessuna dipendenza): info/successo 3 s, errori fino al tasto, pila di 3
+  che non scarta mai gli errori
+- Barra di stato neutra: solo stato persistente; colorata solo per le conferme
+- Test dell'app isolati dal config reale dello sviluppatore (TestMain)
+- `/code-review`: 2 conflitti tra regole decisi da Andrea, commenti e codice
+  morto ripuliti
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
