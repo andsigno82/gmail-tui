@@ -4,6 +4,7 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,13 +21,52 @@ type Cache struct {
 	db *bolt.DB
 }
 
+// schemaVersion è la versione dei messaggi in cache. Piano 8, Task 8: alla 2
+// msg.MessageRef ha GmailID, ThreadID e Labels; le entry della versione
+// precedente non hanno quei campi e vengono scartate all'apertura.
+const schemaVersion = 2
+
 // Open apre/crea il database bbolt in path.
 func Open(path string) (*Cache, error) {
 	db, err := bolt.Open(path, 0o600, &bolt.Options{Timeout: time.Second})
 	if err != nil {
 		return nil, fmt.Errorf("cache open %s: %w", path, err)
 	}
+	if err := migrate(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("cache schema %s: %w", path, err)
+	}
 	return &Cache{db: db}, nil
+}
+
+// migrate scarta i bucket dei messaggi se la versione dello schema non è quella
+// attuale. I bucket meta: (uidvalidity) restano.
+func migrate(db *bolt.DB) error {
+	return db.Update(func(tx *bolt.Tx) error {
+		schema, err := tx.CreateBucketIfNotExists([]byte("schema"))
+		if err != nil {
+			return err
+		}
+		if v := schema.Get([]byte("version")); v != nil && binaryUint32(v) == schemaVersion {
+			return nil
+		}
+		var stale [][]byte
+		err = tx.ForEach(func(name []byte, _ *bolt.Bucket) error {
+			if bytes.HasPrefix(name, []byte("msgs:")) {
+				stale = append(stale, append([]byte(nil), name...))
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+		for _, name := range stale {
+			if err := tx.DeleteBucket(name); err != nil {
+				return err
+			}
+		}
+		return schema.Put([]byte("version"), uint32Bytes(schemaVersion))
+	})
 }
 
 // SetMessage salva un messaggio; se uidValidity è cambiata da quella
