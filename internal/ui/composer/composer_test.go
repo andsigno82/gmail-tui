@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
@@ -243,6 +244,22 @@ func TestDraftMapsFields(t *testing.T) {
 	}
 	if len(d.Attachments) != 2 || d.Attachments[0] != "/tmp/a.pdf" {
 		t.Errorf("Attachments = %v, voglio [/tmp/a.pdf /tmp/b.pdf]", d.Attachments)
+	}
+}
+
+// TestDraftDisplayNameComma (Piano 7.1, fix code-review): la virgola nel nome
+// quotato non spezza il destinatario, e un campo non parsabile non perde
+// indirizzi: la validazione lo rifiuta citando il campo "A".
+func TestDraftDisplayNameComma(t *testing.T) {
+	m := newModel(t, ComposerConfig{From: "me@x.dev"})
+	m.to.SetValue(`"Rossi, Mario" <m@x.it>`)
+	if d := m.Draft(); len(d.To) != 1 || msg.ValidateAddresses(d) != nil {
+		t.Errorf("To = %q, want un solo destinatario valido", d.To)
+	}
+	m.to.SetValue("a@x.it, b@@y")
+	err := msg.ValidateAddresses(m.Draft())
+	if want := `A: indirizzo non valido "a@x.it, b@@y"`; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
 	}
 }
 

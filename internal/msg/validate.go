@@ -13,7 +13,7 @@ import (
 // (Piano 7, Task 2): almeno un destinatario non vuoto in To/Cc/Bcc e ogni
 // indirizzo valido (regole di checkAddress, Piano 7.1 Task 1). L'errore cita il
 // campo con le etichette del composer (A, Cc, Ccn) e l'indirizzo. Gli elementi
-// vuoti sono ignorati, come in splitAddrs.
+// vuoti sono ignorati, come in normalizeList (Piano 7.1, fix code-review).
 func ValidateRecipients(o Outgoing) error {
 	if err := ValidateAddresses(o); err != nil {
 		return err
@@ -80,6 +80,54 @@ func normalizeList(addrs []string) []string {
 	return out
 }
 
+// ParseRecipientField legge un campo A/Cc/Ccn come lista RFC 5322 (Piano 7.1,
+// fix code-review): la virgola nel nome quotato non lo spezza, il campo vuoto
+// non dà indirizzi. Un campo non parsabile resta come elemento unico (trimmato):
+// NormalizeRecipients lo rifiuta citando il campo, senza perdere indirizzi.
+func ParseRecipientField(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	list, err := mail.ParseAddressList(s)
+	if err != nil {
+		return []string{s}
+	}
+	out := make([]string, 0, len(list))
+	for _, a := range list {
+		out = append(out, addrForm(a))
+	}
+	return out
+}
+
+// BareAddress restituisce l'addr-spec di un indirizzo canonico, cioè la forma
+// per RCPT TO (Piano 7.1, fix code-review): il nome visualizzato è scartato e la
+// local part resta quotata se serve ("a b"@x.it).
+func BareAddress(a string) (string, error) {
+	p, err := mail.ParseAddress(a)
+	if err != nil {
+		return "", err
+	}
+	return addrSpec(p.Address), nil
+}
+
+// addrForm restituisce la forma canonica di un indirizzo già parsato: nome
+// visualizzato (Address.String, RFC 2047 se non ASCII) oppure addr-spec nuda.
+func addrForm(a *mail.Address) string {
+	if a.Name == "" {
+		return addrSpec(a.Address)
+	}
+	return a.String()
+}
+
+// addrSpec restituisce l'addr-spec con la local part quotata se serve.
+// Address.String la racchiude in <>, che qui vengono tolte (Piano 7.1, fix
+// code-review: prima la local part quotata perdeva le virgolette).
+func addrSpec(addr string) string {
+	s := (&mail.Address{Address: addr}).String()
+	return strings.TrimSuffix(strings.TrimPrefix(s, "<"), ">")
+}
+
 // checkAddress valida un indirizzo e ne restituisce la forma canonica (Piano
 // 7.1, Task 1): net/mail.ParseAddress (nome visualizzato ammesso), local part
 // ASCII, dominio con almeno un punto (D7.1) e convertibile in punycode.
@@ -101,12 +149,7 @@ func checkAddress(a string) (string, error) {
 		return "", err
 	}
 	parsed.Address = local + "@" + ascii
-	if parsed.Name == "" {
-		// Senza nome visualizzato resta l'indirizzo nudo: Address.String()
-		// lo racchiuderebbe in <> negli header.
-		return parsed.Address, nil
-	}
-	return parsed.String(), nil
+	return addrForm(parsed), nil
 }
 
 // isASCII riporta se s contiene solo caratteri ASCII.

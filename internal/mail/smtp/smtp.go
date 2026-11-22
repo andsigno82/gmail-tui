@@ -8,7 +8,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"net/mail"
 	"strconv"
 	"strings"
 	"time"
@@ -142,11 +141,12 @@ func recipientAddrs(m msg.Outgoing) ([]string, error) {
 		if strings.TrimSpace(a) == "" {
 			continue
 		}
-		p, err := mail.ParseAddress(a)
+		// Piano 7.1, fix code-review: addr-spec con local part quotata (msg.BareAddress).
+		b, err := msg.BareAddress(a)
 		if err != nil {
 			return nil, fmt.Errorf("smtp: indirizzo non valido %q: %w", a, err)
 		}
-		bare = append(bare, p.Address)
+		bare = append(bare, b)
 	}
 	return dedup(bare), nil
 }

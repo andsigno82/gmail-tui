@@ -302,21 +302,23 @@ func (m *Model) toggleCc() tea.Cmd {
 	return nil
 }
 
-// Draft raccoglie i campi correnti in msg.Outgoing: To/Cc splittati sulle
-// virgole (spazi trimmati, vuoti scartati), oggetto trimmato, corpo tal
+// Draft raccoglie i campi correnti in msg.Outgoing: To/Cc letti come lista RFC
+// 5322 (msg.ParseRecipientField, Piano 7.1 fix code-review: la virgola nel nome
+// quotato non spezza; un campo non parsabile resta intero e la conferma lo
+// rifiuta citando "A"/"Cc"), oggetto trimmato, corpo tal
 // quale e firma appended stile pop corpo + "\n\n--\n" + firma (solo se la
 // firma non è vuota). Il Cc nascosto NON finisce nella bozza (l'utente non
 // lo vede → non va in invio silenziosamente).
 func (m Model) Draft() msg.Outgoing {
 	out := msg.Outgoing{
 		From:        m.from,
-		To:          parseAddresses(m.to.Value()),
+		To:          msg.ParseRecipientField(m.to.Value()),
 		Subject:     strings.TrimSpace(m.subject.Value()),
 		BodyText:    m.body.Value(),
 		Attachments: append([]string(nil), m.attachments...),
 	}
 	if m.ccVisible {
-		out.Cc = parseAddresses(m.cc.Value())
+		out.Cc = msg.ParseRecipientField(m.cc.Value())
 	}
 	if m.signature != "" {
 		out.BodyText += "\n\n--\n" + m.signature
@@ -333,18 +335,6 @@ func (m Model) BodyText() string { return m.body.Value() }
 // subito dopo aver delegato un tasto al composer (back diretto se il corpo è
 // vuoto, conferma discard altrimenti). QUALSIASI altro tasto la consuma.
 func (m Model) CancelRequested() bool { return m.cancel }
-
-// parseAddresses splitta una lista digitata su virgole: trim dei spazi e
-// scarto dei vuoti ("a@x, b@y," → [a@x b@y]; "" → nil).
-func parseAddresses(s string) []string {
-	var out []string
-	for _, a := range strings.Split(s, ",") {
-		if a = strings.TrimSpace(a); a != "" {
-			out = append(out, a)
-		}
-	}
-	return out
-}
 
 // sendCmd incapsula la bozza in una Cmd (il flusso dei messaggi resta
 // uniforme: Update non produce mai messaggi direttamente).

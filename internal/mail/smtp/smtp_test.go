@@ -273,6 +273,25 @@ func TestSendInvalidRcptBeforeMail(t *testing.T) {
 	}
 }
 
+// TestSendQuotedLocalPartRcpt (Piano 7.1, fix code-review): la local part
+// quotata viene inviata in RCPT TO quotata: senza virgolette il server risponde
+// 501 ("a b@x.it" non è un path valido). Il server di test (go-smtp) rimuove le
+// virgolette in ricezione, quindi qui si asserisce che l'invio riesca e il
+// valore ricevuto sia la local part.
+func TestSendQuotedLocalPartRcpt(t *testing.T) {
+	addr, cap := startSMTPServer(t, nil)
+	s := testSender(t, addr)
+
+	m := msg.Outgoing{From: "me@example.com", To: []string{`"a b"@x.it`}, Subject: "Ciao", BodyText: "x"}
+	if err := s.Send(t.Context(), m); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	_, rcpts, _ := cap.snapshot()
+	if want := "a b@x.it"; strings.Join(rcpts, ",") != want {
+		t.Errorf("rcpts = %v, want [%s]", rcpts, want)
+	}
+}
+
 // TestSendMultipartWithAttachment: con allegato il DATA è multipart/mixed.
 func TestSendMultipartWithAttachment(t *testing.T) {
 	addr, cap := startSMTPServer(t, nil)

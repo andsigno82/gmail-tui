@@ -4,9 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/mail"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/andsigno82/gmail-tui/internal/config"
@@ -49,21 +47,11 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		fmt.Fprintf(os.Stderr, "send: leggo il corpo: %v\n", err)
 		return 1
 	}
-	to, err := parseAddrs(args.To)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "send: --to: %v\n", err)
-		return 1
-	}
-	cc, err := parseAddrs(args.Cc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "send: --cc: %v\n", err)
-		return 1
-	}
-	bcc, err := parseAddrs(args.Bcc)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "send: --bcc: %v\n", err)
-		return 1
-	}
+	// Piano 7.1, Task 3 + fix code-review: ogni campo è una lista RFC 5322; un
+	// campo non parsabile arriva intero e NormalizeRecipients lo cita come A/Cc/Ccn.
+	to := msg.ParseRecipientField(args.To)
+	cc := msg.ParseRecipientField(args.Cc)
+	bcc := msg.ParseRecipientField(args.Bcc)
 	if len(to)+len(cc)+len(bcc) == 0 {
 		fmt.Fprintln(os.Stderr, "send: nessun destinatario (--to)")
 		return 1
@@ -85,7 +73,11 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		fmt.Fprintf(os.Stderr, "send: %v\n", err)
 		return 1
 	}
-	rcpts := bareRecipients(m)
+	rcpts, err := bareRecipients(m)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "send: %v\n", err)
+		return 1
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), SendTimeout)
 	defer cancel()
 	if err := sender.Send(ctx, m); err != nil {
@@ -96,36 +88,21 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 	return 0
 }
 
-// parseAddrs legge una lista di indirizzi RFC 5322 (Piano 7.1, Task 3): la
-// virgola dentro un nome quotato ("Rossi, Mario" <m@x.it>) non spezza il
-// destinatario. Lista vuota ⇒ slice nil, così l'Outgoing non porta campi vuoti.
-func parseAddrs(s string) ([]string, error) {
-	if strings.TrimSpace(s) == "" {
-		return nil, nil
-	}
-	list, err := mail.ParseAddressList(s)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]string, 0, len(list))
-	for _, a := range list {
-		out = append(out, a.String())
-	}
-	return out, nil
-}
-
-// bareRecipients restituisce gli indirizzi nudi unici di To+Cc+Bcc di un
-// Outgoing già normalizzato: è il conteggio "sent to N recipients".
-func bareRecipients(m msg.Outgoing) []string {
+// bareRecipients restituisce gli addr-spec unici di To+Cc+Bcc di un Outgoing
+// già normalizzato: è il conteggio "sent to N recipients". Un indirizzo non
+// parsabile è un errore (Piano 7.1, fix code-review): non viene scartato in
+// silenzio.
+func bareRecipients(m msg.Outgoing) ([]string, error) {
 	all := concat(concat(m.To, m.Cc), m.Bcc)
 	bare := make([]string, 0, len(all))
 	for _, a := range all {
-		// Già normalizzato da msg.NormalizeRecipients: il parse non fallisce.
-		if p, err := mail.ParseAddress(a); err == nil {
-			bare = append(bare, p.Address)
+		b, err := msg.BareAddress(a)
+		if err != nil {
+			return nil, err
 		}
+		bare = append(bare, b)
 	}
-	return dedupAddrs(bare)
+	return dedupAddrs(bare), nil
 }
 
 // dedupAddrs scarta i duplicati esatti (case-sensitive: la

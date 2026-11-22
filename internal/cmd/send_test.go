@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -161,6 +163,73 @@ func TestSendError(t *testing.T) {
 	var out bytes.Buffer
 	if code := Send(&out, fs, config.Config{Address: "m@x"}, SendArgs{To: "a@b.it"}, strings.NewReader("b")); code != 1 {
 		t.Errorf("Send exit = %d, want 1", code)
+	}
+}
+
+// captureStderr raccoglie ciò che fn scrive su os.Stderr (Piano 7.1, fix
+// code-review: i messaggi di send vanno su stderr).
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	fn()
+	os.Stderr = old
+	_ = w.Close()
+	b, _ := io.ReadAll(r)
+	return string(b)
+}
+
+// TestSendInvalidRecipientMessage (Piano 7.1, fix code-review): l'errore cita il
+// campo con l'etichetta del composer e l'indirizzo, come in ValidateAddresses.
+func TestSendInvalidRecipientMessage(t *testing.T) {
+	cases := []struct {
+		args SendArgs
+		want string
+	}{
+		{SendArgs{To: "abc"}, `send: A: indirizzo non valido "abc"`},
+		{SendArgs{To: "a@b.it", Cc: "x@"}, `send: Cc: indirizzo non valido "x@"`},
+		{SendArgs{To: "a@b.it", Bcc: "<>"}, `send: Ccn: indirizzo non valido "<>"`},
+		{SendArgs{To: "a@x.it, b@@y"}, `send: A: indirizzo non valido "a@x.it, b@@y"`},
+	}
+	for _, tc := range cases {
+		fs := &fakeSender{}
+		var code int
+		got := captureStderr(t, func() {
+			code = Send(&bytes.Buffer{}, fs, config.Config{Address: "m@x.it"}, tc.args, strings.NewReader("b"))
+		})
+		if !strings.Contains(got, tc.want) || code != 1 {
+			t.Errorf("%+v: stderr = %q (exit %d), want %q exit 1", tc.args, got, code, tc.want)
+		}
+	}
+}
+
+// TestSendQuotedLocalPart (Piano 7.1, fix code-review): una local part quotata
+// passa come tale al sender e conta un solo destinatario.
+func TestSendQuotedLocalPart(t *testing.T) {
+	fs := &fakeSender{}
+	var out bytes.Buffer
+	code := Send(&out, fs, config.Config{Address: "me@gmail.com"},
+		SendArgs{To: `"a b"@x.it`, Subject: "s"}, strings.NewReader("b"))
+	if code != 0 {
+		t.Fatalf("Send exit = %d, want 0", code)
+	}
+	if want := []string{`"a b"@x.it`}; !reflect.DeepEqual(fs.got.To, want) {
+		t.Errorf("To = %q, want %q", fs.got.To, want)
+	}
+	if got := out.String(); got != "sent to 1 recipients\n" {
+		t.Errorf("output = %q, want 1 destinatario", got)
+	}
+}
+
+// TestBareRecipientsReturnsError (Piano 7.1, fix code-review): un indirizzo non
+// parsabile è un errore, non viene scartato in silenzio dal conteggio.
+func TestBareRecipientsReturnsError(t *testing.T) {
+	if _, err := bareRecipients(msg.Outgoing{To: []string{"abc"}}); err == nil {
+		t.Error("bareRecipients(abc): err = nil, want errore")
 	}
 }
 

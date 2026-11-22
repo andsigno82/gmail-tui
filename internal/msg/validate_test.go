@@ -58,6 +58,50 @@ func TestValidateAddressesIgnoresEmptyLists(t *testing.T) {
 	}
 }
 
+// TestParseRecipientField (Piano 7.1, fix code-review): un campo è una lista RFC
+// 5322 (la virgola nel nome quotato non spezza); un campo non parsabile resta
+// come elemento unico, così la validazione lo rifiuta citandolo.
+func TestParseRecipientField(t *testing.T) {
+	cases := []struct {
+		name  string
+		field string
+		want  []string
+	}{
+		{"campo vuoto", "  ", nil},
+		{"lista con virgola finale", " a@x.it , b@y.it , ", []string{"a@x.it", "b@y.it"}},
+		{"nome con virgola quotata", `"Rossi, Mario" <m@x.it>`, []string{`"Rossi, Mario" <m@x.it>`}},
+		{"campo non parsabile", "a@x.it, b@@y", []string{"a@x.it, b@@y"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ParseRecipientField(tc.field); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("ParseRecipientField(%q) = %q, want %q", tc.field, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRecipientFieldInvalidCitesField (Piano 7.1, fix code-review): un campo non
+// parsabile non perde indirizzi silenziosamente: l'errore cita il campo.
+func TestRecipientFieldInvalidCitesField(t *testing.T) {
+	err := ValidateAddresses(Outgoing{To: ParseRecipientField("a@x.it, b@@y")})
+	if want := `A: indirizzo non valido "a@x.it, b@@y"`; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %q", err, want)
+	}
+}
+
+// TestNormalizeQuotedLocalPart (Piano 7.1, fix code-review): una local part
+// quotata con spazio resta quotata nella forma canonica (RCPT e header validi).
+func TestNormalizeQuotedLocalPart(t *testing.T) {
+	got, err := NormalizeRecipients(Outgoing{To: []string{`"a b"@x.it`}})
+	if err != nil {
+		t.Fatalf("errore inatteso: %v", err)
+	}
+	if want := []string{`"a b"@x.it`}; !reflect.DeepEqual(got.To, want) {
+		t.Errorf("To = %q, want %q", got.To, want)
+	}
+}
+
 // TestNormalizeRecipients (Piano 7.1, Task 1): forma canonica di ogni indirizzo
 // (nome RFC 2047 se non ASCII, dominio in punycode), errori come ValidateRecipients.
 func TestNormalizeRecipients(t *testing.T) {

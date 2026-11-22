@@ -683,6 +683,26 @@ func TestSendConfirmationShowsToSubjectAttachments(t *testing.T) {
 	}
 }
 
+// TestSendConfirmationNormalizedForm (Piano 7.1, fix code-review): la conferma
+// mostra il nome non ASCII decodificato (RFC 2047 solo negli header) e la local
+// part quotata come nella bozza normalizzata.
+func TestSendConfirmationNormalizedForm(t *testing.T) {
+	cases := []struct{ name, to, want string }{
+		{"nome non ASCII decodificato", "José Rossi <j@x.it>", "Invio a José Rossi <j@x.it>"},
+		{"local part quotata", `"a b"@x.it`, `Invio a "a b"@x.it`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := senderModel(t, &senderRecorder{})
+			mm, _ := step(m, teaSize())
+			mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: tc.to, Subject: "s", Body: "c"}))
+			if bar := plainBar(mm); !strings.Contains(bar, tc.want) || strings.Contains(bar, "=?") {
+				t.Errorf("status bar = %q, want %q senza encoded-word", bar, tc.want)
+			}
+		})
+	}
+}
+
 // TestSendConfirmEscPreservesDraft: esc alla conferma riprende il composer —
 // bozza intatta nei campi, nessun invio, conferma chiusa.
 func TestSendConfirmEscPreservesDraft(t *testing.T) {

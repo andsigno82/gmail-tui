@@ -14,6 +14,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"mime"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -235,11 +236,17 @@ func (m *Model) discardDraft() {
 // segmenti vuoti (oggetto vuoto, nessun allegato) sono omessi. Con un solo
 // allegato il conteggio è al singolare ("1 allegato").
 func sendConfirmText(out msg.Outgoing) string {
+	// Piano 7.1, fix code-review: il nome non ASCII è in RFC 2047 nella bozza
+	// (header); qui si decodifica per la status bar, leggibile.
+	var dec mime.WordDecoder
 	var rcpt []string
 	for _, group := range [][]string{out.To, out.Cc, out.Bcc} {
 		for _, a := range group {
-			if strings.TrimSpace(a) != "" {
-				rcpt = append(rcpt, strings.TrimSpace(a))
+			if a = strings.TrimSpace(a); a != "" {
+				if d, err := dec.DecodeHeader(a); err == nil {
+					a = d
+				}
+				rcpt = append(rcpt, a)
 			}
 		}
 	}
