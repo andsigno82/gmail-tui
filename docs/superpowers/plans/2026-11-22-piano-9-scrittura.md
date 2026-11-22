@@ -143,7 +143,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima), in `internal/contacts`:** `TestObserveOrdersByFrequencyThenRecency`; `TestObserveWithoutBumpKeepsCount`; `TestSuggestMatchesNameAndAddress`; `TestFileIs0600AndRoundTrips`; `TestCorruptFileIsAnError`; `TestMemoryBookWritesNothing`.
 
-- [ ] RED, implementazione, commit `feat(contacts): rubrica locale da mittenti e destinatari (Piano 9, Task 8)`.
+- [x] RED, implementazione, commit `feat(contacts): rubrica locale da mittenti e destinatari (Piano 9, Task 8)`.
 
 ## Task 9: annulla invio
 
