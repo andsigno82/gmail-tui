@@ -2,6 +2,8 @@ module github.com/andsigno82/gmail-tui
 
 go 1.26.0
 
+toolchain go1.27.3
+
 require (
 	charm.land/bubbles/v2 v2.2.2
 	charm.land/bubbletea/v2 v2.1.2
@@ -39,8 +41,8 @@ require (
 	github.com/sahilm/fuzzy v0.1.3 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
-	golang.org/x/net v0.23.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/net v0.63.0 // indirect
+	golang.org/x/sync v0.25.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
