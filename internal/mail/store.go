@@ -4,9 +4,15 @@ package mail
 
 import (
 	"context"
+	"errors"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
+
+// ErrScanLimit segnala che ListConversations ha raggiunto il tetto di messaggi letti
+// prima di riempire la pagina, con altri messaggi da leggere: le righe restituite
+// sono valide ma la lista è limitata, non esaurita (Piano 8, review punto 3).
+var ErrScanLimit = errors.New("lista limitata: scansione interrotta al tetto di messaggi")
 
 // Page è la paginazione di ListMessages (Limit 0 = default 50).
 type Page struct {
@@ -36,6 +42,32 @@ type Change struct {
 	IDs  []msg.MessageID
 }
 
+// Conversation è la riga di lista in vista conversazione (Piano 8, Task 5),
+// come Gmail: un thread = una riga. Count, Participants, Unread e Labels
+// valgono su All Mail escluso spam e cestino; Latest è il messaggio più recente
+// nella mailbox richiesta.
+type Conversation struct {
+	Latest       msg.MessageRef
+	ThreadID     uint64
+	Count        int
+	Participants []string // mittenti distinti, in ordine cronologico
+	Unread       bool     // almeno un messaggio non letto
+	Labels       []string // unione delle label utente
+}
+
+// SingleConversation è la riga di un solo messaggio (fallback senza X-GM-EXT-1,
+// Piano 8, Task 9): Count 1, un partecipante, stato e label del messaggio.
+func SingleConversation(r msg.MessageRef) Conversation {
+	return Conversation{
+		Latest:       r,
+		ThreadID:     r.ThreadID,
+		Count:        1,
+		Participants: []string{r.From},
+		Unread:       r.Unread,
+		Labels:       append([]string(nil), r.Labels...),
+	}
+}
+
 // MailStore è l'astrazione di backend posta.
 //
 // Thread-safety (Piano 3, Task 1): le operazioni sono SERIALIZZATE — UNA OP
@@ -63,6 +95,26 @@ type MailStore interface {
 	// documentati su ListMessages (Label seleziona la mailbox,
 	// HasAttachment best-effort client-side, ThreadLen = 1).
 	Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error)
+
+	// ListConversations restituisce una riga per conversazione (Piano 8, Task 5),
+	// dal più recente. Paginazione su Page come ListMessages (Q1/D8-3: la pagina
+	// si riempie leggendo altri messaggi, con tetto).
+	// Con q.Raw la query è sintassi Gmail verbatim (Q2/D8-4: All Mail se senza
+	// label:/in:). Senza Gmail (server senza X-GM-EXT-1) una riga per messaggio.
+	// Se il tetto di scansione è raggiunto prima di riempire la pagina, restituisce
+	// le righe trovate con ErrScanLimit: la lista è limitata, non esaurita.
+	ListConversations(ctx context.Context, q msg.Query, pg Page) ([]Conversation, error)
+
+	// ConversationMembers restituisce gli ID dei messaggi del thread che stanno
+	// nella mailbox indicata (Piano 8, Task 9b): è la conversazione "nella
+	// cartella corrente" su cui agiscono le op della riga, come Gmail web. Non
+	// usa All Mail. Senza X-GM-EXT-1 o con threadID 0 è un errore: il chiamante
+	// usa l'ID della riga.
+	ConversationMembers(ctx context.Context, mailbox string, threadID uint64) ([]msg.MessageID, error)
+
+	// ThreadMessages restituisce tutti i messaggi del thread (X-GM-THRID) in
+	// ordine cronologico, escluso spam e cestino (Q5/D8-7). Errore per threadID 0.
+	ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error)
 
 	MarkRead(ctx context.Context, ids []msg.MessageID, read bool) error
 

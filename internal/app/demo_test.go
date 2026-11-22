@@ -4,12 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // TestDemoStoreRealisticSeed (Piano 4, Task 5): la factory della demo produce
-// un Mock con 5-6 messaggi realistici — mix di unread e starred, un soggetto
+// un Mock con 5-7 messaggi realistici — mix di unread e starred, un soggetto
 // di benvenuto, un Re: — così chi clona il repo vede l'app viva.
 func TestDemoStoreRealisticSeed(t *testing.T) {
 	mk := DemoStore()
@@ -17,8 +19,10 @@ func TestDemoStoreRealisticSeed(t *testing.T) {
 		t.Fatal("DemoStore = nil")
 	}
 	inbox := inboxMsgs(mk)
-	if n := len(inbox); n < 5 || n > 6 {
-		t.Fatalf("messaggi seed in posta in arrivo = %d, voglio 5-6", n)
+	// Piano 8, Task 12: la conversazione con risposte in Inviati e un non letto
+	// richiede un messaggio in più in posta in arrivo (6 → 7).
+	if n := len(inbox); n < 5 || n > 7 {
+		t.Fatalf("messaggi seed in posta in arrivo = %d, voglio 5-7", n)
 	}
 	var unread, starred int
 	var subjects []string
@@ -139,4 +143,118 @@ func TestDemoStoreFolders(t *testing.T) {
 			t.Errorf("%s: %d messaggi, voglio almeno 2", box, len(refs))
 		}
 	}
+}
+
+// Piano 8, Task 12: il seed ha conversazioni Gmail (X-GM-THRID). La conversazione
+// "Re: design review" ha quattro messaggi: due in posta in arrivo, due risposte
+// dell'utente in Inviati, uno dei due in arrivo non letto.
+func TestDemoStoreConversazioniSimulate(t *testing.T) {
+	mk := DemoStore()
+	convs, err := mk.ListConversations(t.Context(), msg.Query{}, mail.Page{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListConversations: %v", err)
+	}
+	var design, lunch *mail.Conversation
+	var labelled bool
+	for i := range convs {
+		switch convs[i].ThreadID {
+		case demoThreadDesign:
+			design = &convs[i]
+		case demoThreadLunch:
+			lunch = &convs[i]
+		}
+		if len(convs[i].Labels) > 0 {
+			labelled = true
+		}
+	}
+	if design == nil {
+		t.Fatal("nessuna conversazione «Re: design review» in posta in arrivo")
+	}
+	if design.Count != 4 {
+		t.Errorf("design review: Count = %d, voglio 4 (incluse le risposte in Inviati)", design.Count)
+	}
+	if !design.Unread {
+		t.Error("design review: deve avere almeno un messaggio non letto")
+	}
+	if !containsStr(design.Participants, "tu@example.com") {
+		t.Errorf("partecipanti = %v, voglio la risposta dell'utente", design.Participants)
+	}
+	if lunch == nil || lunch.Count != 1 {
+		t.Errorf("pranzo: conversazione singola attesa, got %+v", lunch)
+	}
+	if !labelled {
+		t.Error("nessuna conversazione con label utente nel seed")
+	}
+}
+
+// Piano 8, Task 12: la conversazione apre tutti i suoi messaggi in ordine
+// cronologico, comprese le risposte in Inviati.
+func TestDemoStoreThreadMessagesCronologici(t *testing.T) {
+	mk := DemoStore()
+	refs, err := mk.ThreadMessages(t.Context(), demoThreadDesign)
+	if err != nil {
+		t.Fatalf("ThreadMessages: %v", err)
+	}
+	if len(refs) != 4 {
+		t.Fatalf("messaggi del thread = %d, voglio 4", len(refs))
+	}
+	for i := 1; i < len(refs); i++ {
+		if refs[i].Date.Before(refs[i-1].Date) {
+			t.Errorf("ordine non cronologico a posizione %d", i)
+		}
+	}
+	if !containsStr(senders(refs), "tu@example.com") {
+		t.Errorf("nel thread manca la risposta inviata dall'utente")
+	}
+}
+
+// Piano 8, Task 12, dalla demo: la lista mostra la riga della conversazione con
+// il contatore, e aprirla mostra la risposta dell'utente nella vista thread.
+func TestDemoConversazioneAperta(t *testing.T) {
+	m := pagedModel(t, DemoStore())
+	// Una sola riga per la conversazione di quattro messaggi, con il contatore.
+	m, _ = step(m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	if n := strings.Count(m.inbox.View(), "Re: design review"); n != 1 {
+		t.Fatalf("righe «Re: design review» = %d, voglio una riga per conversazione", n)
+	}
+	if !strings.Contains(m.inbox.View(), "(4)") {
+		t.Errorf("riga della conversazione senza il contatore (4):\n%s", m.inbox.View())
+	}
+	var row msg.MessageRef
+	for _, r := range m.refs {
+		if r.ThreadID == demoThreadDesign {
+			row = r
+		}
+	}
+	if row.ID == "" {
+		t.Fatal("riga della conversazione non trovata in lista")
+	}
+	m, cmd := step(m, inboxSelected(row))
+	for _, ms := range runCmd(cmd) {
+		if _, ok := ms.(msgLoaded); ok {
+			m, _ = step(m, ms)
+		}
+	}
+	if !strings.Contains(m.thread.View(), "▸ tu@example.com") {
+		t.Errorf("la vista thread deve mostrare la risposta dell'utente compressa:\n%s", m.thread.View())
+	}
+}
+
+// containsStr dice se s contiene v.
+func containsStr(s []string, v string) bool {
+	for _, x := range s {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
+
+// senders estrae i mittenti dei ref.
+func senders(refs []msg.MessageRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.From)
+	}
+	return out
 }

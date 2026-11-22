@@ -26,6 +26,9 @@ import (
 // Un errore a metà (SELECT/MOVE di un gruppo) lascia già spostati i gruppi
 // precedenti: IMAP non offre transazioni, il refresh della UI rilegge lo stato.
 func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) error {
+	if err := s.refuseAllMail(ctx, ids, "cestina"); err != nil {
+		return err
+	}
 	defer s.gate.acquire()() // gate: SELECT/MOVE rompono l'IDLE; listMailboxes sotto gate
 
 	if err := ctx.Err(); err != nil {

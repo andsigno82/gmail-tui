@@ -65,6 +65,7 @@ func DemoStore() *mail.Mock {
 				From:    "newsletter@golangweekly.dev",
 				Subject: "Go Weekly: novità dalla community",
 				Date:    now.Add(-3 * 24 * time.Hour),
+				Labels:  []string{"Newsletter"},
 			},
 			To:       []string{"tu@example.com"},
 			BodyText: "In questo numero:\n\n- il nuovo client IMAP in puro Go\n- pattern per le tea.Cmd nei progetti Bubble Tea\n- unprofilatore di goroutine via browser\n\nLeggi il numero completo online.",
@@ -76,6 +77,7 @@ func DemoStore() *mail.Mock {
 				Subject: "Promemoria: formazione sicurezza",
 				Date:    now.Add(-4 * 24 * time.Hour),
 				Unread:  true,
+				Labels:  []string{"Lavoro", "Formazione"},
 			},
 			To:       []string{"tu@example.com"},
 			BodyText: "Gentile collega,\n\nricordiamo che la formazione sulla sicurezza va completata entro fine mese.\n\nIl corso dura 40 minuti ed è disponibile sulla intranet.\n\nHR",
@@ -89,6 +91,17 @@ func DemoStore() *mail.Mock {
 			},
 			To:       []string{"tu@example.com"},
 			BodyText: "Per me venerdì va bene, confermo il posto delle scorse volte.\n\nIl 17 nov 2026, tu@example.com ha scritto:\n> Ci vediamo venerdì per il solito pranzo?",
+		},
+		{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("INBOX", 7),
+				From:    "anna@example.dev",
+				Subject: "Re: design review",
+				Date:    now.Add(-40 * time.Minute),
+				Unread:  true,
+			},
+			To:       []string{"tu@example.com"},
+			BodyText: "Fatto: il padding dell'header ora è di 3 colonne, come da mockup.\n\nRiesci a rivedere la bozza entro domani?\n\nAnna",
 		},
 	}
 	// Piano 7, fix review 8: cartelle e label del seed. Inviati (ruolo sent) e
@@ -123,6 +136,16 @@ func DemoStore() *mail.Mock {
 		},
 		&msg.Message{
 			Ref: msg.MessageRef{
+				ID:      msg.NewID("[Gmail]/Inviati", 3),
+				From:    "tu@example.com",
+				Subject: "Re: design review",
+				Date:    now.Add(-20 * time.Minute),
+			},
+			To:       []string{"anna@example.dev"},
+			BodyText: "Perfetto, grazie Anna. Ricarico la bozza e ti scrivo domani.\n\nA dopo!",
+		},
+		&msg.Message{
+			Ref: msg.MessageRef{
 				ID:      msg.NewID("Work", 1),
 				From:    "sprint@example.dev",
 				Subject: "Sprint 47: obiettivi",
@@ -148,5 +171,35 @@ func DemoStore() *mail.Mock {
 	mk.Raw[msg.NewID("INBOX", 3)] = map[int][]byte{
 		1: []byte("%PDF-1.4\n% gmail-tui: allegato fittizio della modalità demo\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n"),
 	}
+	// Thread e ID Gmail simulati (X-GM-THRID, X-GM-MSGID): ogni messaggio del
+	// seed appartiene a una conversazione, risposte dell'utente incluse.
+	threadOf := map[msg.MessageID]uint64{
+		msg.NewID("INBOX", 1):           1005,
+		msg.NewID("INBOX", 2):           demoThreadDesign,
+		msg.NewID("INBOX", 3):           demoThreadSpese,
+		msg.NewID("INBOX", 4):           1006,
+		msg.NewID("INBOX", 5):           1007,
+		msg.NewID("INBOX", 6):           demoThreadLunch,
+		msg.NewID("INBOX", 7):           demoThreadDesign,
+		msg.NewID("[Gmail]/Inviati", 1): demoThreadDesign,
+		msg.NewID("[Gmail]/Inviati", 2): demoThreadSpese,
+		msg.NewID("[Gmail]/Inviati", 3): demoThreadDesign,
+		msg.NewID("Work", 1):            demoThreadSprint,
+		msg.NewID("Work", 2):            demoThreadSprint,
+	}
+	for i, mm := range mk.Msgs {
+		mm.Ref.ThreadID = threadOf[mm.Ref.ID]
+		mm.Ref.GmailID = demoGmailBase + uint64(i+1)
+	}
 	return mk
 }
+
+// Identificatori dei thread e base degli ID Gmail del seed (Piano 8, Task 12).
+// Gli ID Gmail sono sopra 2^53: serializzati come stringa in JSON (D8-2).
+const (
+	demoThreadDesign = uint64(1001)
+	demoThreadSpese  = uint64(1002)
+	demoThreadSprint = uint64(1003)
+	demoThreadLunch  = uint64(1004)
+	demoGmailBase    = uint64(1_800_000_000_000_000_000)
+)

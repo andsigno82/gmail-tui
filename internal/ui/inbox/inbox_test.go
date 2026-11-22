@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
@@ -367,5 +368,97 @@ func TestAtEnd(t *testing.T) {
 	empty := newTestModel(t, nil)
 	if empty.AtEnd() {
 		t.Error("lista vuota: AtEnd = true (nessuna pagina da chiedere)")
+	}
+}
+
+// --- Piano 8, Task 9: riga-conversazione ------------------------------------
+
+// testConv è una conversazione di 3 messaggi (2 partecipanti, non letta) con
+// una label utente: la riga mostra il più recente.
+func testConv() mail.Conversation {
+	latest := msg.MessageRef{
+		ID: msg.NewID("[Gmail]/Tutti i messaggi", 9), From: "Mario", Subject: "preventivo",
+		Date: testNow().Add(-time.Hour), ThreadID: 7,
+	}
+	return mail.Conversation{
+		Latest: latest, ThreadID: 7, Count: 3,
+		Participants: []string{"Mario", "Anna"}, Unread: true, Labels: []string{"lavoro"},
+	}
+}
+
+// TestConversazioneMostraPartecipantiEContatore: "primo e altri N (conteggio)".
+func TestConversazioneMostraPartecipantiEContatore(t *testing.T) {
+	m := newTestModel(t, nil)
+	m.SetConversations([]mail.Conversation{testConv()})
+	first := rows(m)[0]
+	if !strings.Contains(first, "Mario e altri 1 (3)") {
+		t.Errorf("riga = %q, voglio \"Mario e altri 1 (3)\"", first)
+	}
+	if !strings.Contains(first, "preventivo") {
+		t.Errorf("riga = %q, voglio l'oggetto del messaggio più recente", first)
+	}
+}
+
+// TestConversazioneNonLettaUsaLoStatoDellaConversazione: il marker e il grassetto
+// seguono Conversation.Unread (almeno un non letto), non il solo ultimo messaggio.
+func TestConversazioneNonLettaUsaLoStatoDellaConversazione(t *testing.T) {
+	c := testConv()
+	c.Latest.Unread = false
+	m := newTestModel(t, nil)
+	m.SetConversations([]mail.Conversation{c})
+	if first := rows(m)[0]; !strings.Contains(first, "●") {
+		t.Errorf("riga = %q, voglio il marker ● (Conversation.Unread)", first)
+	}
+}
+
+// TestConversazioneLabelTroncate: la prima label vince, le altre diventano +N.
+func TestConversazioneLabelTroncate(t *testing.T) {
+	c := testConv()
+	c.Labels = []string{"lavoro", "progetto-lungo-nome", "x"}
+	m := newTestModel(t, nil)
+	m.SetConversations([]mail.Conversation{c})
+	first := rows(m)[0]
+	if !strings.Contains(first, "[lavoro]") {
+		t.Errorf("riga = %q, voglio la prima label [lavoro]", first)
+	}
+	if strings.Contains(first, "[progetto-lungo-nome]") {
+		t.Errorf("riga = %q, la seconda label non entra: deve diventare +N", first)
+	}
+	if !strings.Contains(first, "+2") {
+		t.Errorf("riga = %q, voglio il riepilogo +2", first)
+	}
+	if w := lipgloss.Width(first); w != 80 {
+		t.Errorf("larghezza riga = %d, voglio 80", w)
+	}
+}
+
+// TestSingoloMessaggioInvariato: con una riga da un solo messaggio il testo è
+// quello di sempre (un mittente, nessun contatore, nessuna label).
+func TestSingoloMessaggioInvariato(t *testing.T) {
+	m := newTestModel(t, testRefs())
+	m.SetConversations([]mail.Conversation{mail.SingleConversation(testRefs()[0])})
+	first := rows(m)[0]
+	if strings.Contains(first, "altri") || strings.Contains(first, "(") {
+		t.Errorf("riga = %q, un messaggio singolo non ha contatore né altri", first)
+	}
+	if !strings.Contains(first, "a@x.dev") || !strings.Contains(first, "prima") {
+		t.Errorf("riga = %q, mittente e oggetto devono restare", first)
+	}
+}
+
+// Piano 8, fix riga conversazione: il contatore "(N)" non si tronca mai. Con
+// partecipanti lunghi la colonna del mittente tronca il nome, non il contatore.
+func TestContatoreConversazioneNonTroncato(t *testing.T) {
+	c := testConv()
+	c.Count = 12
+	c.Participants = []string{"anna.bianchi.lunghissimo@example.org", "mario@x.dev", "luca@x.dev"}
+	for _, w := range []int{80, 140} {
+		m := newTestModel(t, nil)
+		m.SetSize(w, 10)
+		m.SetConversations([]mail.Conversation{c})
+		first := rows(m)[0]
+		if !strings.Contains(first, "(12)") {
+			t.Errorf("larghezza %d: riga = %q, il contatore (12) deve restare visibile", w, first)
+		}
 	}
 }

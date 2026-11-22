@@ -10,6 +10,10 @@ type Query struct {
 	Unread        bool
 	Starred       bool
 	HasAttachment bool
+
+	// Raw (Piano 8, Task 5): sintassi di ricerca Gmail completa, passata
+	// verbatim a X-GM-RAW dal backend Gmail. Vuota = non attiva.
+	Raw string
 }
 
 // IsEmpty true se nessun filtro attivo.

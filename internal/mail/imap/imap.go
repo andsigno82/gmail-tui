@@ -41,6 +41,10 @@ type Store struct {
 	client *imapclient.Client
 	wakes  chan watchWake // canale del Watch attivo, nil se nessuno
 
+	// gmail: il server annuncia X-GM-EXT-1 (Piano 8, Task 6). Scritto in Connect
+	// e Close sotto mu; letto con gmailOn().
+	gmail bool
+
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
 	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox
@@ -229,7 +233,8 @@ func (s *Store) Connect(ctx context.Context) error {
 		_ = c.Close()
 		return fmt.Errorf("imap login %s: %w", s.opts.Username, err)
 	}
-	s.gate.reset() // riese dopo Close: il gate torna operativo
+	s.gate.reset()                       // riese dopo Close: il gate torna operativo
+	s.gmail = c.Caps().Has(capGmailExt1) // Piano 8, Task 6
 	s.client = c
 	return nil
 }
@@ -251,6 +256,7 @@ func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gate.close()
+	s.gmail = false // Piano 8, Task 6
 	if s.client == nil {
 		return nil
 	}
@@ -291,6 +297,13 @@ func (s *Store) connected() (*imapclient.Client, error) {
 // Watch solo a sequenza conclusa, così la SELECT non può essere scavalcata
 // da una SELECT del Watch tra SEARCH e FETCH.
 func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error) {
+	if q.Raw != "" { // Piano 8, Task 8: ricerca X-GM-RAW paginata in memoria
+		refs, err := s.searchRaw(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		return pageRefs(refs, pg), nil
+	}
 	defer s.gate.acquire()()
 
 	mailbox, uids, err := s.selectAndSearch(ctx, q)
@@ -349,11 +362,15 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 		return nil, err
 	}
 
+	gm := s.gmailOn() // Piano 8, Task 8: X-GM-* solo se il server li annuncia
 	cmd := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
-		UID:          true,
-		Envelope:     true,
-		Flags:        true,
-		InternalDate: true,
+		UID:           true,
+		Envelope:      true,
+		Flags:         true,
+		InternalDate:  true,
+		GmailMsgID:    gm,
+		GmailThreadID: gm,
+		GmailLabels:   gm,
 	})
 	bufs, err := cmd.Collect()
 	if err != nil {
@@ -366,7 +383,11 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 
 	refs := make([]msg.MessageRef, 0, len(uids))
 	for i := len(uids) - 1; i >= 0; i-- { // dal più nuovo al più vecchio
-		refs = append(refs, toRef(mailbox, uids[i], byUID[uids[i]]))
+		ref := toRef(mailbox, uids[i], byUID[uids[i]])
+		if gm {
+			setGmailFields(&ref, byUID[uids[i]])
+		}
+		refs = append(refs, ref)
 	}
 	return refs, nil
 }

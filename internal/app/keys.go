@@ -23,6 +23,8 @@ import (
 // con la UI. Il campo Help() è l'unica fonte del help generato.
 type appKeys struct {
 	Move       key.Binding // j k ↑ ↓ — cursore lista / scroll thread
+	Message    key.Binding // j k — messaggio precedente/successivo nel thread (conversazione, Piano 8, Task 10)
+	Expand     key.Binding // invio — espande/comprime il messaggio selezionato nel thread (Piano 8, Task 10)
 	Scroll     key.Binding // pgup pgdn space d u — scroll pagina viewport (thread; f/b liberati dal rebind, P4 Task 3)
 	OpenSel    key.Binding // invio — apri il messaggio selezionato (inbox)
 	Quit       key.Binding // q esc — esci dall'app (inbox)
@@ -62,6 +64,8 @@ type appKeys struct {
 // allineato il routing (e viceversa).
 var keys = appKeys{
 	Move:       key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "sposta")),
+	Message:    key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "messaggio")),
+	Expand:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "espandi/comprimi")),
 	Scroll:     key.NewBinding(key.WithKeys("pgup", "pgdn", "space", "d", "u"), key.WithHelp("pgup/pgdn/space/d/u", "scroll pagina")),
 	OpenSel:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "apri")),
 	Quit:       key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q/esc", "esci")),
@@ -148,7 +152,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// publicizzato: i tasti vanno tutti al wizard (precedente composer).
 		return []key.Binding{keys.WizardCont, keys.WizardSkip, keys.ForceQuit}
 	case viewThread:
-		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Settings, keys.Help}
+		return []key.Binding{keys.Back, keys.Message, keys.Expand, keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Settings, keys.Help}
 	case viewComposer:
 		// Nel composer i tasti operativi sono nella riga d'uso del modello
 		// (tab/ctrl+e/ctrl+s) e la barra documenta solo annulla: `?` qui è
@@ -195,7 +199,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 		return [][]key.Binding{{keys.WizardCont, keys.WizardSkip, keys.ForceQuit}}
 	case viewThread:
 		return [][]key.Binding{
-			{keys.Move, keys.Scroll, keys.Open, keys.Back},
+			{keys.Message, keys.Expand, keys.Scroll, keys.Open, keys.Back},
 			{keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Command, keys.Settings},
 			{keys.Help},
 		}

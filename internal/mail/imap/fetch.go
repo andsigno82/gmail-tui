@@ -69,7 +69,7 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 		defer s.gate.acquire()()
 	}
 
-	raw, flags, uidValidity, err := s.fetchRaw(mailbox, imap.UID(uid))
+	raw, flags, uidValidity, gx, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +78,11 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 	if err != nil {
 		return nil, fmt.Errorf("imap fetch %s: %w", id, err)
 	}
+	// Piano 8, review punto 1: gli ID Gmail e le label utente nel Ref, come nelle
+	// righe di lista: la cache e la deduplica per GmailID ne hanno bisogno.
+	m.Ref.GmailID = gx.msgID
+	m.Ref.ThreadID = gx.threadID
+	m.Ref.Labels = userLabels(gx.labels)
 	// Riconciliazione dai FLAGS del fetch (msg.Parse non li conosce).
 	m.Ref.Unread = true
 	m.Ref.Starred = false
@@ -119,7 +124,7 @@ func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, 
 	// Gate (fix review): il download tocca la rete — rompe l'eventuale IDLE.
 	defer s.gate.acquire()()
 
-	raw, _, _, err := s.fetchRaw(mailbox, imap.UID(uid))
+	raw, _, _, _, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
 		return err
 	}
@@ -158,25 +163,35 @@ func usefulAttachments(env *enmime.Envelope) []*enmime.Part {
 // completi) con BODY.PEEK[] — non imposta \Seen — insieme ai FLAGS correnti
 // e alla UIDValidity della SELECT (chiave di invalidazione della cache).
 // Nessun dato (uid inesistente) ⇒ errore che wrappa ErrMessageNotFound.
-func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap.Flag, uidValidity uint32, err error) {
+// gmailFields sono gli attributi X-GM-* del fetch del corpo (zero fuori da Gmail).
+type gmailFields struct {
+	msgID, threadID uint64
+	labels          []string
+}
+
+func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap.Flag, uidValidity uint32, gx gmailFields, err error) {
 	c, err := s.connected()
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, nil, 0, gmailFields{}, err
 	}
 	sel, err := c.Select(mailbox, nil).Wait()
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("imap select %s: %w", mailbox, err)
+		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
 
 	section := &imap.FetchItemBodySection{Peek: true} // BODY.PEEK[] = messaggio intero, senza \Seen
+	gm := s.gmailOn()                                 // X-GM-* del messaggio solo se il server li annuncia (Piano 8)
 	cmd := c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
-		UID:         true,
-		Flags:       true,
-		BodySection: []*imap.FetchItemBodySection{section},
+		UID:           true,
+		Flags:         true,
+		BodySection:   []*imap.FetchItemBodySection{section},
+		GmailMsgID:    gm,
+		GmailThreadID: gm,
+		GmailLabels:   gm,
 	})
 	bufs, err := cmd.Collect()
 	if err != nil {
-		return nil, nil, 0, fmt.Errorf("imap fetch body in %s: %w", mailbox, err)
+		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap fetch body in %s: %w", mailbox, err)
 	}
 	var buf *imapclient.FetchMessageBuffer
 	for _, b := range bufs {
@@ -186,11 +201,12 @@ func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap
 		}
 	}
 	if buf == nil {
-		return nil, nil, 0, fmt.Errorf("%w: uid %d in %s", ErrMessageNotFound, uid, mailbox)
+		return nil, nil, 0, gmailFields{}, fmt.Errorf("%w: uid %d in %s", ErrMessageNotFound, uid, mailbox)
 	}
 	raw = buf.FindBodySection(section)
 	if raw == nil {
-		return nil, nil, 0, fmt.Errorf("%w: uid %d in %s, corpo assente nella risposta", ErrMessageNotFound, uid, mailbox)
+		return nil, nil, 0, gmailFields{}, fmt.Errorf("%w: uid %d in %s, corpo assente nella risposta", ErrMessageNotFound, uid, mailbox)
 	}
-	return raw, buf.Flags, sel.UIDValidity, nil
+	gx = gmailFields{msgID: buf.GmailMsgID, threadID: buf.GmailThreadID, labels: buf.GmailLabels}
+	return raw, buf.Flags, sel.UIDValidity, gx, nil
 }

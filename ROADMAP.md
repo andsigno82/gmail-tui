@@ -59,6 +59,13 @@ with an App Password (no Google Cloud project, no OAuth):
 - **Readable colors** — text on colored bars is computed to reach WCAG AA
   contrast on every theme.
 
+## Unreleased — delivered
+
+- **Gmail conversations** — threads by `X-GM-THRID`, Gmail search syntax with
+  `X-GM-RAW`, per-message labels with `X-GM-LABELS`, via an in-tree patch of
+  go-imap (see `third_party/go-imap/PATCHES.md`). Servers without `X-GM-EXT-1`
+  keep one row per message.
+
 ## v1.1 — planned
 
 - **Send-only CLI completion** — allow `gmail-tui fetch`/`send` to work
@@ -67,9 +74,6 @@ with an App Password (no Google Cloud project, no OAuth):
 
 ## Next — planned
 
-- **Gmail conversations** — threads by `X-GM-THRID`, full Gmail search syntax
-  with `X-GM-RAW`, per-message labels with `X-GM-LABELS`, via an in-tree patch
-  of go-imap.
 - **Drafts and contacts** — save/resume drafts in the Gmail Drafts folder;
   address completion from previously seen addresses plus an optional external
   address-book command.

@@ -57,6 +57,8 @@ type Model struct {
 	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
 	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
+	threadGen int             // generazione del thread: scarta i corpi arrivati per un thread superato (Piano 8, Task 13)
+	rowRef    msg.MessageRef  // riga aperta nel thread: base delle azioni sulla conversazione a, #, l (Piano 8, review punto 4)
 	composer  composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
 	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
@@ -109,27 +111,33 @@ type Model struct {
 	// salva. SetConfigPath lo sostituisce (seam main/test).
 	cfgPath string
 
-	view          view
-	refs          []msg.MessageRef // copia dei ref correnti (uso interno/test)
-	pendingRef    msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
-	query         msg.Query        // query corrente della lista (refresh dopo op, Task 7)
-	queryRaw      string           // stringa digitata della query corrente ("" = inbox)
-	status        statusMsg        // ultimo messaggio di status (effimero)
-	startup       bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
-	pending       int              // op store in flight (>0: spinner attivo)
-	connectFailed bool             // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
-	refreshing    bool             // re-list silenzioso in flight (coalescing, Task 8)
-	listGen       int              // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
-	refreshGen    int              // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
-	dirty         bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
-	dirtyDeep     bool             // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
-	exhausted     bool             // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
-	loadingMore   bool             // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
-	folder        mail.Mailbox     // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
-	folderOpen    bool             // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
-	folderList    list.Model       // elenco del selettore cartelle (bubbles/list, folders.go)
-	trashOpen     bool             // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
-	trashRef      msg.MessageRef   // messaggio in conferma: letto all'apertura, non al sì
+	view view
+	refs []msg.MessageRef // copia dei ref correnti (uso interno/test)
+	// sums è il riepilogo delle conversazioni caricate, per ID del messaggio più
+	// recente (Piano 8, Task 9): la lista è refs + sums; una riga senza riepilogo
+	// è una conversazione di un solo messaggio.
+	sums          map[msg.MessageID]mail.Conversation
+	pendingRef    msg.MessageRef // ref aperto in attesa della thread view (Task 5)
+	query         msg.Query      // query corrente della lista (refresh dopo op, Task 7)
+	queryRaw      string         // stringa digitata della query corrente ("" = inbox)
+	prevQueryRaw  string         // query precedente, ripristinata se la ricerca fallisce (Piano 8, Task 11)
+	prevQuery     msg.Query
+	status        statusMsg      // ultimo messaggio di status (effimero)
+	startup       bool           // status d'avvio (banner demo/warning tema): sopravvive al primo load
+	pending       int            // op store in flight (>0: spinner attivo)
+	connectFailed bool           // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
+	refreshing    bool           // re-list silenzioso in flight (coalescing, Task 8)
+	listGen       int            // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
+	refreshGen    int            // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
+	dirty         bool           // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+	dirtyDeep     bool           // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
+	exhausted     bool           // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
+	loadingMore   bool           // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
+	folder        mail.Mailbox   // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
+	folderOpen    bool           // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
+	folderList    list.Model     // elenco del selettore cartelle (bubbles/list, folders.go)
+	trashOpen     bool           // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
+	trashRef      msg.MessageRef // messaggio in conferma: letto all'apertura, non al sì
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -291,6 +299,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if ev.query != "" {
 				text = fmt.Sprintf("ricerca %q: %v", ev.query, ev.err)
 			}
+			if ev.query != "" {
+				// Piano 8, Task 11: la ricerca fallita non resta come stato corrente;
+				// la lista precedente torna con la sua query (paginazione e refresh).
+				m.queryRaw, m.query = m.prevQueryRaw, m.prevQuery
+			}
 			cmd := m.toast.Push(toast.Error, text)
 			return m, cmd
 		}
@@ -324,7 +337,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		case ev.silent && len(refs) == ev.limit && len(m.refs) > len(refs):
 			refs = appendUnique(refs, m.refs[len(refs):])
 		default:
-			m.exhausted = len(refs) < ev.limit
+			m.exhausted = len(refs) < ev.limit && !ev.limited
 		}
 		if !ev.silent {
 			// Lista sostituita: un'eventuale pagina in volo appartiene alla
@@ -335,7 +348,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if !ev.silent {
 			if ev.query != "" {
 				// Badge dei risultati di ricerca: conteggio + query digitata.
-				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+				// Piano 8, Task 11: la ricerca Gmail dichiara il suo ambito (Tutti i messaggi).
+				scope := ""
+				if m.query.Raw != "" {
+					scope = " in Tutti i messaggi"
+				}
+				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q%s", len(ev.refs), ev.query, scope)}
 			} else if m.startup {
 				// Status d'avvio (banner demo o warning tema, Task 9): il
 				// load di Init NON lo cancella — resta finché un evento vero
@@ -349,11 +367,17 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.status = statusMsg{}
 			}
 		}
+		if ev.limited {
+			// Piano 8, review punto 3: la lista non è esaurita, lo dice la barra
+			// (dopo il reset del re-list sopra, che altrimenti lo cancellerebbe).
+			m.status = statusMsg{text: limitedStatus}
+		}
 		// L'inbox riceve i ref direttamente qui (update di campo): con
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
 		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
 		// nulla. La cmd viene comunque propagata per fedeltà all'API.
-		cmd := m.inbox.SetRefs(refs)
+		m.rememberConvs(ev.convs)
+		cmd := m.inbox.SetConversations(m.convsOf(refs))
 		if ev.silent && len(refs) > 0 {
 			// Ripristino del cursore dopo il refresh di un'op: stesso
 			// messaggio se c'è ancora nell'elenco (anche se si è spostato),
@@ -398,24 +422,23 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura messaggio: %v", ev.err))
 			return m, cmd
 		}
-		if ev.m == nil {
-			// Difensiva (il contratto MailStore non prevede (nil, nil)):
-			// senza guardia thread.New dereferenzerebbe un puntatore nullo.
+		refs, bodies := loadedThread(ev.refs, ev.bodies, ev.m)
+		if len(refs) == 0 {
+			// Difensiva (il contratto MailStore non prevede (nil, nil)): senza righe
+			// thread.NewLazy non avrebbe un messaggio da mostrare.
 			cmd := m.toast.Push(toast.Error, "apertura messaggio: risposta vuota dallo store")
 			return m, cmd
 		}
-		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
-		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
-		m.thread = thread.New(m.pendingRef, ev.m, m.styles)
+		// Il fetch è riuscito: si costruisce la thread view vera (Piano 8, Task 10
+		// e 13: conversazione con i corpi degli espansi), dimensionata se la size
+		// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
+		// precedente sono scartati.
+		m.threadGen++
+		m.thread = thread.NewLazy(m.pendingRef, refs, bodies, m.styles)
 		m.relayout()
-		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
-		// concatenata, errore SOLO in status (non fatale). La copia locale
-		// del ref passa a letta subito; refresh=false (Task 5): niente
-		// re-list, la lista si aggiorna via Watch/nuova ricerca, il back
-		// preserva la lista.
-		if ev.m.Ref.Unread {
+		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
 			m.thread.MarkRead()
-			return m, markRead(m.store, ev.m.Ref.ID, true, false)
+			return m, markReadIDs(m.store, m.pendingRef, unread)
 		}
 		return m, nil
 
@@ -461,11 +484,15 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("caricamento messaggi: %v", ev.err))
 			return m, cmd
 		}
-		m.exhausted = len(ev.refs) < pageSize
+		m.exhausted = len(ev.refs) < pageSize && !ev.limited
+		if ev.limited {
+			m.status = statusMsg{text: limitedStatus}
+		}
 		m.refs = appendUnique(m.refs, ev.refs)
 		// Piano 7, fix code-review 3: m.inbox si muta nella chiamata (ricevitore
 		// puntatore): la cmd va calcolata PRIMA di costruire il Model restituito.
-		cmd := m.inbox.AppendRefs(ev.refs)
+		m.rememberConvs(ev.convs)
+		cmd := m.inbox.AppendConversations(m.convsOf(ev.refs))
 		return m, cmd
 
 	case opDone:
@@ -489,6 +516,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		toastCmd := m.toast.Push(toast.Success, ev.label)
 		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
 		localCmd := m.setLocalRead(ev.localID, ev.localRead)
+		if ev.convSet {
+			// Piano 8, Task 9b: il grassetto della riga segue l'intera conversazione.
+			localCmd = tea.Batch(localCmd, m.setConvUnread(ev.localID, ev.convUnread))
+		}
 		if ev.closeComposer {
 			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
 			// torna all'inbox (come da piano); il feedback "inviato" resta in
@@ -531,7 +562,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingRef = ev.Ref
 		m.view = viewThread
 		m.pending++ // fetch in flight
-		return m, tea.Batch(fetchMsg(m.store, ev.Ref.ID), m.spinner.Tick)
+		m.rowRef = ev.Ref
+		return m, tea.Batch(fetchMsg(m.store, ev.Ref, m.folder), m.spinner.Tick)
 
 	case thread.BackMsg:
 		// Uscita dal thread: si torna all'inbox così com'era — nessun
@@ -634,7 +666,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m.previewMarkRead(ev.tok)
 		}
 		m.pending++
-		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef.ID), m.spinner.Tick)
+		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef, m.folder), m.spinner.Tick)
 
 	case previewLoaded:
 		// Esito del fetch dell'anteprima: scartato se il token non è più quello
@@ -648,22 +680,48 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("anteprima: %v", ev.err))
 			return m, cmd
 		}
-		if ev.m == nil {
+		refs, bodies := loadedThread(ev.refs, ev.bodies, ev.m)
+		if len(refs) == 0 {
 			cmd := m.toast.Push(toast.Error, "anteprima: risposta vuota dallo store")
 			return m, cmd
 		}
-		m.thread = thread.New(m.prevRef, ev.m, m.styles)
+		m.threadGen++
+		m.thread = thread.NewLazy(m.prevRef, refs, bodies, m.styles)
 		m.relayout()
 		return m.previewMarkRead(ev.tok)
+
+	case thread.BodyRequested:
+		// Corpo di un messaggio della conversazione (Piano 8, Task 13): selezionato
+		// o espanso senza corpo; scaricato fuori dal loop UI.
+		m.pending++
+		return m, tea.Batch(fetchBody(m.store, m.threadGen, ev.Anchor, ev.ID), m.spinner.Tick)
+
+	case bodyLoaded:
+		// Esito del corpo richiesto: scartato se la generazione del thread o la
+		// riga aperta non sono più quelle della richiesta (Piano 8, Task 13).
+		m.doneOp()
+		if ev.gen != m.threadGen || ev.anchor != m.thread.AnchorID() {
+			return m, nil
+		}
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("corpo del messaggio: %v", ev.err))
+			return m, cmd
+		}
+		m.thread.SetBody(ev.id, ev.m)
+		return m, nil
 
 	case previewReadDue:
 		// Segna come letto ritardato (U5, "dopo 2 secondi"): solo se il messaggio
 		// è ancora quello in anteprima, con lo stesso token e ancora non letto.
-		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.Ref().ID != ev.id || !m.thread.Ref().Unread {
+		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.AnchorID() != ev.id {
+			return m, nil
+		}
+		unread := m.thread.UnreadIDs()
+		if len(unread) == 0 {
 			return m, nil
 		}
 		m.thread.MarkRead()
-		return m, markRead(m.store, ev.id, true, false)
+		return m, markReadIDs(m.store, m.prevRef, unread)
 
 	case composeLoaded:
 		// Risultato del fetch per r/f nell'inbox (Piano 4, Task 3). Come per
@@ -1084,7 +1142,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 					// Piano 7.2, fix review: click sinistro sull'anteprima = focus; doppio
 					// click = thread a schermo intero (previewClick).
 					if click, ok := ev.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-						return m.previewClick()
+						return m.previewClick(click.Mouse().Y)
 					}
 					if _, wheel := ev.(tea.MouseWheelMsg); wheel && m.previewReady() {
 						var cmd tea.Cmd
@@ -1211,10 +1269,13 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 	m.view = viewInbox
 	m.search.Blur()
 	m.search.Reset()
+	// La query precedente si ricorda: se la ricerca fallisce, lo stato torna lì
+	// (Piano 8, Task 11: la lista precedente resta con la sua query).
+	m.prevQueryRaw, m.prevQuery = m.queryRaw, m.query
 	m.queryRaw = raw
 	m.query = msg.Query{}
 	if raw != "" {
-		m.query = msg.ParseQuery(raw)
+		m.query = searchQuery(m.store, raw)
 	}
 	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
 	m.listGen++ // nuova generazione: i risultati della lista precedente sono stanti (fix review 2)
@@ -1225,8 +1286,9 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 // finché il wiring del programma non esponga il ctx del programma (Task 7/8).
 func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
-		return msgsLoaded{refs: refs, err: err, limit: pageSize, mailbox: box, gen: gen}
+		convs, err := st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
+		lim, err := scanLimited(err)
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, limit: pageSize, limited: lim, mailbox: box, gen: gen}
 	}
 }
 
@@ -1248,10 +1310,10 @@ func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
 // L'ID richiesto viaggia DENTRO il risultato: i fetch non hanno ordine
 // garantito e il handler lo usa per scartare le risposte stanti (fix
 // merge-gate anti-race).
-func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
+func fetchMsg(st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) tea.Cmd {
 	return func() tea.Msg {
-		mm, err := st.FetchMessage(context.Background(), id)
-		return msgLoaded{m: mm, err: err, requested: id}
+		refs, bodies, err := loadConversation(context.Background(), st, ref, folder)
+		return msgLoaded{m: bodies[ref.ID], refs: refs, bodies: bodies, err: err, requested: ref.ID}
 	}
 }
 

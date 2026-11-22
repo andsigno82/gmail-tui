@@ -54,11 +54,13 @@ type OpenedMsg struct {
 // line `:` aperta (cmdmode.go) una riga extra sotto il corpo ospita l'input;
 // col filepicker di :save il picker sostituisce corpo e allegati.
 type Model struct {
-	ref      msg.MessageRef // copia del ref (MarkRead la muta in locale)
-	msg      *msg.Message   // messaggio completo (nil finché non caricato)
+	id       msg.MessageID // riga aperta: identità per anteprima e stantii (Piano 8, Task 10)
+	conv     []entry       // messaggi in ordine cronologico; uno solo = vista singola
+	sel      int           // messaggio selezionato: azioni, r/f, o, :save (default l'ultimo)
+	starts   []int         // riga del titolo di ogni messaggio nel contenuto (solo conversazione)
 	vp       viewport.Model
-	header   string   // blocco header pre-renderizzato (4 righe)
-	attLines []string // righe allegati pre-renderizzate (vuoto se nessuno)
+	header   string   // blocco header pre-renderizzato (4 righe) del messaggio selezionato
+	attLines []string // righe allegati pre-renderizzate del messaggio selezionato
 	st       styles.Styles
 	width    int
 	height   int
@@ -71,10 +73,39 @@ type Model struct {
 	pickPart   int // PartIndex dell'allegato da salvare (n-1)
 }
 
-// New costruisce la vista thread per il messaggio appena caricato. full nil
-// è difensivo: si rende solo l'header (usato anche prima del fetch).
+// entry è un messaggio della conversazione nella vista thread (Piano 8, Task 10).
+type entry struct {
+	ref      msg.MessageRef // copia locale (MarkRead e op la aggiornano)
+	full     *msg.Message   // corpo completo (nil finché non caricato)
+	expanded bool           // espanso: corpo visibile; compresso: una riga di titolo
+}
+
+// New costruisce la vista thread per un messaggio singolo (fallback senza
+// X-GM-EXT-1: comportamento precedente al Piano 8, Task 10). full nil è
+// difensivo: si rende solo l'header (usato anche prima del fetch).
 func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
-	m := Model{ref: ref, msg: full, st: st}
+	m := newBase(ref.ID, st)
+	m.conv = []entry{{ref: ref, full: full, expanded: true}}
+	m.refresh()
+	return m
+}
+
+// NewConversation costruisce la vista della conversazione (Piano 8, Task 10):
+// full in ordine cronologico, anchor è la riga aperta. Espansi: l'ultimo
+// messaggio e i non letti; compressi: gli altri. Selezione di default: l'ultimo.
+func NewConversation(anchor msg.MessageRef, full []*msg.Message, st styles.Styles) Model {
+	refs := make([]msg.MessageRef, 0, len(full))
+	bodies := make(map[msg.MessageID]*msg.Message, len(full))
+	for _, f := range full {
+		refs = append(refs, f.Ref)
+		bodies[f.Ref.ID] = f
+	}
+	return NewLazy(anchor, refs, bodies, st)
+}
+
+// newBase prepara viewport (con il rebind dello scroll) e command line.
+func newBase(id msg.MessageID, st styles.Styles) Model {
+	m := Model{id: id, st: st}
 	m.vp = viewport.New()
 	m.vp.SoftWrap = true // le righe lunghe vanno a capo (lettura email)
 	// Rebind scroll (Piano 4, Task 3, decisione controller): il keymap default
@@ -86,11 +117,6 @@ func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
 	km.PageUp = key.NewBinding(key.WithKeys("pgup"), key.WithHelp("pgup", "page su"))
 	m.vp.KeyMap = km
 	m.cmdInput = newCommandInput(st)
-	m.header = m.renderHeader()
-	if full != nil {
-		m.vp.SetContent(m.renderBody(full))
-		m.attLines = m.renderAttachments(full)
-	}
 	return m
 }
 
@@ -109,6 +135,28 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 	if m.cmdOpen {
 		cmd := mm.updateCommand(ev)
 		return mm, cmd
+	}
+	// Conversazione (Piano 8, Task 10): j/k scelgono il messaggio, invio ne
+	// alterna l'espansione, il clic sul titolo lo seleziona ed espande. Con un
+	// solo messaggio restano i tasti di scorrimento di sempre.
+	if m.multi() {
+		switch ev := ev.(type) {
+		case tea.KeyPressMsg:
+			switch ev.String() {
+			case "j", "down":
+				return mm, mm.move(1)
+			case "k", "up":
+				return mm, mm.move(-1)
+			case "enter":
+				return mm, mm.toggle(mm.sel)
+			}
+		case tea.MouseClickMsg:
+			if ev.Mouse().Button == tea.MouseLeft {
+				if ok, cmd := mm.ClickRow(ev.Mouse().Y); ok {
+					return mm, cmd
+				}
+			}
+		}
 	}
 	switch ev := ev.(type) {
 	case tea.KeyPressMsg:
@@ -159,6 +207,9 @@ func (m Model) View() string {
 // bubbles (viewport/filepicker) mutano lo stato con i loro Set*.
 func (m *Model) SetSize(width, height int) {
 	m.width, m.height = width, height
+	if m.multi() {
+		m.refresh() // i titoli e il corpo a capo dipendono dalla larghezza
+	}
 	m.resize()
 	if m.pickerOpen {
 		m.picker = m.pickerHeight(m.picker)
@@ -180,26 +231,68 @@ func (m *Model) resize() {
 	m.vp.SetHeight(vh)
 }
 
-// MarkRead marca la copia locale del ref come letta: l'header resta coerente
+// MarkRead segna letti tutti i messaggi della conversazione (la radice lo fa
+// all'apertura e nell'anteprima, Piano 8, Task 10): l'header resta coerente
 // senza re-list (il refresh lista avviene via Watch/nuova ricerca; il back
-// preserva la lista).
-func (m *Model) MarkRead() { m.ref.Unread = false }
+// preserva la lista). Nella vista singola è l'unico messaggio, come prima.
+func (m *Model) MarkRead() {
+	for i := range m.conv {
+		m.conv[i].ref.Unread = false
+	}
+	if m.multi() {
+		m.refresh()
+	}
+}
 
-// SetRef sostituisce la copia locale del ref: sync dopo le mutazioni da
-// thread (Task 7) — l'header non rende i flag, ma i toggle consecutivi
-// dell'utente leggono questo stato. Ricevitore puntatore: muta il modello.
-func (m *Model) SetRef(ref msg.MessageRef) { m.ref = ref }
+// SetRef sostituisce la copia locale del ref del messaggio selezionato: sync
+// dopo le mutazioni da thread (Task 7) — l'header non rende i flag, ma i toggle
+// consecutivi dell'utente leggono questo stato. Ricevitore puntatore.
+func (m *Model) SetRef(ref msg.MessageRef) {
+	if len(m.conv) == 0 {
+		return
+	}
+	m.conv[m.sel].ref = ref
+	if m.multi() {
+		m.refresh()
+	}
+}
 
-// Ref restituisce la copia locale del ref (uso test e mutazioni Task 7).
-func (m Model) Ref() msg.MessageRef { return m.ref }
+// Ref restituisce la copia locale del ref del messaggio selezionato.
+func (m Model) Ref() msg.MessageRef { return m.selRef() }
 
-// Loaded dice se il corpo del messaggio è disponibile (false durante il fetch).
-func (m Model) Loaded() bool { return m.msg != nil }
+// Loaded dice se la vista ha almeno un corpo caricato (false durante il fetch).
+// Con la conversazione lazy basta un corpo: il messaggio selezionato può ancora
+// essere in caricamento senza nascondere i messaggi già visibili (Piano 8, Task 13).
+func (m Model) Loaded() bool {
+	for _, e := range m.conv {
+		if e.full != nil {
+			return true
+		}
+	}
+	return false
+}
 
-// Msg restituisce il messaggio completo (nil finché non caricato): serve alla
-// radice per i composer precompilati r/f (Piano 4, Task 3) — il reply/forward
-// usa il msg già caricato senza rifetch.
-func (m Model) Msg() *msg.Message { return m.msg }
+// Msg restituisce il messaggio selezionato completo (nil finché non caricato):
+// serve alla radice per i composer precompilati r/f (Piano 4, Task 3) — il
+// reply/forward usa il msg già caricato senza rifetch. Con una conversazione è il
+// messaggio selezionato, di default l'ultimo (Piano 8, Task 10).
+func (m Model) Msg() *msg.Message { return m.selMsg() }
+
+// AnchorID è l'ID della riga aperta: identifica la conversazione per anteprima
+// e scarto degli stantii, anche quando la selezione cambia.
+func (m Model) AnchorID() msg.MessageID { return m.id }
+
+// UnreadIDs elenca gli ID dei messaggi non letti della conversazione: all'apertura
+// e nell'anteprima si segnano letti tutti insieme (Piano 8, Task 10).
+func (m Model) UnreadIDs() []msg.MessageID {
+	var out []msg.MessageID
+	for _, e := range m.conv {
+		if e.ref.Unread {
+			out = append(out, e.ref.ID)
+		}
+	}
+	return out
+}
 
 // YOffset è la posizione di scorrimento del corpo (seam per i test).
 func (m Model) YOffset() int { return m.vp.YOffset() }
@@ -211,14 +304,15 @@ func (m Model) renderHeader() string {
 		return m.st.ThreadHeaderKey.Render(k+":") + m.st.ThreadHeader.Render(v)
 	}
 	to := ""
-	if m.msg != nil {
-		to = strings.Join(m.msg.To, ", ")
+	if sel := m.selMsg(); sel != nil {
+		to = strings.Join(sel.To, ", ")
 	}
+	ref := m.selRef()
 	lines := []string{
-		kv("Da", m.ref.From),
+		kv("Da", ref.From),
 		kv("A", to),
-		kv("Oggetto", m.ref.Subject),
-		kv("Data", FormatDate(m.ref.Date)),
+		kv("Oggetto", ref.Subject),
+		kv("Data", FormatDate(ref.Date)),
 	}
 	return strings.Join(lines, "\n")
 }
@@ -253,10 +347,11 @@ func (m Model) renderAttachments(full *msg.Message) []string {
 // fuori dal loop Update) e restituisce OpenRequested; la radice chiama
 // OpenCmd per l'exec vero.
 func (m Model) openInBrowser() tea.Cmd {
-	if m.msg == nil || m.msg.BodyHTML == "" {
+	sel := m.selMsg()
+	if sel == nil || sel.BodyHTML == "" {
 		return nil
 	}
-	html := m.msg.BodyHTML
+	html := sel.BodyHTML
 	return func() tea.Msg {
 		path, err := writeHTMLTemp(html)
 		return OpenRequested{Path: path, Err: err}

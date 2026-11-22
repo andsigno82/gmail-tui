@@ -4,9 +4,34 @@
 package app
 
 import (
+	"errors"
+
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
+
+// scanLimited separa il segnale di lista limitata (mail.ErrScanLimit, Piano 8, review
+// punto 3) dagli errori veri: le righe che lo accompagnano restano valide.
+func scanLimited(err error) (bool, error) {
+	if errors.Is(err, mail.ErrScanLimit) {
+		return true, nil
+	}
+	return false, err
+}
+
+// limitedStatus è l'avviso di barra per una lista limitata dal tetto di scansione:
+// stato persistente e neutro, con la via d'uscita (la ricerca va più indietro).
+const limitedStatus = "lista limitata ai messaggi più recenti — cerca con / per andare più indietro"
+
+// latestRefs estrae il messaggio più recente di ogni conversazione (Piano 8,
+// Task 9): è la lista di ref su cui girano selezione, anteprima e op.
+func latestRefs(convs []mail.Conversation) []msg.MessageRef {
+	refs := make([]msg.MessageRef, len(convs))
+	for i, c := range convs {
+		refs[i] = c.Latest
+	}
+	return refs
+}
 
 // Tipi Msg di risultato delle Cmd: uno per operazione, con errore incorporato.
 // Contratto condiviso da tutte le viste (fonte: piano 3, "Contratto messaggi").
@@ -25,10 +50,12 @@ import (
 // perde (il refresh di prima pagina, D5, non tronca la lista).
 type msgsLoaded struct {
 	refs    []msg.MessageRef
+	convs   []mail.Conversation // righe-conversazione (Piano 8, Task 9); nil = righe di un solo messaggio da refs
 	err     error
 	query   string
 	silent  bool
 	limit   int
+	limited bool   // tetto di scansione raggiunto: lista limitata, non esaurita (Piano 8, review punto 3)
 	mailbox string // cartella richiesta ("" = INBOX): risultato stante se non corrisponde (Piano 7, Task 4)
 	gen     int    // generazione della lista al momento della richiesta: stante se non più la corrente (Piano 7, fix review 2)
 }
@@ -38,6 +65,8 @@ type msgsLoaded struct {
 // lista è cambiata nel frattempo la pagina è STANTE e viene scartata.
 type moreLoaded struct {
 	refs    []msg.MessageRef
+	convs   []mail.Conversation // come msgsLoaded.convs
+	limited bool                // come msgsLoaded.limited (Piano 8, review punto 3)
 	err     error
 	query   string
 	mailbox string // cartella della richiesta (Piano 7, Task 4)
@@ -50,7 +79,9 @@ type moreLoaded struct {
 // aperto (o dopo il back all'inbox) — il handler confronta requested col ref
 // in attesa e scarta i risultati stanti (niente rebuild, niente auto MarkRead).
 type msgLoaded struct {
-	m         *msg.Message
+	m         *msg.Message                   // messaggio aperto (solo per i chiamanti a messaggio singolo)
+	refs      []msg.MessageRef               // righe della conversazione in ordine cronologico (Piano 8, Task 13)
+	bodies    map[msg.MessageID]*msg.Message // corpi già scaricati: gli espansi all'apertura
 	err       error
 	requested msg.MessageID
 }
@@ -75,6 +106,10 @@ type opDone struct {
 	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
 	localID   msg.MessageID
 	localRead bool
+	// convSet/convUnread (Piano 8, Task 9b): stato di lettura dell'intera
+	// conversazione dopo `v`; convSet dice se è noto.
+	convSet    bool
+	convUnread bool
 }
 
 // changeEvt è un evento push del feed Watch.
@@ -139,10 +174,22 @@ type previewDue struct {
 }
 
 type previewLoaded struct {
-	tok int
-	id  msg.MessageID
-	m   *msg.Message
-	err error
+	tok    int
+	id     msg.MessageID
+	m      *msg.Message     // messaggio singolo (solo per i chiamanti a messaggio singolo)
+	refs   []msg.MessageRef // righe della conversazione (Piano 8, Task 13)
+	bodies map[msg.MessageID]*msg.Message
+	err    error
+}
+
+// bodyLoaded è il corpo di un messaggio della conversazione richiesto alla selezione
+// o all'espansione (Piano 8, Task 13). gen e anchor scartano i risultati stantii.
+type bodyLoaded struct {
+	gen    int
+	anchor msg.MessageID
+	id     msg.MessageID
+	m      *msg.Message
+	err    error
 }
 
 type previewReadDue struct {

@@ -44,25 +44,27 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 
 | Key | Action |
 |---|---|
-| `j`/`k`, `↑`/`↓` | move cursor (list) / scroll (thread, or the preview when focused) |
-| `Enter` | open selected message (full screen; with the preview focused, the previewed message) |
+| `j`/`k`, `↑`/`↓` | move cursor (list) / previous–next message (conversation in the thread or preview) / scroll (one message) |
+| `Enter` | open selected conversation (full screen; with the preview focused, the previewed conversation) — in a conversation, expand or collapse the selected message |
 | `Tab` | two-column layout: move focus between list and preview |
 | `Esc` / `q` | back / quit (two-column layout with the preview focused: back to the list) |
 | `Ctrl+C` | quit from anywhere |
-| `/` | search — Gmail-style: `from:x is:unread label:Work has:attachment`, plain words match text |
+| `/` | search — on Gmail accounts the query goes verbatim to Gmail (`older_than:7d`, `in:`, `-label:`, `from:x is:unread label:Work has:attachment`); without Gmail, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
-| `a` | archive (Inbox only) |
-| `#` | move to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
+| `a` | archive the conversation in the current folder (Inbox only) |
+| `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
 | `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
 | `s` | star on/off |
-| `v` | mark read/unread |
+| `v` | mark the conversation in the current folder read/unread |
 | `l` | apply/remove label (refused for the current folder) |
-| `o` | open HTML body in browser (thread view) |
+| `o` | open the selected message's HTML body in browser (thread view) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
 | `,` | settings menu: theme, layout, mark-as-read, name, signature |
 | `?` | full help overlay |
 | mouse | wheel = scroll, click = select, double-click = open; two-column layout: click on the preview focuses it, double-click opens it, wheel scrolls it |
+
+**Conversations.** On Gmail accounts the list shows one row per conversation: participants, message count in parentheses, unread state, and user labels as colored chips. The thread view shows all messages of the conversation in date order, your replies included: read messages are collapsed to one line, the latest and unread ones are expanded. `j`/`k` choose a message; `r`, `f`, `o` and `:save` act on the selected message (the latest by default).
 
 Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc · `Ctrl+S` send (confirmation first) · `Esc` cancel. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
 
@@ -141,6 +143,11 @@ The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASS
 
 ## Notes & limitations (v1)
 
+- **Gmail conversations** need the server to announce `X-GM-EXT-1` (Gmail does). Without it the list shows one row per message and `/` uses the plain matcher. `gmail-tui doctor` reports the capability.
+- **Conversations and folders**: spam and Trash messages stay out of a conversation, except when you open it from those folders. `a`, `#` and `v` on a row act only on the conversation's messages in the current folder; All Mail is never touched by archive or trash.
+- **Conversation paging**: the list pages count conversations, and each page reads at most 500 messages. A page can be shorter than 50, and a very old conversation deep in the list may not appear.
+- **Lazy bodies**: opening a conversation downloads the bodies of the expanded messages only; collapsed rows show sender and date.
+- **Cache upgrade**: the message cache moved to schema v3. On the first start after upgrading, cached message entries are discarded and downloaded again.
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
 - **Archive only in Inbox**: `a` is refused with an info toast when the selected message is not in INBOX (also for search results from other folders).

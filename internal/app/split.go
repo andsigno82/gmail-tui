@@ -60,7 +60,7 @@ func (m Model) previewVisible() bool {
 
 // previewReady dice se il thread mostra il corpo del messaggio in anteprima.
 func (m Model) previewReady() bool {
-	return m.prevHas && m.thread.Loaded() && m.thread.Ref().ID == m.prevRef.ID
+	return m.prevHas && m.thread.Loaded() && m.thread.AnchorID() == m.prevRef.ID
 }
 
 // threadTarget dice se i tasti del thread (command line, filepicker, scorrimento)
@@ -158,10 +158,10 @@ func previewReadTimer(tok int, id msg.MessageID) tea.Cmd {
 
 // fetchPreview esegue FetchMessage fuori dal loop UI (cache-first) per
 // l'anteprima; il risultato porta token e ID per lo scarto degli stantii.
-func fetchPreview(st mail.MailStore, tok int, id msg.MessageID) tea.Cmd {
+func fetchPreview(st mail.MailStore, tok int, ref msg.MessageRef, folder mail.Mailbox) tea.Cmd {
 	return func() tea.Msg {
-		mm, err := st.FetchMessage(context.Background(), id)
-		return previewLoaded{tok: tok, id: id, m: mm, err: err}
+		refs, bodies, err := loadConversation(context.Background(), st, ref, folder)
+		return previewLoaded{tok: tok, id: ref.ID, m: bodies[ref.ID], refs: refs, bodies: bodies, err: err}
 	}
 }
 
@@ -169,18 +169,19 @@ func fetchPreview(st mail.MailStore, tok int, id msg.MessageID) tea.Cmd {
 // subito → ora (con la stessa cmd del toggle senza refresh); dopo 2 s → timer
 // con token; mai → nulla. Solo messaggi non letti.
 func (m Model) previewMarkRead(tok int) (Model, tea.Cmd) {
-	ref := m.thread.Ref()
-	if !ref.Unread {
+	// Piano 8, Task 10: vale per tutti i non letti della conversazione in anteprima.
+	unread := m.thread.UnreadIDs()
+	if len(unread) == 0 {
 		return m, nil
 	}
 	switch m.markRead {
 	case config.PreviewMarkReadImmediate:
 		m.thread.MarkRead()
-		return m, markRead(m.store, ref.ID, true, false)
+		return m, markReadIDs(m.store, m.prevRef, unread)
 	case config.PreviewMarkReadNever:
 		return m, nil
 	default: // delay (valore di default)
-		return m, previewReadTimer(tok, ref.ID)
+		return m, previewReadTimer(tok, m.thread.AnchorID())
 	}
 }
 
@@ -217,8 +218,15 @@ func (m Model) splitView() string {
 // previewClick gestisce il click sinistro sulla colonna dell'anteprima (Piano
 // 7.2, fix review): dà il focus all'anteprima; un secondo click entro la finestra
 // del doppio click apre il messaggio a schermo intero (come invio).
-func (m Model) previewClick() (Model, tea.Cmd) {
+func (m Model) previewClick(y int) (Model, tea.Cmd) {
 	m.focusPreview = true
+	// Piano 8, Task 10: il click su un titolo della conversazione (riga y) la
+	// espande o comprime; il doppio click la apre a schermo intero.
+	if m.previewReady() {
+		if ok, cmd := m.thread.ClickRow(y); ok {
+			return m, cmd
+		}
+	}
 	now := time.Now()
 	dbl := !m.lastPreviewClick.IsZero() && now.Sub(m.lastPreviewClick) <= inbox.DoubleClickWindow
 	if !dbl || !m.previewReady() {
@@ -226,7 +234,7 @@ func (m Model) previewClick() (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.lastPreviewClick = time.Time{}
-	ref := m.thread.Ref()
+	ref := m.prevRef
 	return m, func() tea.Msg { return inbox.SelectedMsg{Ref: ref} }
 }
 
@@ -242,7 +250,21 @@ func (m *Model) setLocalRead(id msg.MessageID, read bool) tea.Cmd {
 			m.refs[i].Unread = !read
 		}
 	}
+	if c, ok := m.sums[id]; ok {
+		c.Unread, c.Latest.Unread = !read, !read
+		m.sums[id] = c
+	}
 	return m.inbox.SetUnread(id, !read)
+}
+
+// setConvUnread aggiorna lo stato di lettura dell'intera conversazione della riga
+// id (Piano 8, Task 9b): riepilogo per ID e grassetto in lista, subito.
+func (m *Model) setConvUnread(id msg.MessageID, unread bool) tea.Cmd {
+	if c, ok := m.sums[id]; ok {
+		c.Unread = unread
+		m.sums[id] = c
+	}
+	return m.inbox.SetConvUnread(id, unread)
 }
 
 // mouseX è la colonna del terminale di un evento mouse (0 = bordo sinistro).
