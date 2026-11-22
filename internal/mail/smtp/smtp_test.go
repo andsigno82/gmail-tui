@@ -230,6 +230,49 @@ func TestSendCapturesFromRcptsData(t *testing.T) {
 	}
 }
 
+// TestSendRcptBareAddress (Piano 7.1, Task 2): RCPT TO riceve solo l'addr-spec.
+// Un destinatario con nome visualizzato (To) e lo stesso indirizzo nudo in Bcc
+// producono un solo RCPT, senza nome; l'header To conserva il nome.
+func TestSendRcptBareAddress(t *testing.T) {
+	addr, cap := startSMTPServer(t, nil)
+	s := testSender(t, addr)
+
+	m := msg.Outgoing{
+		From:     "me@example.com",
+		To:       []string{`"Mario Rossi" <m@x.it>`},
+		Bcc:      []string{"m@x.it"},
+		Subject:  "Ciao",
+		BodyText: "x",
+	}
+	if err := s.Send(t.Context(), m); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	_, rcpts, data := cap.snapshot()
+	if strings.Join(rcpts, ",") != "m@x.it" {
+		t.Errorf("rcpts = %v, want [m@x.it] (indirizzo nudo, dedup su forme diverse)", rcpts)
+	}
+	if !strings.Contains(string(data), "To: \"Mario Rossi\" <m@x.it>\r\n") {
+		t.Errorf("header To senza nome visualizzato:\n%s", data)
+	}
+}
+
+// TestSendInvalidRcptBeforeMail (Piano 7.1, Task 2): un destinatario non
+// parsabile fallisce prima di MAIL: il server non riceve né MAIL né RCPT.
+func TestSendInvalidRcptBeforeMail(t *testing.T) {
+	addr, cap := startSMTPServer(t, nil)
+	s := testSender(t, addr)
+
+	m := sampleOutgoing()
+	m.Cc = []string{"<>"}
+	if err := s.Send(t.Context(), m); err == nil {
+		t.Fatal("want errore per destinatario non valido, got nil")
+	}
+	from, rcpts, _ := cap.snapshot()
+	if from != "" || len(rcpts) != 0 {
+		t.Errorf("il server ha ricevuto from=%q rcpts=%v, want nulla", from, rcpts)
+	}
+}
+
 // TestSendMultipartWithAttachment: con allegato il DATA è multipart/mixed.
 func TestSendMultipartWithAttachment(t *testing.T) {
 	addr, cap := startSMTPServer(t, nil)

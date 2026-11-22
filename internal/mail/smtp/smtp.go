@@ -8,7 +8,9 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"net/mail"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/emersion/go-sasl"
@@ -62,6 +64,10 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 	if err != nil {
 		return err // già wrapped con contesto da buildMIME
 	}
+	rcpts, err := recipientAddrs(m)
+	if err != nil {
+		return err
+	}
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(s.o.Host, strconv.Itoa(s.o.Port)))
 	if err != nil {
@@ -103,7 +109,7 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 		return fmt.Errorf("smtp: mail: %w", err)
 	}
 
-	for _, addr := range dedup(append(append(append([]string{}, m.To...), m.Cc...), m.Bcc...)) {
+	for _, addr := range rcpts {
 		if err := c.Rcpt(addr, nil); err != nil {
 			return fmt.Errorf("smtp: rcpt %s: %w", addr, err)
 		}
@@ -122,6 +128,27 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 	}
 
 	return c.Quit()
+}
+
+// recipientAddrs estrae gli indirizzi nudi (addr-spec) di To+Cc+Bcc per RCPT
+// TO (Piano 7.1, Task 2): il nome visualizzato non è ammesso dopo RCPT TO.
+// Il dedup avviene sull'indirizzo nudo, così forme diverse dello stesso
+// indirizzo danno un solo RCPT. Un indirizzo non parsabile è un errore prima
+// di MAIL.
+func recipientAddrs(m msg.Outgoing) ([]string, error) {
+	all := append(append(append([]string{}, m.To...), m.Cc...), m.Bcc...)
+	bare := make([]string, 0, len(all))
+	for _, a := range all {
+		if strings.TrimSpace(a) == "" {
+			continue
+		}
+		p, err := mail.ParseAddress(a)
+		if err != nil {
+			return nil, fmt.Errorf("smtp: indirizzo non valido %q: %w", a, err)
+		}
+		bare = append(bare, p.Address)
+	}
+	return dedup(bare), nil
 }
 
 // dedup conserva l'ordine e scarta i duplicati esatti e le stringhe vuote
