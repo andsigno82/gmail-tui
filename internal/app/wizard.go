@@ -13,10 +13,12 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
@@ -50,6 +52,10 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 	if !m.wizardActive {
 		return m, nil
 	}
+	// Piano 7.2, fix review: il wizard conserva nome, firma e preferenze nella
+	// config: il radice le riprende, così un `,` successivo non le scrive vuote.
+	saved := m.savedSettings()
+	m.SetPrefs(saved.Layout, saved.PreviewMarkRead)
 	// La factory va CONSUMATA prima di azzerarla (serve qui sotto per i
 	// backend reali): la si salva localmente e si azzera lo stato del radice.
 	factory := m.factory
@@ -74,7 +80,7 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 		if factory != nil {
 			m.store, m.sender = factory(ev.Address, ev.Password)
 		}
-		m.SetIdentity(ev.Address, "", "")
+		m.SetIdentity(ev.Address, saved.Name, saved.Signature)
 		switch {
 		case ev.ConfigErr != nil:
 			// Config non salvata (percorso non scrivibile): la sessione
@@ -102,6 +108,16 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.pending++ // il load della sessione parte ora: spinner finché msgsLoaded
 	return m, m.beginSession()
+}
+
+// savedSettings legge la config salvata (m.cfgPath). Config assente o non
+// leggibile → default; valori non validi → riportati al default per campo.
+func (m Model) savedSettings() config.Config {
+	cfg, err := config.Load(m.cfgPath)
+	if err != nil && !errors.Is(err, config.ErrInvalid) {
+		return config.Default()
+	}
+	return cfg.Sanitized()
 }
 
 // wizardBody è il corpo della vista wizard (il View del modello del wizard).

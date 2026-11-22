@@ -7,12 +7,14 @@ package app
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
@@ -299,6 +301,32 @@ func TestWizardSuccessBuildsRealBackends(t *testing.T) {
 	}
 	if kr.sets != 1 || kr.lastUser != "user@gmail.com" {
 		t.Errorf("keyring.Set = %d chiamate (user %q), voglio 1 (user@gmail.com)", kr.sets, kr.lastUser)
+	}
+}
+
+// Piano 7.2, fix review: dopo il wizard il radice riprende nome, firma e
+// preferenze di lettura dalla config salvata; un `,` successivo non le scrive vuote.
+func TestWizardSuccessLoadsSavedSettings(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	saved := config.Config{Address: "user@gmail.com", Name: "Ada", Signature: "-- \nAda", Theme: "default", Layout: config.LayoutSplit, PreviewMarkRead: config.PreviewMarkReadNever}
+	if err := saved.Save(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := newWizardTestModel(t, wizard.Deps{TestConnect: okConnect, Keyring: &krFake{}, CfgPath: cfgPath})
+	m.SetConfigPath(cfgPath)
+	m, cmds := wizardToTesting(t, m)
+	for _, c := range cmds {
+		m, cmds = deliver(m, c)
+	}
+	m, _ = step(m, completedIn(t, cmds))
+	if m.name != "Ada" || m.signature != saved.Signature {
+		t.Errorf("nome/firma dopo il wizard = (%q, %q), voglio quelli della config", m.name, m.signature)
+	}
+	if m.layout != config.LayoutSplit || m.markRead != config.PreviewMarkReadNever {
+		t.Errorf("preferenze dopo il wizard = (%q, %q), voglio (split, never)", m.layout, m.markRead)
+	}
+	if want := identityFrom("user@gmail.com", "Ada"); m.from != want {
+		t.Errorf("From = %q, voglio %q", m.from, want)
 	}
 }
 
