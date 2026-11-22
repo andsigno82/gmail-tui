@@ -129,9 +129,9 @@ Wave 3
 
 ### Task 7: verifica finale
 
-- [ ] Gate completi + check go-imap + `govulncheck`
-- [ ] Review indipendente per wave + `/code-review` sul branch, rilievi corretti
-- [ ] Prova manuale in demo (tmux, HOME temporanea): contrasto in `catppuccin-latte` e `one-dark`, menu `,` con anteprima tema ed esc che ripristina, due colonne a 140 colonne e ritorno a una colonna a 100
+- [x] Gate completi + check go-imap + `govulncheck`
+- [x] Review indipendente per wave + `/code-review` sul branch, rilievi corretti
+- [x] Prova manuale in demo (tmux, HOME temporanea, 140 colonne): menu `,` con aiuto, esc che ripristina, ctrl+s che salva, due colonne, segna letto dopo 2 s, `q` dall'anteprima, wizard al riavvio con indirizzo vuoto. Contrasto per tema e ritorno a una colonna sotto 120 coperti dai test, non provati a vista
 - [ ] Smoke reale (Andrea): email markdown ricevuta formattata
 
 ## Rischi e mitigazioni

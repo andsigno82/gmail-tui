@@ -174,6 +174,18 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - `#` decide sulla mailbox della riga
 - `/code-review`: 5 rilievi sul parsing dei destinatari, tutti corretti
 
+### Piano 7.2 — Leggibilità, impostazioni, due colonne, markdown (branch `feat/piano-7-2`)
+- Contrasto WCAG AA automatico sulle barre colorate (prima 1.0–3.5:1 in tutti
+  i 12 temi, ora ≥ 4.5:1), con test tabellare su ogni tema
+- Menu `,`: tema, layout, segna letto in anteprima, nome, firma; anteprima
+  immediata, invio/ctrl+s salva, esc annulla
+- Due colonne (≥ 120 colonne): lista 35%, anteprima 65%, letto dopo 2 s, Tab
+  per il focus
+- Markdown del composer inviato come multipart/alternative (goldmark, GFM);
+  `send --markdown`; nome nel From (MAIL FROM con indirizzo nudo)
+- Login e config con valori non validi non perdono più nome e firma
+- `/code-review` + prova manuale: 12 rilievi corretti con test rossi verificati
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
