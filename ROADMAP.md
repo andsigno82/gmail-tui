@@ -61,10 +61,22 @@ with an App Password (no Google Cloud project, no OAuth):
   without a config file when the password is only in the keychain (resolve
   the address from the wizard instead of an empty user).
 
+## Next — planned
+
+- **Gmail conversations** — threads by `X-GM-THRID`, full Gmail search syntax
+  with `X-GM-RAW`, per-message labels with `X-GM-LABELS`, via an in-tree patch
+  of go-imap.
+- **Drafts and contacts** — save/resume drafts in the Gmail Drafts folder;
+  address completion from previously seen addresses plus an optional external
+  address-book command.
+- **Bulk actions and undo** — mark several messages and archive/trash/label
+  them at once; undo the last archive or trash.
+- **Desktop notifications** — a configurable command run on new mail (sender
+  and subject passed as environment variables).
+- **Incremental sync** — CONDSTORE-based refresh and paged search.
+
 ## Later — under consideration
 
-- **Gmail conversations** — threads by `X-GM-THRID`, search with `X-GM-RAW`,
-  labels with `X-GM-LABELS`. Requires a patch to go-imap (planned as Piano 8).
 - **Gmail API backend** — an alternative store/sender implementation behind
   the existing `MailStore` abstraction, for accounts where App Passwords are
   unavailable (OAuth device flow). The interface split (`internal/mail`) was
