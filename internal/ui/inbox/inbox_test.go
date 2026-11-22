@@ -445,3 +445,20 @@ func TestSingoloMessaggioInvariato(t *testing.T) {
 		t.Errorf("riga = %q, mittente e oggetto devono restare", first)
 	}
 }
+
+// Piano 8, fix riga conversazione: il contatore "(N)" non si tronca mai. Con
+// partecipanti lunghi la colonna del mittente tronca il nome, non il contatore.
+func TestContatoreConversazioneNonTroncato(t *testing.T) {
+	c := testConv()
+	c.Count = 12
+	c.Participants = []string{"anna.bianchi.lunghissimo@example.org", "mario@x.dev", "luca@x.dev"}
+	for _, w := range []int{80, 140} {
+		m := newTestModel(t, nil)
+		m.SetSize(w, 10)
+		m.SetConversations([]mail.Conversation{c})
+		first := rows(m)[0]
+		if !strings.Contains(first, "(12)") {
+			t.Errorf("larghezza %d: riga = %q, il contatore (12) deve restare visibile", w, first)
+		}
+	}
+}

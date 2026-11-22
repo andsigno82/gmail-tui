@@ -212,12 +212,13 @@ func TestDemoStoreThreadMessagesCronologici(t *testing.T) {
 // il contatore, e aprirla mostra la risposta dell'utente nella vista thread.
 func TestDemoConversazioneAperta(t *testing.T) {
 	m := pagedModel(t, DemoStore())
-	// Una sola riga per la conversazione di quattro messaggi. Il contatore (4) è
-	// coperto da TestDemoStoreConversazioniSimulate: nella riga si perde nel
-	// troncamento dei partecipanti (Piano 8, Task 9), segnalato a parte.
+	// Una sola riga per la conversazione di quattro messaggi, con il contatore.
 	m, _ = step(m, tea.WindowSizeMsg{Width: 140, Height: 30})
 	if n := strings.Count(m.inbox.View(), "Re: design review"); n != 1 {
 		t.Fatalf("righe «Re: design review» = %d, voglio una riga per conversazione", n)
+	}
+	if !strings.Contains(m.inbox.View(), "(4)") {
+		t.Errorf("riga della conversazione senza il contatore (4):\n%s", m.inbox.View())
 	}
 	var row msg.MessageRef
 	for _, r := range m.refs {

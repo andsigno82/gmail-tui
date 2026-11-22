@@ -413,7 +413,7 @@ func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
 	if chipsW > 0 {
 		subjectW = max(subjectMin, subjectW-chipsW-1)
 	}
-	mid := padRight(truncate(sender, senderW), senderW) + " " + truncate(ref.Subject, subjectW)
+	mid := senderCol(conv, senderW) + " " + truncate(ref.Subject, subjectW)
 
 	// La data è allineata a destra: riempi con spazi fino alla sua colonna.
 	used := markerCol + lipgloss.Width(mid) + dateW
@@ -450,7 +450,14 @@ func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
 // se sono di più, poi il contatore "(N)" se la conversazione ha più messaggi.
 // Senza partecipanti ricade sul mittente del messaggio più recente.
 func senderLabel(c mail.Conversation) string {
-	name := c.Latest.From
+	name, counter := senderParts(c)
+	return name + counter
+}
+
+// senderParts separa il nome dei partecipanti dal contatore "(N)" (Piano 8,
+// Task 9): il nome si può troncare, il contatore no.
+func senderParts(c mail.Conversation) (name, counter string) {
+	name = c.Latest.From
 	if n := len(c.Participants); n > 0 {
 		name = c.Participants[0]
 		if n > 1 {
@@ -458,9 +465,23 @@ func senderLabel(c mail.Conversation) string {
 		}
 	}
 	if c.Count > 1 {
-		name += fmt.Sprintf(" (%d)", c.Count)
+		counter = fmt.Sprintf(" (%d)", c.Count)
 	}
-	return name
+	return name, counter
+}
+
+// senderCol rende la colonna del mittente larga w: il nome si tronca con "…",
+// il contatore resta sempre visibile in fondo alla colonna.
+func senderCol(c mail.Conversation, w int) string {
+	name, counter := senderParts(c)
+	cw := lipgloss.Width(counter)
+	if cw == 0 {
+		return padRight(truncate(name, w), w)
+	}
+	if cw >= w {
+		return counter
+	}
+	return padRight(truncate(name, w-cw)+counter, w)
 }
 
 // chipText è il testo di una etichetta utente: il nome fra parentesi quadre.
