@@ -101,8 +101,13 @@ func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 			}
 			return []string{"* SEARCH " + strings.Join(uids, " ")}
 		case strings.HasPrefix(cmd, "UID FETCH"):
+			// come il server reale: solo gli UID del set richiesto
+			asked := fetchSet(cmd)
 			var lines []string
 			for _, m := range boxes[box] {
+				if asked != nil && !asked[m.uid] {
+					continue
+				}
 				flags := ""
 				if m.read {
 					flags = `\Seen`
@@ -170,7 +175,60 @@ func TestListConversationsGmailOneRowPerThread(t *testing.T) {
 	}
 }
 
+// fetchSet legge il set di UID di un UID FETCH (numeri e intervalli a:b separati
+// da virgole). Nil se il set non è leggibile: il server risponde a tutti.
+func fetchSet(cmd string) map[int]bool {
+	f := strings.Fields(cmd)
+	if len(f) < 3 {
+		return nil
+	}
+	set := map[int]bool{}
+	for _, part := range strings.Split(f[2], ",") {
+		lo, hi, ok := strings.Cut(part, ":")
+		var a, b int
+		if _, err := fmt.Sscan(lo, &a); err != nil {
+			return nil
+		}
+		b = a
+		if ok {
+			if _, err := fmt.Sscan(hi, &b); err != nil {
+				return nil
+			}
+		}
+		for u := a; u <= b; u++ {
+			set[u] = true
+		}
+	}
+	return set
+}
+
 // upperFirst maiuscola il primo carattere (nomi di test ASCII).
 func upperFirst(s string) string {
 	return strings.ToUpper(s[:1]) + s[1:]
+}
+
+// Piano 8, review (punto 6): RFC 3501 non garantisce l'ordine di UID SEARCH. Con
+// più blocchi di scansione (chunkScansione) i messaggi più recenti devono essere
+// scelti per UID, non per posizione nella risposta del server.
+func TestListConversationsOrdineUIDNonGarantito(t *testing.T) {
+	var box []gmailFetch
+	for uid := 150; uid >= 1; uid-- { // risposta del server in ordine decrescente
+		box = append(box, gmailFetch{uid: uid, thread: uid, login: "ann", date: "01-Nov-2026", read: true})
+	}
+	addr := scriptedGmailServer(t, map[string][]gmailFetch{"INBOX": box, "[Gmail]/All Mail": box})
+
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true})
+	ctx := context.Background()
+	if err := s.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	convs, err := s.ListConversations(ctx, msg.Query{}, mail.Page{Limit: 10})
+	if err != nil {
+		t.Fatalf("ListConversations: %v", err)
+	}
+	if len(convs) != 10 || convs[0].Latest.ID != "INBOX:150" {
+		t.Fatalf("prima riga %v (len %d), voglio INBOX:150 e 10 righe: i più recenti per UID", convs[0].Latest.ID, len(convs))
+	}
 }

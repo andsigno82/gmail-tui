@@ -83,6 +83,9 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		return nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
 	}
 	uids := data.AllUIDs()
+	// Piano 8, review (punto 6): la scansione presume UID crescenti; l'ordine della
+	// risposta non è garantito dall'RFC, quindi si ordina esplicitamente.
+	sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
 
 	limit := pg.Limit
 	if limit == 0 {
