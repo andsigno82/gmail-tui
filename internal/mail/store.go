@@ -49,10 +49,15 @@ const (
 // Refs (Piano 11, Task 2) è valorizzato per ChangeNewMail: intestazioni dei nuovi
 // messaggi dal più recente (ENVELOPE, senza \Seen), per la notifica desktop. Vuoto
 // per gli altri eventi e se la lettura delle intestazioni fallisce (best-effort).
+//
+// Unread (Piano 11, review punto 3) è il numero di messaggi NON letti tra gli ID
+// nuovi (senza \Seen), per ChangeNewMail. La notifica conta solo questi: se sono
+// tutti letti (es. letti da un altro client) non c'è notifica.
 type Change struct {
-	Kind ChangeKind
-	IDs  []msg.MessageID
-	Refs []msg.MessageRef
+	Kind   ChangeKind
+	IDs    []msg.MessageID
+	Refs   []msg.MessageRef
+	Unread int
 }
 
 // Conversation è la riga di lista in vista conversazione (Piano 8, Task 5),

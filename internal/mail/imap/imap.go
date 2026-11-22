@@ -45,6 +45,10 @@ type Store struct {
 	// e Close sotto mu; letto con gmailOn().
 	gmail bool
 
+	// headersFn (Piano 11, review punto 8) è il seam di test per la lettura delle
+	// intestazioni dei nuovi messaggi: nil in produzione (si usa fetchRefs).
+	headersFn func(mailbox string, uids []imap.UID) ([]msg.MessageRef, error)
+
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
 	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox

@@ -49,6 +49,9 @@ const (
 	// timeout di scrittura/lettura del client (~30s): attendiamo al più
 	// questo prima di chiudere comunque il canale.
 	watchStopTimeout = 1500 * time.Millisecond
+	// watchHeaderLimit: quante intestazioni nuove leggere per evento (Piano 11,
+	// review punto 2): gli ultimi N UID, il conteggio dei non letti resta reale.
+	watchHeaderLimit = 5
 )
 
 // watchBackoff è la schedule di riconnessione del piano (1s, 2s, 5s, 10s);
@@ -406,20 +409,41 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 	if len(newUIDs) == 0 {
 		return nil
 	}
+	// Piano 11, review punto 3: quanti dei nuovi sono NON letti (UID SEARCH NOT SEEN
+	// sullo stesso intervallo). Errore di ricerca: si conta come se fossero tutti
+	// non letti (nessuna notifica persa).
+	unread := len(newUIDs)
+	if u, err := c.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{set}, NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait(); err == nil {
+		unread = 0
+		for _, uid := range u.AllUIDs() {
+			if uid > st.lastUID {
+				unread++
+			}
+		}
+	}
 	st.lastUID = newUIDs[len(newUIDs)-1]
 
 	ids := make([]msg.MessageID, len(newUIDs))
 	for i, uid := range newUIDs {
 		ids[i] = msg.NewID(st.mailbox, uint32(uid))
 	}
-	// Piano 11, Task 2: intestazioni dei nuovi messaggi per la notifica desktop
-	// (ENVELOPE/FLAGS/INTERNALDATE: nessun BODY, nessun \Seen). Best-effort: un fetch
-	// fallito non è un errore di connessione, l'evento parte con i soli ID.
-	refs, err := s.fetchRefs(st.mailbox, newUIDs)
+	// Piano 11, Task 2 e review punto 2: intestazioni (ENVELOPE/FLAGS/INTERNALDATE,
+	// nessun BODY, nessun \Seen) solo degli ultimi watchHeaderLimit UID: dopo molta
+	// posta offline il gate non resta occupato. Best-effort: un fetch fallito non
+	// è un errore di connessione, l'evento parte con i soli ID.
+	hdr := newUIDs
+	if len(hdr) > watchHeaderLimit {
+		hdr = hdr[len(hdr)-watchHeaderLimit:]
+	}
+	fetch := s.fetchRefs
+	if s.headersFn != nil {
+		fetch = s.headersFn
+	}
+	refs, err := fetch(st.mailbox, hdr)
 	if err != nil {
 		refs = nil
 	}
-	sendChange(ch, mail.Change{Kind: mail.ChangeNewMail, IDs: ids, Refs: refs})
+	sendChange(ch, mail.Change{Kind: mail.ChangeNewMail, IDs: ids, Refs: refs, Unread: unread})
 	return nil
 }
 
