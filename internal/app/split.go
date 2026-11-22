@@ -160,8 +160,8 @@ func previewReadTimer(tok int, id msg.MessageID) tea.Cmd {
 // l'anteprima; il risultato porta token e ID per lo scarto degli stantii.
 func fetchPreview(st mail.MailStore, tok int, ref msg.MessageRef, folder mail.Mailbox) tea.Cmd {
 	return func() tea.Msg {
-		convs, err := loadConversation(context.Background(), st, ref, folder)
-		return previewLoaded{tok: tok, id: ref.ID, m: anchorMsg(convs, ref.ID), conv: convs, err: err}
+		refs, bodies, err := loadConversation(context.Background(), st, ref, folder)
+		return previewLoaded{tok: tok, id: ref.ID, m: bodies[ref.ID], refs: refs, bodies: bodies, err: err}
 	}
 }
 
@@ -222,8 +222,10 @@ func (m Model) previewClick(y int) (Model, tea.Cmd) {
 	m.focusPreview = true
 	// Piano 8, Task 10: il click su un titolo della conversazione (riga y) la
 	// espande o comprime; il doppio click la apre a schermo intero.
-	if m.previewReady() && m.thread.ClickRow(y) {
-		return m, nil
+	if m.previewReady() {
+		if ok, cmd := m.thread.ClickRow(y); ok {
+			return m, cmd
+		}
 	}
 	now := time.Now()
 	dbl := !m.lastPreviewClick.IsZero() && now.Sub(m.lastPreviewClick) <= inbox.DoubleClickWindow

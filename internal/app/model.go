@@ -57,6 +57,7 @@ type Model struct {
 	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
 	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
+	threadGen int             // generazione del thread: scarta i corpi arrivati per un thread superato (Piano 8, Task 13)
 	composer  composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
 	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
@@ -415,17 +416,19 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura messaggio: %v", ev.err))
 			return m, cmd
 		}
-		if ev.m == nil {
-			// Difensiva (il contratto MailStore non prevede (nil, nil)):
-			// senza guardia thread.New dereferenzerebbe un puntatore nullo.
+		refs, bodies := loadedThread(ev.refs, ev.bodies, ev.m)
+		if len(refs) == 0 {
+			// Difensiva (il contratto MailStore non prevede (nil, nil)): senza righe
+			// thread.NewLazy non avrebbe un messaggio da mostrare.
 			cmd := m.toast.Push(toast.Error, "apertura messaggio: risposta vuota dallo store")
 			return m, cmd
 		}
-		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
-		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
-		// Piano 8, Task 10: la vista mostra la conversazione intera; i messaggi
-		// non letti si segnano letti all'apertura (una sola op, errore in status).
-		m.thread = thread.NewConversation(m.pendingRef, loadedConv(ev.conv, ev.m), m.styles)
+		// Il fetch è riuscito: si costruisce la thread view vera (Piano 8, Task 10
+		// e 13: conversazione con i corpi degli espansi), dimensionata se la size
+		// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
+		// precedente sono scartati.
+		m.threadGen++
+		m.thread = thread.NewLazy(m.pendingRef, refs, bodies, m.styles)
 		m.relayout()
 		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
 			m.thread.MarkRead()
@@ -667,13 +670,35 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("anteprima: %v", ev.err))
 			return m, cmd
 		}
-		if ev.m == nil {
+		refs, bodies := loadedThread(ev.refs, ev.bodies, ev.m)
+		if len(refs) == 0 {
 			cmd := m.toast.Push(toast.Error, "anteprima: risposta vuota dallo store")
 			return m, cmd
 		}
-		m.thread = thread.NewConversation(m.prevRef, loadedConv(ev.conv, ev.m), m.styles)
+		m.threadGen++
+		m.thread = thread.NewLazy(m.prevRef, refs, bodies, m.styles)
 		m.relayout()
 		return m.previewMarkRead(ev.tok)
+
+	case thread.BodyRequested:
+		// Corpo di un messaggio della conversazione (Piano 8, Task 13): selezionato
+		// o espanso senza corpo; scaricato fuori dal loop UI.
+		m.pending++
+		return m, tea.Batch(fetchBody(m.store, m.threadGen, ev.Anchor, ev.ID), m.spinner.Tick)
+
+	case bodyLoaded:
+		// Esito del corpo richiesto: scartato se la generazione del thread o la
+		// riga aperta non sono più quelle della richiesta (Piano 8, Task 13).
+		m.doneOp()
+		if ev.gen != m.threadGen || ev.anchor != m.thread.AnchorID() {
+			return m, nil
+		}
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("corpo del messaggio: %v", ev.err))
+			return m, cmd
+		}
+		m.thread.SetBody(ev.id, ev.m)
+		return m, nil
 
 	case previewReadDue:
 		// Segna come letto ritardato (U5, "dopo 2 secondi"): solo se il messaggio
@@ -1276,8 +1301,8 @@ func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
 // merge-gate anti-race).
 func fetchMsg(st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) tea.Cmd {
 	return func() tea.Msg {
-		convs, err := loadConversation(context.Background(), st, ref, folder)
-		return msgLoaded{m: anchorMsg(convs, ref.ID), conv: convs, err: err, requested: ref.ID}
+		refs, bodies, err := loadConversation(context.Background(), st, ref, folder)
+		return msgLoaded{m: bodies[ref.ID], refs: refs, bodies: bodies, err: err, requested: ref.ID}
 	}
 }
 

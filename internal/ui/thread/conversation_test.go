@@ -167,3 +167,14 @@ func TestConversazioneSenzaLetturaSingolaRestaInvariata(t *testing.T) {
 		t.Errorf("il messaggio singolo deve mostrare il corpo:\n%s", m.View())
 	}
 }
+
+// Piano 8, Task 13 (caricamento lazy): il titolo di un messaggio compresso mostra
+// mittente e data, non l'anteprima del corpo, che può non essere ancora scaricato.
+func TestTitoloCompressoSenzaAnteprimaDelCorpo(t *testing.T) {
+	c := convFixture()
+	m := NewConversation(c[3].Ref, c, testStyles(t))
+	m.SetSize(80, 40)
+	if strings.Contains(m.View(), "primo corpo") {
+		t.Errorf("il titolo compresso non deve riportare il corpo:\n%s", m.View())
+	}
+}

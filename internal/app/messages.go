@@ -62,8 +62,9 @@ type moreLoaded struct {
 // aperto (o dopo il back all'inbox) — il handler confronta requested col ref
 // in attesa e scarta i risultati stanti (niente rebuild, niente auto MarkRead).
 type msgLoaded struct {
-	m         *msg.Message
-	conv      []*msg.Message // messaggi della conversazione in ordine cronologico (Piano 8, Task 10); nil = solo m
+	m         *msg.Message                   // messaggio aperto (solo per i chiamanti a messaggio singolo)
+	refs      []msg.MessageRef               // righe della conversazione in ordine cronologico (Piano 8, Task 13)
+	bodies    map[msg.MessageID]*msg.Message // corpi già scaricati: gli espansi all'apertura
 	err       error
 	requested msg.MessageID
 }
@@ -156,11 +157,22 @@ type previewDue struct {
 }
 
 type previewLoaded struct {
-	tok  int
-	id   msg.MessageID
-	m    *msg.Message
-	conv []*msg.Message // conversazione in ordine cronologico (Piano 8, Task 10); nil = solo m
-	err  error
+	tok    int
+	id     msg.MessageID
+	m      *msg.Message     // messaggio singolo (solo per i chiamanti a messaggio singolo)
+	refs   []msg.MessageRef // righe della conversazione (Piano 8, Task 13)
+	bodies map[msg.MessageID]*msg.Message
+	err    error
+}
+
+// bodyLoaded è il corpo di un messaggio della conversazione richiesto alla selezione
+// o all'espansione (Piano 8, Task 13). gen e anchor scartano i risultati stantii.
+type bodyLoaded struct {
+	gen    int
+	anchor msg.MessageID
+	id     msg.MessageID
+	m      *msg.Message
+	err    error
 }
 
 type previewReadDue struct {

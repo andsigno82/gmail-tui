@@ -11,75 +11,89 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/thread"
 )
 
-// loadConversation restituisce i messaggi della conversazione di ref, in ordine
-// cronologico e con il corpo. Senza X-GM-THRID (ThreadID 0, fallback senza
-// X-GM-EXT-1) è il solo messaggio. Spam e cestino restano fuori (Q5/D8-7), salvo
-// quando la cartella corrente è spam o cestino: allora si aggiungono i suoi membri.
-// La riga aperta c'è sempre.
-func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) ([]*msg.Message, error) {
+// loadConversation restituisce le righe della conversazione di ref in ordine
+// cronologico e i corpi dei soli messaggi espansi all'apertura (ultimo e non letti,
+// Piano 8, Task 13): gli altri si scaricano alla selezione o all'espansione. Senza
+// X-GM-THRID (ThreadID 0, fallback senza X-GM-EXT-1) è il solo messaggio. Spam e
+// cestino restano fuori (Q5/D8-7), salvo quando la cartella corrente è spam o
+// cestino: allora si aggiungono i suoi membri. La riga aperta c'è sempre.
+func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) ([]msg.MessageRef, map[msg.MessageID]*msg.Message, error) {
 	if ref.ThreadID == 0 {
 		mm, err := st.FetchMessage(ctx, ref.ID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		return []*msg.Message{mm}, nil
+		return []msg.MessageRef{mm.Ref}, map[msg.MessageID]*msg.Message{mm.Ref.ID: mm}, nil
 	}
-	refs, err := st.ThreadMessages(ctx, ref.ThreadID)
+	threadRefs, err := st.ThreadMessages(ctx, ref.ThreadID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	var ids []msg.MessageID
-	seen := make(map[msg.MessageID]bool)
-	add := func(id msg.MessageID) {
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
+	bodies := make(map[msg.MessageID]*msg.Message)
+	have := make(map[msg.MessageID]bool, len(threadRefs)+1)
+	all := make([]msg.MessageRef, 0, len(threadRefs)+1)
+	for _, r := range threadRefs {
+		if !have[r.ID] {
+			have[r.ID] = true
+			all = append(all, r)
 		}
 	}
-	for _, r := range refs {
-		add(r.ID)
-	}
+	// Membri di spam/cestino e riga aperta non sono in ThreadMessages: servono
+	// le loro righe, quindi il loro FetchMessage (il corpo resta in bodies).
+	var extra []msg.MessageID
 	if folder.Role == "trash" || folder.Role == "junk" {
 		members, err := st.ConversationMembers(ctx, folder.Name, ref.ThreadID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		for _, id := range members {
-			add(id)
-		}
+		extra = append(extra, members...)
 	}
-	add(ref.ID)
-	out := make([]*msg.Message, 0, len(ids))
-	for _, id := range ids {
+	extra = append(extra, ref.ID)
+	for _, id := range extra {
+		if have[id] {
+			continue
+		}
+		have[id] = true
 		mm, err := st.FetchMessage(ctx, id)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		out = append(out, mm)
+		bodies[id] = mm
+		all = append(all, mm.Ref)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Ref.Date.Before(out[j].Ref.Date) })
-	return out, nil
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Date.Before(all[j].Date) })
+	for _, id := range thread.DefaultExpanded(all) {
+		if bodies[id] != nil {
+			continue
+		}
+		mm, err := st.FetchMessage(ctx, id)
+		if err != nil {
+			return nil, nil, err
+		}
+		bodies[id] = mm
+	}
+	return all, bodies, nil
 }
 
-// anchorMsg è il messaggio con ID id tra quelli caricati (nil se assente).
-func anchorMsg(convs []*msg.Message, id msg.MessageID) *msg.Message {
-	for _, mm := range convs {
-		if mm.Ref.ID == id {
-			return mm
-		}
+// loadedThread ricava righe e corpi da un risultato di caricamento: m è il solo
+// messaggio dei chiamanti a messaggio singolo (test e fallback senza righe).
+func loadedThread(refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, m *msg.Message) ([]msg.MessageRef, map[msg.MessageID]*msg.Message) {
+	if len(refs) == 0 && m != nil {
+		return []msg.MessageRef{m.Ref}, map[msg.MessageID]*msg.Message{m.Ref.ID: m}
 	}
-	return nil
+	return refs, bodies
 }
 
-// loadedConv sceglie i messaggi da mostrare: la conversazione caricata, o il solo
-// messaggio m se la conversazione non è arrivata (chiamanti e test a messaggio singolo).
-func loadedConv(convs []*msg.Message, m *msg.Message) []*msg.Message {
-	if len(convs) > 0 {
-		return convs
+// fetchBody scarica il corpo del messaggio id richiesto dalla vista thread di riga
+// anchor (Piano 8, Task 13). gen è la generazione del thread al momento della richiesta.
+func fetchBody(st mail.MailStore, gen int, anchor, id msg.MessageID) tea.Cmd {
+	return func() tea.Msg {
+		mm, err := st.FetchMessage(context.Background(), id)
+		return bodyLoaded{gen: gen, anchor: anchor, id: id, m: mm, err: err}
 	}
-	return []*msg.Message{m}
 }
 
 // markReadIDs segna letti in una sola op i messaggi non letti ids della

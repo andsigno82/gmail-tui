@@ -94,17 +94,13 @@ func New(ref msg.MessageRef, full *msg.Message, st styles.Styles) Model {
 // full in ordine cronologico, anchor è la riga aperta. Espansi: l'ultimo
 // messaggio e i non letti; compressi: gli altri. Selezione di default: l'ultimo.
 func NewConversation(anchor msg.MessageRef, full []*msg.Message, st styles.Styles) Model {
-	if len(full) == 0 {
-		return New(anchor, nil, st)
+	refs := make([]msg.MessageRef, 0, len(full))
+	bodies := make(map[msg.MessageID]*msg.Message, len(full))
+	for _, f := range full {
+		refs = append(refs, f.Ref)
+		bodies[f.Ref.ID] = f
 	}
-	m := newBase(anchor.ID, st)
-	last := len(full) - 1
-	for i, f := range full {
-		m.conv = append(m.conv, entry{ref: f.Ref, full: f, expanded: i == last || f.Ref.Unread})
-	}
-	m.sel = last
-	m.refresh()
-	return m
+	return NewLazy(anchor, refs, bodies, st)
 }
 
 // newBase prepara viewport (con il rebind dello scroll) e command line.
@@ -148,18 +144,17 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		case tea.KeyPressMsg:
 			switch ev.String() {
 			case "j", "down":
-				mm.move(1)
-				return mm, nil
+				return mm, mm.move(1)
 			case "k", "up":
-				mm.move(-1)
-				return mm, nil
+				return mm, mm.move(-1)
 			case "enter":
-				mm.toggle(mm.sel)
-				return mm, nil
+				return mm, mm.toggle(mm.sel)
 			}
 		case tea.MouseClickMsg:
-			if ev.Mouse().Button == tea.MouseLeft && mm.ClickRow(ev.Mouse().Y) {
-				return mm, nil
+			if ev.Mouse().Button == tea.MouseLeft {
+				if ok, cmd := mm.ClickRow(ev.Mouse().Y); ok {
+					return mm, cmd
+				}
 			}
 		}
 	}
@@ -265,9 +260,17 @@ func (m *Model) SetRef(ref msg.MessageRef) {
 // Ref restituisce la copia locale del ref del messaggio selezionato.
 func (m Model) Ref() msg.MessageRef { return m.selRef() }
 
-// Loaded dice se il corpo del messaggio selezionato è disponibile (false durante
-// il fetch).
-func (m Model) Loaded() bool { return m.selMsg() != nil }
+// Loaded dice se la vista ha almeno un corpo caricato (false durante il fetch).
+// Con la conversazione lazy basta un corpo: il messaggio selezionato può ancora
+// essere in caricamento senza nascondere i messaggi già visibili (Piano 8, Task 13).
+func (m Model) Loaded() bool {
+	for _, e := range m.conv {
+		if e.full != nil {
+			return true
+		}
+	}
+	return false
+}
 
 // Msg restituisce il messaggio selezionato completo (nil finché non caricato):
 // serve alla radice per i composer precompilati r/f (Piano 4, Task 3) — il

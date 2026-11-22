@@ -1,17 +1,79 @@
 package thread
 
 // Vista conversazione stile Gmail (Piano 8, Task 10): più messaggi nello stesso
-// viewport, i letti compressi su una riga di titolo (mittente, data, anteprima),
-// l'ultimo e i non letti espansi. Un solo messaggio resta la vista di sempre.
+// viewport, i letti compressi su una riga di titolo (mittente, data), l'ultimo e
+// i non letti espansi. Caricamento lazy (Piano 8, Task 13): il corpo dei messaggi
+// compressi non è scaricato all'apertura; si chiede (BodyRequested) quando un
+// messaggio viene selezionato o espanso. Un solo messaggio resta la vista di sempre.
 
 import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
+
+// BodyRequested chiede alla radice il corpo di un messaggio della conversazione
+// (Piano 8, Task 13): emesso quando il messaggio viene selezionato o espanso senza
+// corpo. Anchor è la riga aperta, così la radice scarta le risposte stantie.
+type BodyRequested struct {
+	ID     msg.MessageID
+	Anchor msg.MessageID
+}
+
+// isDefaultExpanded dice se il messaggio i di refs è espanso all'apertura: l'ultimo
+// e i non letti (Piano 8, Task 10).
+func isDefaultExpanded(i int, refs []msg.MessageRef) bool {
+	return i == len(refs)-1 || refs[i].Unread
+}
+
+// DefaultExpanded elenca gli ID dei messaggi espansi all'apertura: la radice
+// scarica i loro corpi, gli altri restano senza corpo (Piano 8, Task 13).
+func DefaultExpanded(refs []msg.MessageRef) []msg.MessageID {
+	var out []msg.MessageID
+	for i, r := range refs {
+		if isDefaultExpanded(i, refs) {
+			out = append(out, r.ID)
+		}
+	}
+	return out
+}
+
+// NewLazy costruisce la vista della conversazione dalle righe refs (in ordine
+// cronologico) e dai soli corpi già caricati in bodies (Piano 8, Task 13). anchor
+// è la riga aperta. Selezione di default: l'ultimo messaggio.
+func NewLazy(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, st styles.Styles) Model {
+	if len(refs) == 0 {
+		return New(anchor, bodies[anchor.ID], st)
+	}
+	m := newBase(anchor.ID, st)
+	for i, r := range refs {
+		m.conv = append(m.conv, entry{ref: r, full: bodies[r.ID], expanded: isDefaultExpanded(i, refs)})
+	}
+	m.sel = len(refs) - 1
+	m.refresh()
+	return m
+}
+
+// SetBody installa il corpo arrivato per il messaggio id (risposta a BodyRequested).
+// Un corpo per un messaggio assente o nil non cambia nulla.
+func (m *Model) SetBody(id msg.MessageID, full *msg.Message) {
+	if full == nil {
+		return
+	}
+	for i := range m.conv {
+		if m.conv[i].ref.ID == id {
+			m.conv[i].full = full
+		}
+	}
+	if m.multi() {
+		m.refresh()
+	}
+}
 
 // multi dice se la vista è una conversazione (più di un messaggio): il ramo
 // nuovo di j/k/invio/clic e il contenuto a titoli si attivano solo allora.
@@ -25,7 +87,7 @@ func (m Model) selRef() msg.MessageRef {
 	return m.conv[m.sel].ref
 }
 
-// selMsg è il messaggio selezionato completo (nil se il corpo non è caricato).
+// selMsg è il messaggio selezionato completo (nil se il corpo non è ancora caricato).
 func (m Model) selMsg() *msg.Message {
 	if len(m.conv) == 0 {
 		return nil
@@ -71,37 +133,38 @@ func (m *Model) refresh() {
 }
 
 // renderConversation compone il contenuto della conversazione e la riga di
-// inizio di ogni titolo (indice nel contenuto, non sullo schermo).
+// inizio di ogni titolo (indice nel contenuto, non sullo schermo). Un messaggio
+// espanso senza corpo mostra un avviso al posto del testo.
 func (m Model) renderConversation() (string, []int) {
 	var lines []string
 	starts := make([]int, len(m.conv))
 	for i, e := range m.conv {
 		starts[i] = len(lines)
 		lines = append(lines, m.renderTitle(i))
-		if e.expanded && e.full != nil {
-			lines = append(lines, wrapLines(m.renderBody(e.full), m.width)...)
-			lines = append(lines, "")
+		if !e.expanded {
+			continue
 		}
+		if e.full == nil {
+			lines = append(lines, m.st.ListDate.Render("corpo in caricamento…"), "")
+			continue
+		}
+		lines = append(lines, wrapLines(m.renderBody(e.full), m.width)...)
+		lines = append(lines, "")
 	}
 	return strings.Join(lines, "\n"), starts
 }
 
 // renderTitle è la riga di un messaggio della conversazione: marcatore ▸/▾,
-// mittente, data e, da compresso, la prima riga utile del corpo. Troncata alla
-// larghezza: occupa sempre una sola riga. Colori dagli slot del tema.
+// mittente e data. Troncata alla larghezza: occupa sempre una sola riga. Il titolo
+// non riporta il corpo: può non essere ancora caricato (Piano 8, Task 13).
+// Colori dagli slot del tema.
 func (m Model) renderTitle(i int) string {
 	e := m.conv[i]
 	mark := "▸"
 	if e.expanded {
 		mark = "▾"
 	}
-	head := fmt.Sprintf("%s %s · %s", mark, e.ref.From, FormatDate(e.ref.Date))
-	if !e.expanded && e.full != nil {
-		if s := snippet(e.full.BodyText); s != "" {
-			head += " · " + s
-		}
-	}
-	head = truncWidth(head, m.width)
+	head := truncWidth(fmt.Sprintf("%s %s · %s", mark, e.ref.From, FormatDate(e.ref.Date)), m.width)
 	style := m.st.ListNormal
 	switch {
 	case i == m.sel:
@@ -110,18 +173,6 @@ func (m Model) renderTitle(i int) string {
 		style = m.st.ListUnread
 	}
 	return style.Render(head)
-}
-
-// snippet è la prima riga non vuota e non citata del corpo: l'anteprima del
-// messaggio compresso.
-func snippet(body string) string {
-	for _, ln := range strings.Split(body, "\n") {
-		ln = strings.TrimSpace(ln)
-		if ln != "" && !strings.HasPrefix(ln, ">") {
-			return ln
-		}
-	}
-	return ""
 }
 
 // truncWidth tronca s alla larghezza w (con ellissi), contando le colonne visibili.
@@ -154,29 +205,42 @@ func wrapLines(s string, w int) []string {
 	return strings.Split(lipgloss.NewStyle().Width(w).Render(s), "\n")
 }
 
-// move seleziona il messaggio precedente o successivo (d = ±1) e porta il suo
-// titolo in vista.
-func (m *Model) move(d int) {
+// needBody chiede il corpo del messaggio i se non è ancora caricato (Piano 8,
+// Task 13): la Cmd emette BodyRequested, che la radice soddisfa con FetchMessage.
+func (m Model) needBody(i int) tea.Cmd {
+	if i < 0 || i >= len(m.conv) || m.conv[i].full != nil {
+		return nil
+	}
+	req := BodyRequested{ID: m.conv[i].ref.ID, Anchor: m.id}
+	return func() tea.Msg { return req }
+}
+
+// move seleziona il messaggio precedente o successivo (d = ±1), porta il suo
+// titolo in vista e chiede il corpo se manca (r/f/o/:save agiscono sul selezionato).
+func (m *Model) move(d int) tea.Cmd {
 	n := min(max(m.sel+d, 0), len(m.conv)-1)
 	if n == m.sel {
-		return
+		return nil
 	}
 	m.sel = n
 	m.refresh()
 	m.resize()
 	m.reveal()
+	return m.needBody(n)
 }
 
-// toggle seleziona il messaggio i e alterna la sua espansione.
-func (m *Model) toggle(i int) {
+// toggle seleziona il messaggio i, alterna la sua espansione e chiede il corpo se
+// manca (Piano 8, Task 13).
+func (m *Model) toggle(i int) tea.Cmd {
 	if i < 0 || i >= len(m.conv) {
-		return
+		return nil
 	}
 	m.sel = i
 	m.conv[i].expanded = !m.conv[i].expanded
 	m.refresh()
 	m.resize()
 	m.reveal()
+	return m.needBody(i)
 }
 
 // reveal scorre il viewport perché il titolo del messaggio selezionato sia in
@@ -191,17 +255,17 @@ func (m *Model) reveal() {
 
 // ClickRow gestisce il clic sinistro alla riga y dello schermo (relativa alla vista
 // thread): sul titolo di un messaggio della conversazione lo seleziona e ne alterna
-// l'espansione. Ritorna false se la riga non è un titolo o non c'è conversazione.
-func (m *Model) ClickRow(y int) bool {
+// l'espansione. Ritorna false se la riga non è un titolo o non c'è conversazione;
+// altrimenti la Cmd dell'eventuale richiesta del corpo.
+func (m *Model) ClickRow(y int) (bool, tea.Cmd) {
 	if !m.multi() || y < headerLines || y-headerLines >= m.bodyHeight() {
-		return false
+		return false, nil
 	}
 	row := y - headerLines + m.vp.YOffset()
 	for i, s := range m.starts {
 		if s == row {
-			m.toggle(i)
-			return true
+			return true, m.toggle(i)
 		}
 	}
-	return false
+	return false, nil
 }
