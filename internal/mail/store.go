@@ -36,6 +36,19 @@ type Change struct {
 	IDs  []msg.MessageID
 }
 
+// Conversation è la riga di lista in vista conversazione (Piano 8, Task 5),
+// come Gmail: un thread = una riga. Count, Participants, Unread e Labels
+// valgono su All Mail escluso spam e cestino; Latest è il messaggio più recente
+// nella mailbox richiesta.
+type Conversation struct {
+	Latest       msg.MessageRef
+	ThreadID     uint64
+	Count        int
+	Participants []string // mittenti distinti, in ordine cronologico
+	Unread       bool     // almeno un messaggio non letto
+	Labels       []string // unione delle label utente
+}
+
 // MailStore è l'astrazione di backend posta.
 //
 // Thread-safety (Piano 3, Task 1): le operazioni sono SERIALIZZATE — UNA OP
@@ -63,6 +76,17 @@ type MailStore interface {
 	// documentati su ListMessages (Label seleziona la mailbox,
 	// HasAttachment best-effort client-side, ThreadLen = 1).
 	Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error)
+
+	// ListConversations restituisce una riga per conversazione (Piano 8, Task 5),
+	// dal più recente. Paginazione su Page come ListMessages (Q1/D8-3: la pagina
+	// si riempie leggendo altri messaggi, con tetto).
+	// Con q.Raw la query è sintassi Gmail verbatim (Q2/D8-4: All Mail se senza
+	// label:/in:). Senza Gmail (server senza X-GM-EXT-1) una riga per messaggio.
+	ListConversations(ctx context.Context, q msg.Query, pg Page) ([]Conversation, error)
+
+	// ThreadMessages restituisce tutti i messaggi del thread (X-GM-THRID) in
+	// ordine cronologico, escluso spam e cestino (Q5/D8-7). Errore per threadID 0.
+	ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error)
 
 	MarkRead(ctx context.Context, ids []msg.MessageID, read bool) error
 

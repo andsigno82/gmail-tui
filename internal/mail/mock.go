@@ -66,13 +66,17 @@ func (m *Mock) ListMessages(_ context.Context, q msg.Query, pg Page) ([]msg.Mess
 		return nil, m.Err
 	}
 	// Piano 7, Task 1: la mailbox è q.Label (Label vuota = INBOX), come nel backend IMAP.
-	mailbox := q.Label
+	eff, err := effectiveQuery(q) // Piano 8, Task 5: Raw simulato
+	if err != nil {
+		return nil, err
+	}
+	mailbox := eff.Label
 	if mailbox == "" {
 		mailbox = "INBOX"
 	}
 	refs := make([]msg.MessageRef, 0, len(m.Msgs))
 	for _, mm := range m.Msgs {
-		if inMailbox(mm.Ref.ID, mailbox) && matches(q, mm) {
+		if inMailbox(mm.Ref.ID, mailbox) && matches(eff, mm) {
 			refs = append(refs, mm.Ref)
 		}
 	}

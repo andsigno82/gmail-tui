@@ -40,6 +40,12 @@ type MessageRef struct {
 	Unread    bool
 	Starred   bool
 	ThreadLen int
+
+	// Piano 8, Task 5: ID Gmail (X-GM-MSGID, X-GM-THRID; 0 = non Gmail) e label
+	// utente (senza \Inbox, \Sent, Important, Starred). Non sono nel MessageID.
+	GmailID  uint64
+	ThreadID uint64
+	Labels   []string
 }
 
 // Attachment descrive un allegato (PartIndex = indice in Message.Attachments).
