@@ -66,6 +66,8 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 
 Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc · `Ctrl+S` send (confirmation first) · `Esc` cancel. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
 
+Notifications: the outcome of an action ("archived", "sent", errors…) appears as a toast in the top-right corner. Info and success toasts disappear after 3 seconds; error toasts stay until you press a key. Up to 3 toasts stack; when a fourth arrives the oldest non-error toast goes first. The status bar stays neutral and shows only lasting state (folder, active search, reconnecting, setup warnings); it turns colored only for confirmations that wait for an answer (send, discard draft, trash).
+
 ## Themes
 
 Twelve embedded themes: `default`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `dracula`, `one-dark`, `one-light`, `nord`, `gruvbox-dark`, `gruvbox-light`, `tokyo-night`.
@@ -106,7 +108,7 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
-- **Archive only in Inbox**: `a` is refused with a status message when the selected message is not in INBOX (also for search results from other folders).
+- **Archive only in Inbox**: `a` is refused with an info toast when the selected message is not in INBOX (also for search results from other folders).
 - **Recipient validation**: the composer does not open the send confirmation without a recipient or with a malformed address; `gmail-tui send` exits 1 on the same errors. The domain must contain a dot; internationalized domains are sent in punycode; non-ASCII local parts (SMTPUTF8) are not supported. Display names are allowed (`"Rossi, Mario" <m@x.it>`).
 - **`gmail-tui login` updates the config**: the address is replaced, while `name`, `signature`, `theme`, `layout` and `preview_mark_read` are kept. The wizard also starts when no password is available and the config has no address.
 - **IMAP/SMTP hosts are fixed to the Gmail preset** (`imap.gmail.com:993`, `smtp.gmail.com:587` STARTTLS) and not configurable in v1.

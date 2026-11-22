@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Toast notifications** — action outcomes appear as toasts in the top-right corner, drawn with the lipgloss v2 compositor: info and success disappear after 3 s, errors stay until a key is pressed, up to 3 stacked (errors are never evicted by newer toasts). The status bar is neutral and keeps only lasting state; it is colored only for pending confirmations.
 - **Settings menu** — `,` opens a menu in the inbox and thread views: theme (live preview), reading layout, mark-as-read in preview, name and signature. `Enter` on a choice saves, `Esc` cancels and restores the previous theme and layout; `Ctrl+S` saves from any row.
 - **Two-column layout** — `layout = "split"` shows the list and a message preview side by side from 120 columns (list 35%, preview the rest). `Tab` moves focus to the preview; `preview_mark_read` (`immediate`, `delay`, `never`) sets when a previewed unread message is marked read. Click on the preview focuses it; double-click or `Enter` opens the message full screen.
 - **Markdown sending** — composed messages are sent as `multipart/alternative`: the plain-text part is the Markdown source, the HTML part is rendered with GitHub-flavored Markdown (tables, strikethrough, task lists). Raw HTML typed in a message is shown as escaped text. `gmail-tui send --markdown` does the same for stdin.

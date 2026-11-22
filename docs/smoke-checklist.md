@@ -122,6 +122,15 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] A received message with Markdown (`**x**`) is shown as raw text in the app: expected, incoming Markdown is not interpreted.
 - [ ] Invalid config: set `layout = "wide"` in the config file and start the app: a warning naming the invalid field appears on stderr, the app runs in one column, and `name` and `signature` are still set.
 
+## Notifications (Piano 7.3)
+
+- [ ] `v` on a message: a toast "letta"/"non letta" appears top right and disappears after about 3 s; the status bar keeps its neutral color.
+- [ ] Three quick actions (`v`, `s`, `v` on different rows): three stacked toasts, each disappearing on its own.
+- [ ] Composer with an empty To and `Ctrl+S`: an error toast "nessun destinatario" stays after 3 s and disappears at the next key press.
+- [ ] An error toast plus three quick success toasts: the error is still on screen.
+- [ ] Send confirmation, discard confirmation and trash confirmation still use the colored status bar.
+- [ ] Active search badge, `⟳ riconnessione…` and the folder tag stay in the status bar (not toasts).
+
 ## Doctor
 
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).
