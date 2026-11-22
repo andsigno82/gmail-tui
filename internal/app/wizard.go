@@ -65,7 +65,7 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 		// composer aperto col primo `c` nasce col campo Da vuoto.
 		mk := DemoStore()
 		m.store, m.sender = mk, mk
-		m.SetIdentity("tu@example.com", "")
+		m.SetIdentity("tu@example.com", "", "")
 		m.SetDemoBanner()
 	} else {
 		// Setup riuscito: backend reali con le credenziali verificate. La
@@ -74,7 +74,7 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 		if factory != nil {
 			m.store, m.sender = factory(ev.Address, ev.Password)
 		}
-		m.SetIdentity(ev.Address, "")
+		m.SetIdentity(ev.Address, "", "")
 		switch {
 		case ev.ConfigErr != nil:
 			// Config non salvata (percorso non scrivibile): la sessione

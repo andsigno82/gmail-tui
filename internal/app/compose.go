@@ -137,13 +137,6 @@ func attachmentNames(full *msg.Message) string {
 	return strings.Join(names, ", ")
 }
 
-// SetIdentity imposta mittente e firma del composer (Piano 4, Task 3): seam
-// per il main e i test — il wiring dalla config reale arriva con l'estensione
-// di app.New (Task 4). Da chiamare PRIMA del primo r/f/c.
-func (m *Model) SetIdentity(from, signature string) {
-	m.from, m.signature = from, signature
-}
-
 // openComposer apre la vista composer per la config data: mittente e firma
 // sono integrati dalla identity del radice SOLO se la config non li porta
 // già (i builders reply/forward li lasciano vuoti, newMessage li passa).

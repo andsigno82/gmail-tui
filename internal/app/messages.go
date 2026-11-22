@@ -122,3 +122,9 @@ type themePersisted struct {
 type connResult struct {
 	err error
 }
+
+// settingsSaved è l'esito del salvataggio del menu impostazioni `,` (Piano 7.2,
+// Task 3). Errore → status d'errore; i valori restano applicati a runtime.
+type settingsSaved struct {
+	err error
+}

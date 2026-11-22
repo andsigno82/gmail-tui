@@ -145,7 +145,8 @@ func runTUI(args []string, forceWizard bool) int {
 
 	store, sender, demo := selectStore(cfg, pw, openCache())
 	m := app.New(store, sender, th)
-	m.SetIdentity(cfg.Address, cfg.Signature) // composer r/f/c (Piano 4, Task 3)
+	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
+	m.SetPrefs(cfg.Layout, cfg.PreviewMarkRead)         // layout e segna come letto (Piano 7.2, Task 2-3)
 	if demo {
 		m.SetDemoBanner()
 	}

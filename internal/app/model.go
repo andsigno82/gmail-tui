@@ -67,10 +67,20 @@ type Model struct {
 	// (SendRequestedMsg → conferma modale → Sender) e conferma invio aperta.
 	from, signature string
 	composeBack     view
-	discardOpen     bool
-	draft           msg.Outgoing
-	confirmSend     bool // conferma pre-invio aperta ("Invio a …" nella status bar)
-	sending         bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
+
+	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
+	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
+	// (SetIdentity: from è derivato). menu è il modale `,` (settings.go).
+	th          theme.Theme
+	layout      string
+	markRead    string
+	address     string
+	name        string
+	menu        settingsMenu
+	discardOpen bool
+	draft       msg.Outgoing
+	confirmSend bool // conferma pre-invio aperta ("Invio a …" nella status bar)
+	sending     bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
 
 	// Wizard first-run (Piano 4, Task 5): attivo finché CompletedMsg — tutti
 	// i tasti vanno al wizard, il load/feed partono solo al completamento
@@ -155,6 +165,9 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 		label:      newLabelInput(st),
 		cfgPath:    cfgPath,
 		view:       viewInbox,
+		th:         th,
+		layout:     config.LayoutSingle,
+		markRead:   config.PreviewMarkReadDelay,
 		ctx:        ctx,
 		cancel:     cancel,
 		// Il Connect d'avvio emesso da Init è già in flight (bugfix
@@ -548,12 +561,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// place header/corpo/allegati del thread e il delegate dell'inbox,
 		// preservando stato: ref, scroll, lista). La persistenza gira in cmd
 		// (saveThemeCmd): errore → themePersisted → status, tema intatto.
-		m.styles = ev.St
-		m.spinner.Style = ev.St.Spinner
-		m.help = newHelp(ev.St)
-		m.inbox.SetStyles(ev.St)
-		m.folderList.SetDelegate(folderDelegate{st: ev.St})
-		m.thread.SetStyles(ev.St)
+		m.th = ev.Th
+		m.applyStyles(ev.St)
 		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name), isOK: true}
 		return m, saveThemeCmd(m.cfgPath, ev.Th.Name)
 
@@ -563,6 +572,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.err != nil {
 			m.status = statusMsg{text: fmt.Sprintf("salvataggio tema: %v", ev.err), isErr: true}
 		}
+		return m, nil
+
+	case settingsSaved:
+		// Piano 7.2, Task 3: salvataggio del menu `,`. Fallito → status d'errore;
+		// i valori restano applicati a runtime (come per il tema).
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("salvataggio impostazioni: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		m.status = statusMsg{text: "impostazioni salvate", isOK: true}
 		return m, nil
 
 	case composeLoaded:
@@ -694,6 +713,11 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				m.showHelp = false
 			}
 			return m, nil
+		}
+		if m.menu.open {
+			// Menu impostazioni (Piano 7.2, Task 3): tutti i tasti vanno al menu;
+			// ctrl+c è già uscito sopra, nessun tasto operativo scatta sotto.
+			return m.settingsKey(ev)
 		}
 		if m.labelOpen {
 			// Mini-prompt label attivo (Task 7): TUTTI i tasti vanno al
@@ -862,6 +886,11 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 			return m, nil
+		case key.Matches(ev, keys.Settings):
+			// Menu impostazioni (Piano 7.2, Task 3): da inbox e thread.
+			if m.view == viewInbox || m.view == viewThread {
+				return m.openSettings()
+			}
 		case key.Matches(ev, keys.Help):
 			// Overlay help completo (Task 9): si apre sopra il corpo, ?/esc
 			// lo chiudono (gestiti in testa al case KeyPressMsg).
@@ -924,7 +953,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
 		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
 		// selezionano nulla: la lista non esiste ancora).
-		if m.showHelp || m.labelOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
+		if m.showHelp || m.labelOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.menu.open || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -951,6 +980,17 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.wizardActive {
 			var cmd tea.Cmd
 			m.wiz, cmd = m.wiz.Update(ev)
+			return m, cmd
+		}
+		// Menu impostazioni in modifica (Piano 7.2, Task 3): blink del cursore del
+		// campo Nome/Firma.
+		if m.menu.open && m.menu.editing {
+			var cmd tea.Cmd
+			if m.menu.cur == rowName {
+				m.menu.name, cmd = m.menu.name.Update(ev)
+			} else {
+				m.menu.sig, cmd = m.menu.sig.Update(ev)
+			}
 			return m, cmd
 		}
 		// In ricerca anche i messaggi non-tasto (es. blink del cursore del
@@ -997,6 +1037,23 @@ func (m Model) View() tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// applyStyles applica gli stili di un tema alla radice e alle sub-viste
+// (spinner, help, inbox, selettore cartelle, thread) senza perdere lo stato.
+// Usato dal cambio tema `:theme` e dall'anteprima del menu impostazioni
+// (Piano 7.2, Task 3), che al ripristino riapplica il tema di apertura.
+func (m *Model) applyStyles(st styles.Styles) {
+	m.styles = st
+	m.spinner.Style = st.Spinner
+	m.help = newHelp(st)
+	m.inbox.SetStyles(st)
+	m.folderList.SetDelegate(folderDelegate{st: st})
+	m.thread.SetStyles(st)
+	if m.menu.open {
+		m.menu.name.SetStyles(settingsInputStyles(st))
+		m.menu.sig.SetStyles(settingsTextareaStyles(st))
+	}
 }
 
 // doneOp chiude un'op store in flight (non sotto zero).
@@ -1153,6 +1210,9 @@ func (m Model) helpOverlay() string {
 // la ricerca è il textinput della query (Task 6), il composer i campi di
 // scrittura (Piano 4, Task 3).
 func (m Model) body() string {
+	if m.menu.open {
+		return m.settingsView()
+	}
 	if m.folderOpen {
 		return m.foldersView()
 	}

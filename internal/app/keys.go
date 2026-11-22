@@ -49,6 +49,12 @@ type appKeys struct {
 	WizardCont key.Binding // invio — continua al passo successivo (wizard)
 	WizardSkip key.Binding // s — salta il setup ed entra in demo (wizard)
 	Help       key.Binding // ? — aiuto completo
+	Settings   key.Binding // , — menu impostazioni (Piano 7.2, Task 3)
+	SetValue   key.Binding // ←→ — cambia il valore della voce (menu impostazioni)
+	SetEdit    key.Binding // invio — modifica Nome/Firma (menu impostazioni)
+	SetSave    key.Binding // invio — salva e chiude (menu impostazioni, voce a scelta)
+	SetDone    key.Binding // esc — torna alla lista delle voci (campo in modifica)
+	Focus      key.Binding // tab — sposta il focus fra lista e anteprima (Piano 7.2, Task 4)
 }
 
 // keys è LA keymap centrale dell'app: condivisa da Update e dal help. Se un
@@ -82,6 +88,12 @@ var keys = appKeys{
 	WizardCont: key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "continua")),
 	WizardSkip: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "salta (demo)")),
 	Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "aiuto")),
+	Settings:   key.NewBinding(key.WithKeys(","), key.WithHelp(",", "impostazioni")),
+	SetValue:   key.NewBinding(key.WithKeys("left", "right", "h", "l"), key.WithHelp("←→", "valore")),
+	SetEdit:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "modifica")),
+	SetSave:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "salva")),
+	SetDone:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "torna alla lista")),
+	Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "lista/anteprima")),
 }
 
 // newHelp costruisce il modello help (bubbles/help) con gli stili del tema:
@@ -106,6 +118,14 @@ func newHelp(st styles.Styles) help.Model {
 // status bar lo rende sempre visibile, accanto all'eventuale testo di status.
 // La lunghezza è trattata dal truncamento di bubbles/help (SetWidth).
 func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
+	if m.menu.open {
+		// Menu impostazioni (Piano 7.2, Task 3): in modifica resta solo il ritorno
+		// alla lista; altrimenti navigazione, valore, invio e annulla.
+		if m.menu.editing {
+			return []key.Binding{keys.SetDone}
+		}
+		return []key.Binding{keys.Move, keys.SetValue, keys.SetEdit, keys.SetSave, keys.Cancel}
+	}
 	if labelOpen {
 		// Prompt label: invio applica, esc annulla (non mostrato visivamente:
 		// il prompt occupa la status bar, resta la documentazione centrale).
@@ -128,7 +148,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// publicizzato: i tasti vanno tutti al wizard (precedente composer).
 		return []key.Binding{keys.WizardCont, keys.WizardSkip, keys.ForceQuit}
 	case viewThread:
-		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
+		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Settings, keys.Help}
 	case viewComposer:
 		// Nel composer i tasti operativi sono nella riga d'uso del modello
 		// (tab/ctrl+e/ctrl+s) e la barra documenta solo annulla: `?` qui è
@@ -142,13 +162,19 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 			// pubblicizzato perché funziona: l'uscita pulita resta possibile.
 			return []key.Binding{keys.Connect, keys.Quit, keys.ForceQuit}
 		}
-		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Help}
+		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Settings, keys.Help}
 	}
 }
 
 // fullHelpFor è l'help completo per lo stato dato: gruppi (colonne) per
 // categoria. L'overlay `?` lo rende con bubbles/help (FullHelpView).
 func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
+	if m.menu.open {
+		return [][]key.Binding{
+			{keys.Move, keys.SetValue},
+			{keys.SetEdit, keys.SetSave, keys.SetDone, keys.Cancel},
+		}
+	}
 	if labelOpen {
 		return [][]key.Binding{{keys.Apply, keys.Cancel, keys.Help}}
 	}
@@ -166,7 +192,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	case viewThread:
 		return [][]key.Binding{
 			{keys.Move, keys.Scroll, keys.Open, keys.Back},
-			{keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Command},
+			{keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Command, keys.Settings},
 			{keys.Help},
 		}
 	case viewComposer:
@@ -174,7 +200,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	default: // inbox
 		return [][]key.Binding{
 			{keys.Move, keys.OpenSel, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Quit},
-			{keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders},
+			{keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Settings},
 			{keys.Help},
 		}
 	}

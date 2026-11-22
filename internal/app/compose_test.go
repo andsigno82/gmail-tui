@@ -37,7 +37,7 @@ const (
 func composerModel(t *testing.T, msgs ...*msg.Message) (Model, *mail.Mock) {
 	t.Helper()
 	m, mk := newTestModelMock(t, msgs...)
-	m.SetIdentity(testFrom, testSig)
+	m.SetIdentity(testFrom, "", testSig)
 	return m, mk
 }
 

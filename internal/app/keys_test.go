@@ -61,6 +61,7 @@ var routedKeys = []string{
 	"o", // apri nel browser (thread)
 	":", // command line :save/:open/:theme (thread, P4 Task 2)
 	"?", // help completo
+	",", // menu impostazioni (P7.2, Task 3)
 }
 
 // TestRoutedKeysAreDocumented: ogni tasto routed è coperto da una binding.
