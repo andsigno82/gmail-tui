@@ -27,6 +27,22 @@
 
 ## Cosa c'è ora nel repo (main)
 
+- `cmd/gmail-tui/` — entrypoint: dispatch dei sottocomandi (`login`, `fetch`,
+  `send`, `themes`, `doctor`, `version`) e avvio della TUI
+- `internal/app/` — root model bubbletea (routing viste, status bar, keymap,
+  operazioni, ricerca, Watch, composer, wizard, demo)
+- `internal/ui/` — componenti: `inbox`, `thread` (+ command mode `:`),
+  `composer`, `wizard`, `styles`
+- `internal/mail/` — interfaccia `MailStore` + Mock; `imap/` (unico backend
+  IMAP), `smtp/` (MIME + invio), `cache/` (bbolt)
+- `internal/msg/`, `internal/config/`, `internal/keyring/`, `internal/theme/`
+  (12 temi TOML embedded), `internal/cmd/` (CLI)
+- `site/` landing page, `docs/` (GIF demo + tape VHS, smoke checklist,
+  spec e piani), `.github/` (CI, release, Pages, dependabot, template)
+- Documentazione: `README.md`, `AGENTS.md` (guida per agenti AI),
+  `CONTRIBUTING.md`, `CHANGELOG.md`, `ROADMAP.md`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md`, `LICENSE` (MIT)
+
 ## Come provarlo
 
 ```bash
