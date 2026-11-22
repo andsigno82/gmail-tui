@@ -18,6 +18,7 @@
 | D11-1 | Notifiche desktop | Comando configurabile (hook stile `mail-received` di aerc) |
 | D11-2 | Push fuori da INBOX | No: resta solo INBOX |
 | D13 | Backend Gmail API | Solo su domanda reale (resta in "Later") |
+| D14 | Server MCP per agenti | Solo lettura: nessun invio, nessuna bozza, nessuna modifica (archivia, label, cestino), per evitare che venga usato per spam o abusi. Ordine e dipendenza (dopo il Piano 8 o prima) da confermare |
 
 Restano scelte tecniche da chiudere dentro i singoli piani: D8-2 (formato degli ID Gmail `uint64`) e il tasto della selezione multipla (Piano 10).
 
@@ -108,6 +109,13 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 3. **9** e **11** in parallelo se si vuole: toccano parti diverse (composer contro watch).
 4. **10**, poi **12**.
 5. **13** solo se c'è domanda reale (utenti senza App Password).
+
+## Piano 14 — Server MCP in sola lettura (D14)
+
+- Sottocomando `gmail-tui mcp` (stdio) sopra `MailStore`: elenco cartelle, ricerca, lettura di messaggi e conversazioni. Nessun tool che invia, salva bozze o modifica la casella: il vincolo è nel server, perché una App Password non si può restringere alla sola lettura.
+- Difese contro la prompt injection (modello: server MCP Gmail ufficiale di Google e `ni-c/imap-mcp`): corpo dei messaggi racchiuso in marcatori con un valore casuale diverso a ogni chiamata, contenuto dichiarato come non fidato, password mai esposta all'agente (resta nel portachiavi).
+- SDK: `github.com/modelcontextprotocol/go-sdk` (ufficiale, v1.8.0 stabile al 2026-11): nuova dipendenza da approvare.
+- Più utile dopo il Piano 8: la ricerca `X-GM-RAW` e le conversazioni rendono l'esplorazione da parte di un agente molto più efficace.
 
 ## Fonti
 
