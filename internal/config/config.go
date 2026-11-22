@@ -94,6 +94,20 @@ func (c Config) Save(path string) error {
 	return err
 }
 
+// Sanitized riporta al default i soli campi di lettura con valore non
+// ammesso, conservando tutto il resto (Piano 7.2, fix review: `gmail-tui
+// login` non deve perdere nome e firma per un layout scritto male).
+func (c Config) Sanitized() Config {
+	d := Default()
+	if !slices.Contains(LayoutValues(), c.Layout) {
+		c.Layout = d.Layout
+	}
+	if !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
+		c.PreviewMarkRead = d.PreviewMarkRead
+	}
+	return c
+}
+
 // Validate controlla i campi con formato noto (Piano 7.2, Task 2: Layout e
 // PreviewMarkRead accettano solo i valori ammessi, o il vuoto).
 func (c Config) Validate() error {

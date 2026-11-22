@@ -585,6 +585,35 @@ func TestFinalizeKeepsExistingSettings(t *testing.T) {
 	}
 }
 
+// Piano 7.2, fix review: un valore non valido (qui layout) non deve far
+// perdere nome, firma e tema; solo il campo non valido torna al default.
+func TestFinalizeInvalidValueKeepsOtherSettings(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	raw := "address = \"old@gmail.com\"\nname = \"Andrea\"\nsignature = \"Ciao\"\ntheme = \"nord\"\nlayout = \"Split\"\n"
+	if err := os.WriteFile(cfgPath, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(t, Deps{TestConnect: func(context.Context, string, string) error { return nil }, Keyring: &krRecorder{}, CfgPath: cfgPath})
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "user@gmail.com")
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "app-password")
+	m, cmd := step(m, pressKey("enter"))
+	m, fin := step(m, connTestedOf(t, runCmds(cmd)))
+	cm := completedOf(t, runCmds(fin))
+	_ = m
+	if cm.ConfigErr != nil {
+		t.Fatalf("ConfigErr = %v", cm.ConfigErr)
+	}
+	got, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config non leggibile: %v", err)
+	}
+	if got.Address != "user@gmail.com" || got.Name != "Andrea" || got.Signature != "Ciao" || got.Theme != "nord" || got.Layout != config.LayoutSingle {
+		t.Errorf("config = %+v, voglio nome/firma/tema conservati e layout al default", got)
+	}
+}
+
 // Piano 7.2, Task 2: config esistente illeggibile → login comunque, con i
 // default e il solo indirizzo nuovo.
 func TestFinalizeUnreadableExistingConfigFallsBack(t *testing.T) {

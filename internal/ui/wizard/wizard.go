@@ -299,9 +299,13 @@ func (m Model) finalizeCmd() tea.Cmd {
 	return func() tea.Msg {
 		var cfgErr, krErr error
 		if m.deps.CfgPath != "" {
+			// Piano 7.2, fix review: su errore Load restituisce comunque quanto
+			// decodificato (default + campi letti); si azzerano solo i valori non
+			// ammessi, così nome, firma e tema sopravvivono. L'indirizzo è
+			// comunque sostituito qui sotto.
 			cfg, err := config.Load(m.deps.CfgPath)
 			if err != nil {
-				cfg = config.Default()
+				cfg = cfg.Sanitized()
 			}
 			cfg.Address = m.addr
 			cfgErr = cfg.Save(m.deps.CfgPath)
