@@ -19,9 +19,9 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
-// doubleClickWindow è l'intervallo massimo fra due click sulla stessa riga
-// perché vengano interpretati come doppio click.
-const doubleClickWindow = 500 * time.Millisecond
+// DoubleClickWindow è l'intervallo massimo fra due click sulla stessa riga (o
+// sull'anteprima) perché vengano interpretati come doppio click.
+const DoubleClickWindow = 500 * time.Millisecond
 
 // Larghezze del layout riga: il marker e la stella occupano due colonne da
 // due celle, la data è allineata a destra, il mittente ha una colonna
@@ -124,6 +124,19 @@ func (m *Model) SetRefs(refs []msg.MessageRef) tea.Cmd {
 	return m.list.SetItems(refsToItems(refs))
 }
 
+// SetUnread aggiorna il marcatore di lettura di una riga senza rilistare (Piano
+// 7.2, fix review): il segna-come-letto in anteprima si vede subito in lista.
+func (m *Model) SetUnread(id msg.MessageID, unread bool) tea.Cmd {
+	for i, it := range m.list.Items() {
+		row, ok := it.(item)
+		if ok && row.ref.ID == id {
+			row.ref.Unread = unread
+			return m.list.SetItem(i, row)
+		}
+	}
+	return nil
+}
+
 // SetSize propaga le dimensioni del corpo (l'app radice riserva l'ultima
 // riga alla status bar) alla lista interna.
 func (m *Model) SetSize(width, height int) { m.list.SetSize(width, height) }
@@ -217,7 +230,7 @@ func (m *Model) click(ev tea.MouseClickMsg) tea.Cmd {
 	}
 	m.list.Select(idx)
 	now := m.clock()
-	dbl := m.lastClickIdx == idx && now.Sub(m.lastClick) <= doubleClickWindow
+	dbl := m.lastClickIdx == idx && now.Sub(m.lastClick) <= DoubleClickWindow
 	m.lastClick, m.lastClickIdx = now, idx
 	if dbl {
 		return m.openSelected()
