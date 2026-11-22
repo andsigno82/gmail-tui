@@ -187,6 +187,28 @@ func TestSaveLoadNotifyCommandRoundtrip(t *testing.T) {
 	}
 }
 
+// Piano 11, review punto 5: l'eseguibile è un percorso assoluto o un nome senza
+// separatori (risolto nel PATH). ./x e scripts/x sono rifiutati con errore chiaro.
+func TestNotifyCommandExecutableForms(t *testing.T) {
+	valid := []string{"/usr/local/bin/notify", "notify-send"}
+	for _, exe := range valid {
+		c := Config{NotifyCommand: []string{exe}}
+		if err := c.Validate(); err != nil {
+			t.Errorf("%q: Validate = %v, voglio nil", exe, err)
+		}
+	}
+	invalid := []string{"./notify.sh", "scripts/notify", "../notify"}
+	for _, exe := range invalid {
+		c := Config{NotifyCommand: []string{exe}}
+		if err := c.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Errorf("%q: Validate = %v, voglio ErrInvalid", exe, err)
+		}
+		if s := c.Sanitized(); s.NotifyCommand != nil {
+			t.Errorf("%q: Sanitized deve disattivare il comando, avuto %q", exe, s.NotifyCommand)
+		}
+	}
+}
+
 // Piano 11, Task 1: un primo elemento vuoto non è valido; Sanitized azzera solo
 // il comando e conserva gli altri campi.
 func TestNotifyCommandEmptyExecutableIsInvalid(t *testing.T) {

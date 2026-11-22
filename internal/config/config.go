@@ -124,7 +124,12 @@ func (c Config) Sanitized() Config {
 // notifyCommandInvalid vale quando la lista non è vuota ma il primo elemento (l'eseguibile)
 // è vuoto o solo spazi (Piano 11, Task 1).
 func (c Config) notifyCommandInvalid() bool {
-	return len(c.NotifyCommand) > 0 && strings.TrimSpace(c.NotifyCommand[0]) == ""
+	if len(c.NotifyCommand) == 0 {
+		return false
+	}
+	exe := strings.TrimSpace(c.NotifyCommand[0])
+	// Piano 11, review punto 5: percorso assoluto o nome senza separatori (PATH).
+	return exe == "" || (strings.ContainsAny(exe, `/\`) && !filepath.IsAbs(exe))
 }
 
 // Validate controlla i campi con formato noto (Piano 7.2, Task 2: Layout e
@@ -140,7 +145,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("%w: preview_mark_read %q, ammessi %s", ErrInvalid, c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
 	}
 	if c.notifyCommandInvalid() {
-		return fmt.Errorf("%w: notify_command, il primo elemento (eseguibile) è vuoto", ErrInvalid)
+		return fmt.Errorf("%w: notify_command, l'eseguibile deve essere un percorso assoluto o un nome nel PATH (non vuoto, non ./x)", ErrInvalid)
 	}
 	return nil
 }
