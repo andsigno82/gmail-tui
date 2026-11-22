@@ -18,6 +18,7 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/theme"
@@ -115,6 +116,11 @@ func (m Model) openSettings() (Model, tea.Cmd) {
 // apre la modifica (invio su Nome/Firma) o salva (invio su una voce a scelta).
 // Tutti gli altri tasti sono ignorati: nessuna azione operativa sotto il menu.
 func (m Model) settingsKey(ev tea.KeyPressMsg) (Model, tea.Cmd) {
+	// Piano 7.2, fix review: ctrl+s salva da qualunque voce, anche durante la
+	// modifica di Nome/Firma (invio sul campo apre/chiude soltanto).
+	if ev.String() == "ctrl+s" {
+		return m.settingsCommit()
+	}
 	if m.menu.editing {
 		if ev.String() == "esc" || (ev.String() == "enter" && m.menu.cur == rowName) {
 			return m.stopEditing(), nil
@@ -264,8 +270,15 @@ func (m Model) settingsView() string {
 		}
 		b.WriteString(label + m.settingsValueText(r) + "\n")
 	}
-	return st.Border.Render(strings.TrimSuffix(b.String(), "\n"))
+	// Piano 7.2, fix review: riga di aiuto in fondo, modale centrata nel corpo
+	// con un pad di 1 colonna.
+	b.WriteString("\n" + st.ListDate.Render(settingsHelp))
+	box := st.Border.Padding(0, 1).Render(b.String())
+	return lipgloss.Place(m.width, max(0, m.height-1), lipgloss.Center, lipgloss.Center, box)
 }
+
+// settingsHelp è la riga di aiuto del menu `,` (Piano 7.2, fix review).
+const settingsHelp = "↑↓ voce · ←→ valore · invio modifica/salva · ctrl+s salva · esc annulla"
 
 // settingsValueText rende il valore di una voce: ‹ valore › per le voci a
 // scelta, il testo (o il widget in modifica) per Nome e Firma.

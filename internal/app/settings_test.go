@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -315,6 +316,80 @@ func mustTheme(t *testing.T, name string) theme.Theme {
 		t.Fatalf("theme.Load(%s): %v", name, err)
 	}
 	return th
+}
+
+// Piano 7.2, fix review: la barra di aiuto del menu elenca i tasti, incluso ctrl+s.
+func TestSettingsShowsHelpLine(t *testing.T) {
+	m, _ := settingsModel(t)
+	mm, _ := step(m, pressKey(","))
+	plain := plainText(mm.body())
+	for _, want := range []string{"ctrl+s salva", "esc annulla", "↑↓ voce"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("menu senza la riga di aiuto %q:\n%s", want, plain)
+		}
+	}
+}
+
+// Piano 7.2, fix review: un pad di 1 colonna separa il bordo dalla voce ("│ Tema").
+func TestSettingsHasLeftPadding(t *testing.T) {
+	m, _ := settingsModel(t)
+	mm, _ := step(m, pressKey(","))
+	for _, line := range strings.Split(plainText(mm.body()), "\n") {
+		if i := strings.Index(line, "Tema"); i >= 0 {
+			if !strings.HasSuffix(line[:i], " ") {
+				t.Errorf("voce Tema senza padding a sinistra: %q", line)
+			}
+			return
+		}
+	}
+	t.Error("voce Tema non trovata nel menu")
+}
+
+// Piano 7.2, fix review: la modale è centrata orizzontalmente nel corpo.
+func TestSettingsCentered(t *testing.T) {
+	m, _ := settingsModel(t)
+	mm, _ := step(m, pressKey(","))
+	for _, line := range strings.Split(plainText(mm.body()), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		left := len(line) - len(strings.TrimLeft(line, " "))
+		right := len(line) - len(strings.TrimRight(line, " "))
+		if left == 0 || left < right-1 || right < left-1 {
+			t.Errorf("riga del menu non centrata (sinistra %d, destra %d): %q", left, right, line)
+		}
+		return
+	}
+	t.Error("nessuna riga nel corpo del menu")
+}
+
+// Piano 7.2, fix review: ctrl+s salva da qualunque voce, anche durante la
+// modifica del Nome (invio sul campo non salva).
+func TestSettingsCtrlSSavesWhileEditingName(t *testing.T) {
+	m, path := settingsModel(t)
+	mm, _ := step(m, pressKey(","))
+	for range 3 {
+		mm, _ = step(mm, pressKey("j"))
+	}
+	mm, _ = step(mm, pressKey("enter"))
+	mm = typeText(t, mm, "Ada")
+	mm, cmd := step(mm, pressKey("ctrl+s"))
+	if mm.menu.open {
+		t.Error("ctrl+s durante la modifica del nome: menu ancora aperto")
+	}
+	mm = runSettingsCmd(t, mm, cmd)
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("config non leggibile: %v", err)
+	}
+	if cfg.Name != "Ada" {
+		t.Errorf("nome salvato = %q, voglio Ada", cfg.Name)
+	}
+}
+
+// plainText toglie le sequenze ANSI dal rendering.
+func plainText(s string) string {
+	return regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(s, "")
 }
 
 // Piano 7.2, fix review: l'indirizzo vuoto dà From vuoto, non "\"Ada\" <@>".
