@@ -137,7 +137,7 @@ func TestListRecentFitsSizeLimit(t *testing.T) {
 	}
 	for _, it := range items {
 		s, _ := it.(map[string]any)["subject"].(string)
-		if n := utf8.RuneCountInString(s); n > maxFieldRunes {
+		if n := utf8.RuneCountInString(s); n > maxFieldRunes+10 { // +10: marcatore "…[+N]" (fix review 6)
 			t.Fatalf("oggetto di %d rune, massimo %d", n, maxFieldRunes)
 		}
 	}

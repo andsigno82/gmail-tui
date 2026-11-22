@@ -22,8 +22,10 @@ const (
 )
 
 // ansiRe rimuove sequenze CSI e OSC (Piano 14, Task 1): un'email non deve
-// poter pilotare il terminale di chi legge.
-var ansiRe = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?`)
+// poter pilotare il terminale di chi legge. L'OSC richiede il terminatore (BEL
+// o ST): senza, la regex cancellerebbe il testo fino al prossimo ESC/BEL
+// (fix review 9).
+var ansiRe = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
 
 // NewNonce restituisce 16 byte casuali in esadecimale (crypto/rand).
 func NewNonce() (string, error) {
@@ -60,13 +62,19 @@ func Sanitize(s string) string {
 	return b.String()
 }
 
-// isInvisible copre zero-width, BOM e override/isolamento bidi: usati per
-// nascondere testo o invertirne la lettura.
+// isInvisible copre i caratteri di formato Unicode (categoria Cf): zero-width,
+// BOM, marcature e override bidi, Unicode Tags (ASCII smuggling, U+E0000-E007F).
+// Restano ZWNJ (U+200C) e ZWJ (U+200D): servono alle sequenze emoji e ad alcuni
+// script (fix review 3). Sono rimossi anche i selettori di variante (Mn):
+// U+FE00-FE0F e U+E0100-E01EF possono codificare dati nascosti, e la loro
+// perdita cambia solo la presentazione di alcune emoji.
 func isInvisible(r rune) bool {
 	switch {
-	case r == 0x200B, r == 0x200C, r == 0x200D, r == 0x2060, r == 0xFEFF:
+	case r == 0x200C || r == 0x200D:
+		return false
+	case unicode.Is(unicode.Cf, r):
 		return true
-	case r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069:
+	case r >= 0xFE00 && r <= 0xFE0F, r >= 0xE0100 && r <= 0xE01EF:
 		return true
 	}
 	return false

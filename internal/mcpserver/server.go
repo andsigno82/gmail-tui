@@ -39,32 +39,77 @@ func NewServer(r Reader, opts Options) *mcp.Server {
 
 // session incapsula il Reader con la connessione lazy (Piano 14, M3): il
 // primo tool connette, un fallimento non blocca l'avvio e la chiamata
-// successiva riprova. Le chiamate sono serializzate, come le op di MailStore.
+// successiva riprova. Dopo un errore dello store la connessione si considera
+// persa e la chiamata successiva riconnette (fix review 1).
 type session struct {
 	r       Reader
 	timeout time.Duration
 	secrets []string
 
-	mu    sync.Mutex
-	ready bool
+	mu      sync.Mutex
+	ready   bool
+	pending *connRound // non nil mentre una Connect è in corso (fix review 5)
+}
+
+// connRound è un tentativo di Connect: chi attende legge err dopo la chiusura di done.
+type connRound struct {
+	done chan struct{}
+	err  error
 }
 
 func newSession(r Reader, opts Options) *session {
 	return &session{r: r, timeout: opts.ConnectTimeout, secrets: opts.Secrets}
 }
 
-// ensure connette se necessario, con il budget di timeout di M3.
+// ensure garantisce la connessione. Una sola Connect alla volta: la Connect
+// gira in background e il suo esito resta valido anche se chi attende smette
+// (lo store può ignorare il contesto); il mutex non è mai tenuto durante
+// l'attesa (fix review 5).
 func (s *session) ensure(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.ready {
+		s.mu.Unlock()
 		return nil
 	}
-	cctx, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-	if err := s.r.Connect(cctx); err != nil {
-		return fmt.Errorf("connessione fallita: %w", err)
+	if s.pending == nil {
+		round := &connRound{done: make(chan struct{})}
+		s.pending = round
+		go s.connect(round)
 	}
-	s.ready = true
-	return nil
+	round := s.pending
+	s.mu.Unlock()
+
+	wctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	select {
+	case <-round.done:
+		return round.err
+	case <-wctx.Done():
+		return fmt.Errorf("connessione fallita: %w", wctx.Err())
+	}
+}
+
+// connect esegue la Connect dello store con il proprio budget e registra l'esito.
+func (s *session) connect(round *connRound) {
+	ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
+	defer cancel()
+	err := s.r.Connect(ctx)
+	s.mu.Lock()
+	if err != nil {
+		round.err = fmt.Errorf("connessione fallita: %w", err)
+	} else {
+		s.ready = true
+	}
+	s.pending = nil
+	s.mu.Unlock()
+	close(round.done)
+}
+
+// fail redige i segreti e azzera lo stato di connessione: il prossimo tool
+// riconnette (Piano 14, fix review 1).
+func (s *session) fail(err error) error {
+	s.mu.Lock()
+	s.ready = false
+	s.mu.Unlock()
+	return Redact(err, s.secrets...)
 }
