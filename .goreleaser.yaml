@@ -1,0 +1,81 @@
+# GoReleaser v2 configuration for gmail-tui.
+# Docs: https://goreleaser.com
+version: 2
+
+project_name: gmail-tui
+
+builds:
+  - id: gmail-tui
+    main: ./cmd/gmail-tui
+    binary: gmail-tui
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*feat[(\w)]*:+.*$'
+    - title: Bug fixes
+      regexp: '^.*fix[(\w)]*:+.*$'
+    - title: Documentation
+      regexp: '^.*docs[(\w)]*:+.*$'
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^chore:"
+      - "^ci:"
+      - "^test:"
+      - "^refactor:"
+      - "^style:"
+
+# Homebrew tap — COMMENTED OUT until the tap repository exists.
+#
+# After the first push (repo/org decided), create a tap repo named
+# homebrew-gmail-tui under your account, then uncomment and replace USER:
+#
+#   brew:
+#     tap:
+#       owner: USER
+#       name: homebrew-gmail-tui
+#       # GITHUB_TOKEN cannot push outside the release repo: create a fine-grained
+#       # PAT with contents:write on the tap repo and add it as a repo secret.
+#       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+#     folder: Formula
+#     homepage: "https://github.com/USER/gmail-tui"
+#     description: "A Gmail client for your terminal, built with Charm."
+#     license: MIT
+#
+# Users will then install with:  brew install USER/gmail-tui/gmail-tui
+
+release:
+  footer: >-
+    ## Install
+
+    Download the archive for your platform, or install with Go:
+
+    ```
+    go install github.com/USER/gmail-tui/cmd/gmail-tui@{{ .Tag }}
+    ```
