@@ -311,10 +311,11 @@ func anyUnread(refs []msg.MessageRef) bool {
 	return false
 }
 
-// markReadConv è il toggle `v` sulla riga (Piano 8, Task 9b): segna letta (o non
-// letta) la conversazione intera nella cartella. Poi legge lo stato di lettura
-// dell'intera conversazione (All Mail, senza spam e cestino), così il grassetto
-// della riga è giusto subito, senza attendere il refresh.
+// markReadConv è il toggle `v` sulla riga (Piano 8, Task 9b, D8-6): leggi/non letto
+// vale per l'INTERA conversazione, come Gmail web (flag soltanto, nessuno spostamento):
+// i messaggi sono quelli di All Mail senza spam e cestino (ThreadMessages), più la riga
+// stessa. Poi legge lo stato di lettura della conversazione, così il grassetto della
+// riga è giusto subito, senza attendere il refresh.
 func markReadConv(st mail.MailStore, ref msg.MessageRef, read bool) tea.Cmd {
 	label := "segna non letta"
 	if read {
@@ -322,18 +323,41 @@ func markReadConv(st mail.MailStore, ref msg.MessageRef, read bool) tea.Cmd {
 	}
 	return func() tea.Msg {
 		ctx := context.Background()
-		ids, err := conversationIDs(ctx, st, ref)
+		ids := []msg.MessageID{ref.ID}
+		var thread []msg.MessageRef
+		var err error
+		if ref.ThreadID != 0 {
+			thread, err = st.ThreadMessages(ctx, ref.ThreadID)
+			ids = withID(refIDs(thread), ref.ID)
+		}
 		if err == nil {
 			err = st.MarkRead(ctx, ids, read)
 		}
 		ev := opDone{label: label, err: err, refresh: true, localID: ref.ID, localRead: read}
 		if err == nil && ref.ThreadID != 0 {
-			if thread, terr := st.ThreadMessages(ctx, ref.ThreadID); terr == nil {
-				ev.convSet, ev.convUnread = true, anyUnread(thread)
-			}
+			ev.convSet, ev.convUnread = true, anyUnread(thread)
 		}
 		return ev
 	}
+}
+
+// refIDs estrae gli ID delle righe.
+func refIDs(refs []msg.MessageRef) []msg.MessageID {
+	out := make([]msg.MessageID, 0, len(refs))
+	for _, r := range refs {
+		out = append(out, r.ID)
+	}
+	return out
+}
+
+// withID aggiunge id a ids se non c'è già (la riga aperta, anche nel cestino).
+func withID(ids []msg.MessageID, id msg.MessageID) []msg.MessageID {
+	for _, x := range ids {
+		if x == id {
+			return ids
+		}
+	}
+	return append(ids, id)
 }
 
 // star esegue Star fuori dal loop UI: feedback "stella on"/"stella off".

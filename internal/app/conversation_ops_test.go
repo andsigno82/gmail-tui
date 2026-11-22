@@ -170,8 +170,11 @@ func TestVAggiornaSubitoIlGrassettoDellaConversazione(t *testing.T) {
 	m := pagedModel(t, rec)
 	m, cmd := step(m, pressKey("v"))
 	m = applyAll(t, m, cmd)
-	if len(rec.read) != 1 || !sameIDs(rec.read[0], idU1, idU2, idU3) {
-		t.Errorf("MarkRead ricevuto = %v, voglio i tre messaggi del thread in INBOX", rec.read)
+	// Piano 8, review punto 1 (D8-6): leggi/non letto vale per l'intera conversazione,
+	// come Gmail web, anche per la risposta in Inviati (solo flag, nessuno spostamento).
+	idSent := msg.NewID("[Gmail]/Sent", 5)
+	if len(rec.read) != 1 || !sameIDs(rec.read[0], idU1, idU2, idU3, idSent) {
+		t.Errorf("MarkRead ricevuto = %v, voglio tutta la conversazione (INBOX e Inviati)", rec.read)
 	}
 	first := strings.Split(m.inbox.View(), "\n")[0]
 	if !strings.Contains(first, "●") {
