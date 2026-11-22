@@ -30,6 +30,7 @@ Nota: nel commento di #73 i riferimenti "#759" e "#334" puntano a PR di atrium n
 | D8-5 (Q3) | Colore delle label | Hash deterministico del nome su un insieme di slot del tema. Ogni slot usato deve rispettare contrasto WCAG >= 4.5:1 rispetto allo sfondo su cui è disegnato; gli slot che non lo rispettano sono scartati. |
 | D8-6 (Q4) | Grassetto conversazione | Sì: in grassetto se almeno un messaggio della conversazione è non letto (come Gmail). |
 | D8-7 (Q5) | Spam e cestino nella conversazione | Sì: esclusi dalla vista conversazione (come Gmail), salvo quando si è dentro quelle cartelle. |
+| D8-8 (review, approvata dal coordinatore) | Azioni dal thread e stato della conversazione | Leggi/non letto (`v`) vale per tutta la conversazione, come Gmail web (D8-6). Dal thread `a`, `#` e `l` agiscono sulla CONVERSAZIONE della riga aperta nella cartella corrente, come dalla lista, qualunque messaggio sia selezionato. `s` agisce sul messaggio selezionato (STORE \Flagged su Tutti i messaggi è sicuro: solo flag). `r`, `f`, `o`, `:save`, `:open` usano il messaggio selezionato, con il suo ID di Tutti i messaggi: sono letture. La conversazione si deduplica per GmailID (uguale in ogni mailbox), non per ID; le copie in cache con lo stesso GmailID cambiano insieme; schema cache 3. |
 
 ## Global Constraints
 
@@ -262,7 +263,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 - [x] README (lista a conversazioni, vista thread, `/` con sintassi Gmail, label), CHANGELOG `[Unreleased]` in inglese, `docs/smoke-checklist.md`, `AGENTS.md` (regola 1 aggiornata, gotcha `heldGate` per i nuovi metodi, gotcha ID uint64 come stringa in JSON).
 - [ ] Gate completi: `go test ./...`, `CGO_ENABLED=0 go build ./...`, `go vet ./...`, `govulncheck ./...` (obbligatorio: la copia patchata è nel build), lint.
-- [ ] `/code-review` sul branch, rilievi corretti.
+- [x] `/code-review` sul branch, rilievi corretti.
 - [ ] **Smoke su account reale: solo Andrea, mai l'agente.** (1) `gmail-tui doctor` riporta X-GM-EXT-1; (2) una conversazione con risposta in Inviati compare come una riga con il conteggio giusto; (3) `/older_than:30d` dà risultati coerenti con la ricerca Gmail web; (4) una label utente compare in lista e non si duplica dopo `a`; (5) catturare un transcript reale **redatto** (nessun indirizzo, oggetto o corpo) da usare come fixture in `testdata/gmail/`.
 - [ ] Merge in `main` e push: chiedere conferma ad Andrea.
 

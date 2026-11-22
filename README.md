@@ -112,7 +112,7 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 - **Conversations and folders**: spam and Trash messages stay out of a conversation, except when you open it from those folders. `a`, `#` and `v` on a row act only on the conversation's messages in the current folder; All Mail is never touched by archive or trash.
 - **Conversation paging**: the list pages count conversations, and each page reads at most 500 messages. A page can be shorter than 50, and a very old conversation deep in the list may not appear.
 - **Lazy bodies**: opening a conversation downloads the bodies of the expanded messages only; collapsed rows show sender and date.
-- **Cache upgrade**: the message cache moved to schema v2. On the first start after upgrading, cached message entries are discarded and downloaded again.
+- **Cache upgrade**: the message cache moved to schema v3. On the first start after upgrading, cached message entries are discarded and downloaded again.
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
 - **Archive only in Inbox**: `a` is refused with an info toast when the selected message is not in INBOX (also for search results from other folders).

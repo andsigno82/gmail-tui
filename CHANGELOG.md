@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `a`, `#` and `v` on a list row act on the whole conversation in the current folder. Archive and Trash never touch All Mail.
 - Opening a conversation downloads the bodies of the expanded messages only.
-- The message cache moves to schema v2: cached message entries are downloaded again on the first start after the upgrade.
+- The message cache moves to schema v3 (Gmail IDs and labels are now stored for every fetched message): cached message entries are downloaded again on the first start after the upgrade.
 - `gmail-tui login` updates the address and keeps `name`, `signature`, `theme`, `layout` and `preview_mark_read`; before, it reset name and signature and set the theme to `default`.
 - An invalid `layout` or `preview_mark_read` value is reset to its default for that field only (warning on stderr at startup); the other fields are kept, and saving from the settings menu or `:theme` repairs the same way.
 - The first-run wizard also starts when no password is available and the config has no address.
