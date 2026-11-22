@@ -59,6 +59,10 @@ type SearchCriteria struct {
 	Or  [][2]SearchCriteria
 
 	ModSeq *SearchCriteriaModSeq // requires CONDSTORE
+
+	// Gmail (Piano 8, Task 3, patch X-GM-EXT-1; vedi PATCHES.md). nil = nessun
+	// criterio Gmail. And non unisce questo campo.
+	Gmail *SearchCriteriaGmail
 }
 
 // And intersects two search criteria.
@@ -117,6 +121,15 @@ func intersectBefore(t1, t2 time.Time) time.Time {
 
 type SearchCriteriaHeaderField struct {
 	Key, Value string
+}
+
+// SearchCriteriaGmail sono i criteri di estensione Gmail X-GM-EXT-1 (Piano 8,
+// Task 3). Tutti i valori presenti sono in AND.
+type SearchCriteriaGmail struct {
+	Raw      string   // X-GM-RAW: sintassi di ricerca Gmail, passata verbatim (quotata sul wire)
+	MsgID    uint64   // X-GM-MSGID; 0 = criterio assente (Gmail non assegna l'ID 0)
+	ThreadID uint64   // X-GM-THRID; 0 = criterio assente
+	Labels   []string // X-GM-LABELS: una voce per label
 }
 
 type SearchCriteriaModSeq struct {

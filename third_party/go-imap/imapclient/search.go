@@ -2,6 +2,7 @@ package imapclient
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -246,6 +247,22 @@ func writeSearchKey(enc *imapwire.Encoder, criteria *imap.SearchCriteria) {
 		}
 	}
 
+	// Piano 8, Task 3 (patch Gmail): criteri X-GM-EXT-1.
+	if g := criteria.Gmail; g != nil {
+		if g.Raw != "" {
+			encodeItem().Atom("X-GM-RAW").SP().String(g.Raw)
+		}
+		if g.MsgID != 0 {
+			encodeItem().Atom("X-GM-MSGID").SP().Atom(strconv.FormatUint(g.MsgID, 10))
+		}
+		if g.ThreadID != 0 {
+			encodeItem().Atom("X-GM-THRID").SP().Atom(strconv.FormatUint(g.ThreadID, 10))
+		}
+		for _, label := range g.Labels {
+			encodeItem().Atom("X-GM-LABELS").SP().String(label)
+		}
+	}
+
 	for _, not := range criteria.Not {
 		encodeItem().Atom("NOT").SP()
 		enc.Special('(')
@@ -376,6 +393,17 @@ func searchCriteriaIsASCII(criteria *imap.SearchCriteria) bool {
 	for _, s := range criteria.Text {
 		if !isASCII(s) {
 			return false
+		}
+	}
+	// Piano 8, Task 3: testo Gmail non ASCII richiede CHARSET UTF-8.
+	if g := criteria.Gmail; g != nil {
+		if !isASCII(g.Raw) {
+			return false
+		}
+		for _, label := range g.Labels {
+			if !isASCII(label) {
+				return false
+			}
 		}
 	}
 	for _, not := range criteria.Not {
