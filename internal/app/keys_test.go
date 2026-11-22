@@ -472,3 +472,26 @@ func bindingDescs(bs []key.Binding) map[string]bool {
 	}
 	return out
 }
+
+// Piano 8, Task 10 (fix help): nel thread j/k scelgono il messaggio e l'invio
+// ne alterna l'espansione. La barra breve e l'overlay `?` lo dichiarano.
+func TestThreadHelpDescribesConversationKeys(t *testing.T) {
+	m := newTestModel(t)
+	short := bindingDescs(m.shortHelpFor(false, viewThread))
+	for _, want := range []string{"messaggio", "espandi/comprimi"} {
+		if !short[want] {
+			t.Errorf("short help thread senza %q: %v", want, short)
+		}
+	}
+	full := map[string]bool{}
+	for _, group := range m.fullHelpFor(false, viewThread) {
+		for _, b := range group {
+			full[b.Help().Desc] = true
+		}
+	}
+	for _, want := range []string{"messaggio", "espandi/comprimi"} {
+		if !full[want] {
+			t.Errorf("overlay ? del thread senza %q", want)
+		}
+	}
+}
