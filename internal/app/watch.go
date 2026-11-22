@@ -93,7 +93,9 @@ func (m Model) handleChange(ev changeEvt) (Model, tea.Cmd) {
 		toastCmd := m.toast.Push(toast.Info, newMailText)
 		// Piano 7, fix code-review 3: requestRefresh muta m: prima del return.
 		follow := m.requestRefresh(true)
-		return m, tea.Batch(toastCmd, follow, rearm)
+		// Piano 11, Task 4: notifica desktop col comando configurato (fuori dal loop).
+		notify := m.notifyCmd(ev.c)
+		return m, tea.Batch(toastCmd, follow, notify, rearm)
 	case mail.ChangeFlags:
 		// nessun feedback: solo la lista si aggiorna (prima pagina, D5)
 		follow := m.requestRefresh(false) // Piano 7, fix code-review 3: prima del return

@@ -146,6 +146,14 @@ type Model struct {
 	cancel  context.CancelFunc
 	watchCh <-chan mail.Change // canale del feed aperto dall'Init (via watchStarted)
 
+	// Notifiche desktop (Piano 11, Task 4): comando da config (SetNotify), runner
+	// iniettabile nei test, arm sul primo load riuscito della INBOX, toast d'errore
+	// del comando una sola volta per sessione.
+	notifyArgv     []string
+	notifyRun      notifyRunner
+	notifyArmed    bool
+	notifyErrShown bool
+
 	width  int
 	height int
 }
@@ -307,6 +315,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, text)
 			return m, cmd
 		}
+		// Piano 11, Task 4: il primo load riuscito arma le notifiche (gli eventi
+		// arrivati prima non notificano: sono la posta già presente all'avvio).
+		m.notifyArmed = true
 		// L'indicatore di riconnessione (Task 8) si spegne al primo msgsLoaded
 		// riuscito che non lo abbia già sostituito (op, badge di ricerca): la
 		// riconnessione è andata a buon fine e la lista è fresca.
@@ -539,6 +550,15 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(toastCmd, localCmd, follow)
 		}
 		return m, tea.Batch(toastCmd, localCmd)
+
+	case notifyResult:
+		// Piano 11, Task 4: errore del comando di notifica, toast una sola volta.
+		if ev.err != nil && !m.notifyErrShown {
+			m.notifyErrShown = true
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("notifica desktop: %v", ev.err))
+			return m, cmd
+		}
+		return m, nil
 
 	case watchStarted:
 		// Apertura del feed Watch (Task 8): si custodisce il canale e si

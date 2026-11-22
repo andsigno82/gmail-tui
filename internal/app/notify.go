@@ -11,11 +11,15 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
@@ -155,3 +159,34 @@ func (c *capBuffer) Write(p []byte) (int, error) {
 }
 
 func (c *capBuffer) String() string { return string(c.buf) }
+
+// notifyRunner esegue il comando di notifica (seam: runNotify in produzione, un
+// fake nei test del Model). Piano 11, Task 4.
+type notifyRunner func(ctx context.Context, argv, env []string) error
+
+// notifyResult è l'esito del comando di notifica (Piano 11, Task 4).
+type notifyResult struct{ err error }
+
+// SetNotify imposta il comando delle notifiche dalla config (Piano 11, Task 4):
+// lista di argomenti copiata; lista vuota = notifiche disattivate.
+func (m *Model) SetNotify(argv []string) {
+	m.notifyArgv = slices.Clone(argv)
+}
+
+// notifyCmd prepara il comando di notifica per un ChangeNewMail (Piano 11, Task 4):
+// nil se il comando non è configurato, il primo load non è ancora avvenuto o
+// l'evento non ha ID. Il comando gira in un tea.Cmd (fuori dal loop UI) e torna
+// come notifyResult. Un solo processo per evento: COUNT è il numero di ID dell'evento.
+func (m Model) notifyCmd(c mail.Change) tea.Cmd {
+	if len(m.notifyArgv) == 0 || !m.notifyArmed || len(c.IDs) == 0 {
+		return nil
+	}
+	run := m.notifyRun
+	if run == nil {
+		run = runNotify
+	}
+	argv := slices.Clone(m.notifyArgv)
+	env := notifyEnv(c.Refs, len(c.IDs))
+	ctx := m.ctx
+	return func() tea.Msg { return notifyResult{err: run(ctx, argv, env)} }
+}
