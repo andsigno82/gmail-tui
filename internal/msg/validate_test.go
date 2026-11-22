@@ -39,3 +39,18 @@ func TestValidateRecipients(t *testing.T) {
 		})
 	}
 }
+
+// TestValidateAddressesIgnoresEmptyLists: ValidateAddresses controlla solo il
+// formato (Piano 7, Task 6, composer): liste vuote passano, la presenza di un
+// destinatario resta di ValidateRecipients; un indirizzo malformato è sempre un errore.
+func TestValidateAddressesIgnoresEmptyLists(t *testing.T) {
+	if err := ValidateAddresses(Outgoing{Subject: "bozza senza destinatari"}); err != nil {
+		t.Errorf("liste vuote: err = %v, voglio nil", err)
+	}
+	if err := ValidateAddresses(Outgoing{To: []string{"a@b.it"}, Cc: []string{"Mario <m@x.it>"}}); err != nil {
+		t.Errorf("indirizzi validi: err = %v, voglio nil", err)
+	}
+	if err := ValidateAddresses(Outgoing{To: []string{"a@b.it"}, Bcc: []string{"abc"}}); err == nil || !strings.Contains(err.Error(), "Ccn") {
+		t.Errorf("Ccn malformato: err = %v, voglio errore che cita Ccn", err)
+	}
+}

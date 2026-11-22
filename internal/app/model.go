@@ -581,6 +581,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view != viewComposer || m.sending || m.discardOpen {
 			return m, nil
 		}
+		// Piano 7, Task 6: un indirizzo malformato non apre la conferma. Il
+		// controllo viene DOPO i guard sopra: una richiesta stante o in volo
+		// resta scartata in silenzio, senza errori in status. Il composer resta
+		// aperto con la bozza intatta.
+		if err := msg.ValidateAddresses(ev.Out); err != nil {
+			m.status = statusMsg{text: err.Error(), isErr: true}
+			return m, nil
+		}
 		m.draft = ev.Out
 		m.confirmSend = true
 		return m, nil
