@@ -44,9 +44,11 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `c` opens the composer: From prefilled from config (read-only, never focused), focus starts on To.
 - [ ] `r` on an inbox row (fetch-then-compose) or in an open thread: To = sender, subject `Re:` (idempotent), body pre-filled with the quote header "Il <date>, <from> ha scritto:" and every line prefixed `> `; focus starts on the body.
 - [ ] `f`: subject `Fwd:`, no recipients, quote + a note that original attachments are not re-attached in v1.
-- [ ] `Tab`/`Shift+Tab` cycle fields (From skipped); `Ctrl+E` shows/hides Cc — a hidden Cc is never sent.
+- [ ] `Tab`/`Shift+Tab` cycle fields (From skipped); `Ctrl+E` shows/hides Cc and Bcc — a hidden Cc or Ccn that is filled in is still sent (the confirmation bar lists it).
 - [ ] With a signature configured, it is appended on send as `--` + signature below the body.
 - [ ] `Ctrl+S` opens the confirmation bar: "Invio a … — <subject> — <n> allegati — s conferma · esc annulla". `Esc` returns to the composer with the draft intact; `s` sends.
+- [ ] After `s`, the message is in Drafts at once; within 5 s `u` (inbox or thread) reopens the composer on that draft, and the copy is gone from Drafts only after the send succeeds.
+- [ ] `u` typed in the search bar or in a prompt is text, not undo.
 - [ ] Send success: back to the inbox, status "inviato", list refreshes (message visible in "Sent" on the web).
 - [ ] Send failure (e.g. bad network): error in the status bar, composer stays open with the draft; `Ctrl+S` re-opens the confirmation to retry.
 - [ ] `Esc` on a composer with a non-empty raw body opens the discard confirm "scartare la bozza? s conferma · esc annulla"; `s` discards, `Esc` resumes editing. An untouched empty composer exits directly.

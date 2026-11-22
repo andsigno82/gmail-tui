@@ -205,3 +205,15 @@ Scelte del piano (da confermare solo se contestate):
 | Conflitti con il Piano 11 su config/settings | Solo un campo in `config.Config`; nessuna modifica a `settings.go`. |
 | Ccn assente (D9-2) | Segnalato; decisione separata. |
 | Smoke reale non eseguibile da me | Non eseguito: nessuna connessione a Gmail; la sezione è nello smoke checklist per Andrea. |
+
+## Fix review (rilievi A-H)
+
+- [x] A. Salvataggio in Bozze alla conferma, prima della finestra (commit `feat(app): conferma d'invio salva subito in Bozze`).
+- [x] B. Comando esterno senza `GMAIL_APP_PASSWORD` né `GMAIL_TUI_*` (`internal/childenv`).
+- [x] C. Tetto stdout 64 KB, kill del gruppo di processi (unix), nomi e indirizzi puliti.
+- [x] D. Cc e Ccn compilati nella bozza anche con i campi nascosti.
+- [x] E. `u` solo in inbox e thread.
+- [x] F. ID della copia in Bozze conservato anche con errore di rimozione.
+- [x] G. Debounce di 150 ms per il comando esterno.
+- [x] H. `address_book_cmd` validato all'avvio (percorso assoluto o nome nel PATH).
+
