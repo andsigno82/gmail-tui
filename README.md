@@ -7,7 +7,7 @@
 
 Inbox, threads, search, compose/reply/forward with attachments, labels, themes and IMAP IDLE push — no Google Cloud project, no OAuth: just an App Password.
 
-<!-- Placeholder: regenerate the demo GIF with VHS (`vhs docs/demo.tape`) -->
+<!-- Demo GIF — regenerate with: vhs docs/demo.tape -->
 ![demo](docs/demo.gif)
 
 ## Requirements
@@ -71,7 +71,7 @@ Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc · `Ctrl+S` 
 
 Twelve embedded themes: `default`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `dracula`, `one-dark`, `one-light`, `nord`, `gruvbox-dark`, `gruvbox-light`, `tokyo-night`.
 
-Select with `theme = "…"` in the config, the `--theme` flag, or `:theme <name>` at runtime (immediate preview, persisted to config); `gmail-tui themes` lists them all. Adding a theme is one TOML file plus one test row — see [CONTRIBUTING.md](CONTRIBUTING.md).
+Select with `theme = "…"` in the config, the `--theme` flag, or `:theme <name>` at runtime (immediate preview, persisted to config); `gmail-tui themes` lists them all. Adding a theme is one TOML file — no test changes needed (the table-driven test validates it automatically) — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## CLI
 
