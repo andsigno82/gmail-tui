@@ -26,6 +26,7 @@ cmd/gmail-tui/        main: subcommand dispatch, wiring (config, keyring, store,
 internal/app/         root bubbletea Model: view routing, status bar, keys, ops, search, watch, compose, wizard, demo
 internal/ui/          view components: inbox, thread (+ ":" cmdmode), composer, wizard, styles
 internal/mail/        MailStore interface (store.go) + in-memory Mock (mock.go)
+internal/mcpserver/   MCP server over stdio (`gmail-tui mcp`), read-only Reader, untrusted-content markers (Piano 14); never imports go-imap
 internal/mail/imap/   the ONLY IMAP implementation (go-imap v2), IDLE watch, idleGate
 internal/mail/smtp/   MIME builder + STARTTLS sender (go-smtp)
 internal/mail/cache/  bbolt cache, invalidated by uidvalidity

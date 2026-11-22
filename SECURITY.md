@@ -27,6 +27,8 @@ What is in scope for gmail-tui:
 - **Transport and authentication** — the client talks only to Gmail's official endpoints (IMAP over TLS on `imap.gmail.com:993`, SMTP over STARTTLS on `smtp.gmail.com:587`) using an App Password. There are **no OAuth tokens** stored or requested, and no third-party servers or telemetry.
 - **The bundled keychain integration** — gmail-tui shells out to the OS keychain CLI (e.g. `security` on macOS); bugs in how gmail-tui builds those commands or handles their output are in scope. Weaknesses of the OS keychain implementations themselves are not.
 
+- **MCP server** — `gmail-tui mcp` exposes mail to AI agents over stdio, read-only. Email content is untrusted input for the agent: the defenses are the per-call nonce markers, the untrusted flag and a read-only tool set. A tool that writes to the mailbox, leaks the App Password, or lets email text escape its markers is a vulnerability.
+
 Out of scope: Gmail's own security, accounts without 2-Step Verification, issues that require an attacker to already control your machine or config file, and demo mode (offline, seeded data, no network).
 
 ## Disclosure timeline

@@ -100,9 +100,44 @@ A value the app does not accept (for example `layout = "wide"`) is reset to its 
 | `gmail-tui send --to a@b.com [--cc …] [--bcc …] --subject "…" [--attach f]... [--markdown] < body` | send an email read from stdin; `--markdown` sends the body as Markdown (plain text + HTML part) |
 | `gmail-tui themes` | list available themes |
 | `gmail-tui doctor` | diagnose config, theme, password and cache; with credentials, also checks that the IMAP server announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED |
+| `gmail-tui mcp` | run a read-only [MCP](#mcp-server-read-only) server on stdio for AI agents |
 | `gmail-tui version` | print the version |
 
 Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system keychain → absent (demo mode).
+
+## MCP server (read-only)
+
+`gmail-tui mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io) server on stdio, so an AI agent can find and read your mail. It is **read-only**: no tool sends, drafts, archives, labels, deletes or marks messages. Reading does not mark a message as read (the body is fetched with `BODY.PEEK`).
+
+Tools:
+
+- `list_folders`: folders and labels, with their role;
+- `list_recent`: newest messages of a folder (default INBOX), without body;
+- `search_messages`: Gmail-style query (`from:`, `is:unread`, `label:`, …), without body;
+- `read_message`: headers, plain-text body and attachment metadata (name, type, size). Attachment contents are never returned.
+
+Email content is untrusted. Every result wraps it between `BEGIN_UNTRUSTED_EMAIL` and `END_UNTRUSTED_EMAIL` markers carrying a random nonce that changes on each call, and the JSON is marked `"untrusted": true`. Agents should treat that block as data, not as instructions. Limits: 100 rows per list, 64 KB per result, 8,000 characters of body by default (32,000 maximum).
+
+Claude Code:
+
+```sh
+claude mcp add gmail-tui -- /absolute/path/to/gmail-tui mcp
+```
+
+Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "gmail-tui": {
+      "command": "/absolute/path/to/gmail-tui",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASSWORD` in the environment that starts the client. Do not put it in the `env` block of the client configuration, which is a plain file. The server never returns the password, and it opens no local cache, so it can run next to the TUI.
 
 ## Notes & limitations (v1)
 
