@@ -25,7 +25,7 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string) int {
 	case fileExists(cfgPath):
 		fmt.Fprintf(out, "config: %s (address=%q)\n", cfgPath, cfg.Address)
 	default:
-		fmt.Fprintln(out, "config: nessuna, uso defaults (first-run wizard in arrivo)")
+		fmt.Fprintln(out, "config: nessuna, uso defaults (parte il wizard first-run, oppure \"gmail-tui login\")")
 	}
 
 	if _, err := theme.Load(cfg.Theme); err != nil {
@@ -36,7 +36,7 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string) int {
 	}
 
 	if getenv("GMAIL_APP_PASSWORD") == "" {
-		fmt.Fprintln(out, "password: missing — export GMAIL_APP_PASSWORD o \"gmail-tui login\" (in arrivo)")
+		fmt.Fprintln(out, "password: missing — esegui \"gmail-tui login\" o export GMAIL_APP_PASSWORD")
 	} else {
 		fmt.Fprintln(out, "password: GMAIL_APP_PASSWORD ok")
 	}

@@ -128,7 +128,7 @@ type SendRequestedMsg struct{ Out msg.Outgoing }
 - Polish P3: StatusOK usato per feedback positivi (inviato/salvato/etichetta — i messaggi successo passano a StatusOK); checkbox Task 1-2 e "Verifica finale" del piano P3 tickate; (viewport keys già fatto in Task 2)
 - Test: wizard flow (step machine: welcome→input→testing→done/skip), config scritta correttamente, keyring.Set chiamato (fake), test-connection fallito → retry state, login flag parse, DemoStore seed assertions, StatusOK assertions su feedback positivi
 
-- [ ] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(wizard): first-run setup, login subcommand, demo seed, status polish`
+- [x] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(wizard): first-run setup, login subcommand, demo seed, status polish`
 
 ## Verifica finale del piano
 

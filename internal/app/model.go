@@ -20,6 +20,7 @@ import (
 	"gmail-tui/internal/ui/inbox"
 	"gmail-tui/internal/ui/styles"
 	"gmail-tui/internal/ui/thread"
+	"gmail-tui/internal/ui/wizard"
 )
 
 // view identifica la vista attiva (routing del Model radice).
@@ -30,6 +31,7 @@ const (
 	viewThread               // lettura thread (Task 5)
 	viewSearch               // ricerca (Task 6)
 	viewComposer             // scrittura messaggio (Piano 4, Task 3)
+	viewWizard               // first-run wizard (Piano 4, Task 5)
 )
 
 // Model è la radice della TUI: routing viste, status bar globale, keymap
@@ -68,6 +70,13 @@ type Model struct {
 	draft           msg.Outgoing
 	confirmSend     bool // conferma pre-invio aperta ("Invio a …" nella status bar)
 	sending         bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
+
+	// Wizard first-run (Piano 4, Task 5): attivo finché CompletedMsg — tutti
+	// i tasti vanno al wizard, il load/feed partono solo al completamento
+	// (skip → DemoStore seed; successo → factory dei backend reali, app/wizard.go).
+	wiz          wizard.Model
+	wizardActive bool
+	factory      BackendFactory
 
 	// Percorso della config per la persistenza del tema (Piano 4, Task 2:
 	// `:theme`): risolto in New da config.Path(). "" = non disponibile
@@ -144,8 +153,20 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 
 // Init emette il load iniziale della lista (Query vuota, prima pagina da 50),
 // avvia lo spinner e apre il feed Watch (Task 8): al watchStarted la radice
-// arma il loop waitForChange che guida il refresh automatico.
+// arma il loop waitForChange che guida il refresh automatico. In modalità
+// wizard (Piano 4, Task 5) NESSUNA delle due cose parte: store/sender sono
+// ancora il placeholder e la sessione vera nasce al completamento del wizard.
 func (m Model) Init() tea.Cmd {
+	if m.wizardActive {
+		return m.wiz.Init()
+	}
+	return m.beginSession()
+}
+
+// beginSession è il flusso d'avvio normale (Init senza wizard, e ripartenza
+// dopo il completamento del wizard): load iniziale della lista + spinner +
+// feed Watch.
+func (m Model) beginSession() tea.Cmd {
 	return tea.Batch(loadRefs(m.store), m.spinner.Tick, startWatch(m.store, m.ctx))
 }
 
@@ -293,7 +314,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = statusMsg{text: fmt.Sprintf("%s: %v", ev.label, ev.err), isErr: true}
 			return m, nil
 		}
-		m.status = statusMsg{text: ev.label}
+		m.status = statusMsg{text: ev.label, isOK: true}
 		if ev.closeComposer {
 			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
 			// torna all'inbox (come da piano); il feedback "inviato" resta in
@@ -355,7 +376,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = statusMsg{text: fmt.Sprintf("browser: %v", ev.Err), isErr: true}
 			return m, nil
 		}
-		m.status = statusMsg{text: "aperto nel browser"}
+		m.status = statusMsg{text: "aperto nel browser", isOK: true}
 		return m, nil
 
 	case thread.SaveRequested:
@@ -377,7 +398,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// del tasto `o`; il feedback viene da OpenedMsg.
 			return m, thread.OpenCmd(ev.path)
 		}
-		m.status = statusMsg{text: "salvato in " + ev.path}
+		m.status = statusMsg{text: "salvato in " + ev.path, isOK: true}
 		return m, nil
 
 	case thread.CommandFeedback:
@@ -397,7 +418,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.help = newHelp(ev.St)
 		m.inbox.SetStyles(ev.St)
 		m.thread.SetStyles(ev.St)
-		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name)}
+		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name), isOK: true}
 		return m, saveThemeCmd(m.cfgPath, ev.Th.Name)
 
 	case themePersisted:
@@ -460,6 +481,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case spinner.TickMsg:
+		if m.wizardActive {
+			// In modalità wizard lo spinner attivo è quello DEL WIZARD (passi
+			// testing/saving): i tick vanno a lui, non al spinner del radice.
+			var cmd tea.Cmd
+			m.wiz, cmd = m.wiz.Update(ev)
+			return m, cmd
+		}
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(ev)
 		if m.pending <= 0 {
@@ -472,6 +500,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
 		m.inbox.SetSize(ev.Width, max(0, m.height-1))
 		m.thread.SetSize(ev.Width, max(0, m.height-1))
+		if m.wizardActive {
+			// Gli input del wizard si adattano alla larghezza (Piano 4, Task 5).
+			m.wiz.SetWidth(ev.Width)
+		}
 		if m.view == viewComposer {
 			// Il composer è la vista attiva: ridimensiona campi e corpo
 			// (meno l'ultima riga, riservata alla status bar).
@@ -490,10 +522,20 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// pressioni (KeyPressMsg) per non duplicare le azioni.
 		if ev.String() == "ctrl+c" {
 			// Uscita immediata da qualunque stato (inbox, ricerca, prompt,
-			// overlay): quitCmd cancella il ctx del feed e esce. Il routing
-			// resta identico a Task 3-8 per tutti gli altri tasti (keymap
-			// centrale in keys.go, Task 9).
+			// overlay, wizard): quitCmd cancella il ctx del feed e esce. Il
+			// routing resta identico a Task 3-8 per tutti gli altri tasti
+			// (keymap centrale in keys.go, Task 9).
 			return m, m.quitCmd()
+		}
+		if m.wizardActive {
+			// Wizard first-run (Piano 4, Task 5): TUTTI i tasti vanno al
+			// wizard — enter avanza, esc torna al passo precedente, `s` salta
+			// in demo, il resto è testo degli input. I tasti operativi
+			// dell'app (j/k/r/a/…, q incluso) non significano nulla qui: la
+			// casella non esiste ancora.
+			var cmd tea.Cmd
+			m.wiz, cmd = m.wiz.Update(ev)
+			return m, cmd
 		}
 		if m.showHelp {
 			// Overlay help aperto (Task 9): ?/esc chiudono, gli altri tasti
@@ -681,8 +723,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// command line/filepicker del thread (Piano 4, Task 2) click e rotella
 		// non devono toccare ciò che c'è dietro il modale; nel composer
 		// (P4 Task 3) il mouse non tocca i campi (keyboard-first) e sotto le
-		// conferme discard/invio (P4 Task 4) è ignorato come i tasti.
-		if m.showHelp || m.labelOpen || m.discardOpen || m.confirmSend || m.thread.ModalOpen() {
+		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
+		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
+		// selezionano nulla: la lista non esiste ancora).
+		if m.showHelp || m.labelOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -697,7 +741,20 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case wizard.CompletedMsg:
+		// Completamento del first-run wizard (Piano 4, Task 5): skip → demo
+		// col seed, successo → factory dei backend reali; poi il flusso
+		// normale parte (load + feed). Stanti scartati dal handler.
+		return m.wizardCompleted(ev)
+
 	default:
+		// In modalità wizard i messaggi non-tasto (blink dei cursori degli
+		// input, ecc.) raggiungono il wizard: senza, i cursori resterebbero fermi.
+		if m.wizardActive {
+			var cmd tea.Cmd
+			m.wiz, cmd = m.wiz.Update(ev)
+			return m, cmd
+		}
 		// In ricerca anche i messaggi non-tasto (es. blink del cursore del
 		// textinput) passano al modello: senza, il cursore resterebbe fermo.
 		if m.view == viewSearch {
@@ -893,6 +950,8 @@ func (m Model) body() string {
 		return m.searchBody()
 	case viewComposer:
 		return m.composer.View()
+	case viewWizard:
+		return m.wizardBody()
 	default:
 		return m.inbox.View()
 	}
@@ -926,6 +985,11 @@ func (m Model) statusBar() string {
 	}
 	if m.status.isErr {
 		return m.renderBar(m.styles.StatusErr, text)
+	}
+	if m.status.isOK {
+		// Feedback positivo (Piano 3 polish, use-or-drop — adottato al Piano 4
+		// Task 5): "inviato", "salvato", "tema applicato", setup completato.
+		return m.renderBar(m.styles.StatusOK, text)
 	}
 	if m.demo && m.status.text == demoBannerText {
 		return m.renderBar(m.styles.DemoBanner, text)

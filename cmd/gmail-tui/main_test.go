@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"gmail-tui/internal/app"
 	"gmail-tui/internal/config"
+	"gmail-tui/internal/keyring"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/mail/imap"
 	"gmail-tui/internal/mail/smtp"
@@ -23,15 +25,113 @@ func getenvOf(env map[string]string) func(string) string {
 	return func(k string) string { return env[k] }
 }
 
+// krStub è un keyring.Store finto per il wiring: Get risponde con il segreto
+// scriptato (o ErrNotFound), Set/Delete falliscono rumorosamente (il wiring
+// li legge solo per la risoluzione iniziale).
+type krStub struct {
+	secret string
+	err    error
+}
+
+func (s krStub) Get(string, string) (string, error) {
+	if s.err != nil {
+		return "", s.err
+	}
+	if s.secret == "" {
+		return "", keyring.ErrNotFound
+	}
+	return s.secret, nil
+}
+
+func (s krStub) Set(string, string, string) error { return errors.New("krStub.Set inatteso") }
+
+func (s krStub) Delete(string, string) error { return errors.New("krStub.Delete inatteso") }
+
+// --- wizardNeeded ------------------------------------------------------------
+
+// TestWizardNeeded (Piano 4, Task 5): il wizard parte SOLO se forzato (`gmail-tui
+// login`) oppure se la config MANCA e nessuna password è risolvibile (source
+// ""). Config presente senza password → demo mode col banner esistente, NON
+// wizard; config assente CON password (env o keychain) → sessione reale.
+func TestWizardNeeded(t *testing.T) {
+	cases := []struct {
+		name            string
+		force, cfgExist bool
+		source          string
+		want            bool
+	}{
+		{"config presente e nessuna password: demo, non wizard", false, true, "", false},
+		{"config assente e nessuna password: wizard", false, false, "", true},
+		{"config assente ma env password: reale", false, false, "env", false},
+		{"config assente ma keychain: reale", false, false, "keychain", false},
+		{"config presente con env password: reale", false, true, "env", false},
+		{"login forza sempre", true, true, "env", true},
+		{"login forza anche senza nulla", true, false, "", true},
+	}
+	for _, tc := range cases {
+		if got := wizardNeeded(tc.force, tc.cfgExist, tc.source); got != tc.want {
+			t.Errorf("%s: wizardNeeded(%v, %v, %q) = %v, voglio %v", tc.name, tc.force, tc.cfgExist, tc.source, got, tc.want)
+		}
+	}
+}
+
+// --- resolvePassword -----------------------------------------------------------
+
+// TestResolvePasswordEnv: la env var vince sul keychain (ordine del keyring).
+func TestResolvePasswordEnv(t *testing.T) {
+	pw, src := resolvePassword(getenvOf(map[string]string{"GMAIL_APP_PASSWORD": "pw-env"}), krStub{secret: "pw-kc"}, "user@gmail.com")
+	if pw != "pw-env" || src != "env" {
+		t.Errorf("risoluzione = (%q, %q), voglio (pw-env, env)", pw, src)
+	}
+}
+
+// TestResolvePasswordKeychain: senza env si guarda nel keychain.
+func TestResolvePasswordKeychain(t *testing.T) {
+	pw, src := resolvePassword(getenvOf(nil), krStub{secret: "pw-kc"}, "user@gmail.com")
+	if pw != "pw-kc" || src != "keychain" {
+		t.Errorf("risoluzione = (%q, %q), voglio (pw-kc, keychain)", pw, src)
+	}
+}
+
+// TestResolvePasswordAbsent: né env né keychain → ("", "") — il chiamante
+// decide (wizard/demo).
+func TestResolvePasswordAbsent(t *testing.T) {
+	pw, src := resolvePassword(getenvOf(nil), krStub{}, "user@gmail.com")
+	if pw != "" || src != "" {
+		t.Errorf("risoluzione = (%q, %q), voglio (\"\", \"\")", pw, src)
+	}
+}
+
+// TestResolvePasswordNilKeyring: keychain non disponibile (kr nil — OS non
+// supportato o keyring.New in errore) → SOLO env, senza panic.
+func TestResolvePasswordNilKeyring(t *testing.T) {
+	pw, src := resolvePassword(getenvOf(map[string]string{"GMAIL_APP_PASSWORD": "pw-env"}), nil, "user@gmail.com")
+	if pw != "pw-env" || src != "env" {
+		t.Errorf("risoluzione con kr nil = (%q, %q), voglio (pw-env, env)", pw, src)
+	}
+	if pw, src := resolvePassword(getenvOf(nil), nil, "user@gmail.com"); pw != "" || src != "" {
+		t.Errorf("risoluzione con kr nil e senza env = (%q, %q), voglio vuote", pw, src)
+	}
+}
+
+// TestResolvePasswordKeyringError: errore del keychain (diverso da NotFound)
+// → degrada a assente (il wizard/demo decide; nessun panic).
+func TestResolvePasswordKeyringError(t *testing.T) {
+	pw, src := resolvePassword(getenvOf(nil), krStub{err: errors.New("security: exec fail")}, "user@gmail.com")
+	if pw != "" || src != "" {
+		t.Errorf("risoluzione con keychain in errore = (%q, %q), voglio vuote", pw, src)
+	}
+}
+
 // --- selectStore -------------------------------------------------------------
 
-// TestSelectStoreDemoMode: senza GMAIL_APP_PASSWORD la factory restituisce il
-// Mock (demo mode): costruzione senza rete, demo=true. Il Mock è ANCHE il
-// sender — store e sender sono UN solo oggetto (Piano 4, Task 4).
+// TestSelectStoreDemoMode: senza password la factory restituisce il DemoStore
+// SEEDED (Piano 4, Task 5: chi clona vede l'app viva) come store E sender —
+// un solo oggetto, costruzione senza rete.
 func TestSelectStoreDemoMode(t *testing.T) {
-	store, sender, demo := selectStore(config.Default(), getenvOf(nil), nil)
+	store, sender, demo := selectStore(config.Default(), "", nil)
 	if !demo {
-		t.Error("demo = false, voglio true senza GMAIL_APP_PASSWORD")
+		t.Error("demo = false, voglio true senza password")
 	}
 	mk, ok := store.(*mail.Mock)
 	if !ok {
@@ -44,17 +144,20 @@ func TestSelectStoreDemoMode(t *testing.T) {
 	if s != mk {
 		t.Error("store e sender devono essere lo STESSO Mock in demo mode")
 	}
+	if len(mk.Msgs) < 5 {
+		t.Errorf("seed demo = %d messaggi, voglio 5-6", len(mk.Msgs))
+	}
 }
 
-// TestSelectStoreIMAP: con GMAIL_APP_PASSWORD la factory costruisce lo store
+// TestSelectStoreIMAP: con la password risolta la factory costruisce lo store
 // IMAP reale e il sender SMTP (preset Gmail) SENZA connettersi: né NewStore né
 // NewSender toccano la rete (la connessione avviene alla prima operazione),
 // demo=false. Cache nil: il test non tocca il disco.
 func TestSelectStoreIMAP(t *testing.T) {
 	cfg := config.Config{Address: "user@gmail.com"}
-	store, sender, demo := selectStore(cfg, getenvOf(map[string]string{"GMAIL_APP_PASSWORD": "pw"}), nil)
+	store, sender, demo := selectStore(cfg, "pw", nil)
 	if demo {
-		t.Error("demo = true, voglio false con GMAIL_APP_PASSWORD presente")
+		t.Error("demo = true, voglio false con password presente")
 	}
 	s, ok := store.(*imap.Store)
 	if !ok {
@@ -69,6 +172,21 @@ func TestSelectStoreIMAP(t *testing.T) {
 	}
 	if snd == nil {
 		t.Error("sender SMTP nil")
+	}
+}
+
+// --- backendFactory ------------------------------------------------------------
+
+// TestBackendFactory (Piano 4, Task 5): la factory passata al wizard costruisce
+// i backend REALI con le credenziali verificate SENZA toccare la rete (il dial
+// avviene alla prima operazione).
+func TestBackendFactory(t *testing.T) {
+	store, sender := backendFactory("user@gmail.com", "pw")
+	if _, ok := store.(*imap.Store); !ok {
+		t.Errorf("store = %T, voglio *imap.Store", store)
+	}
+	if _, ok := sender.(*smtp.Sender); !ok {
+		t.Errorf("sender = %T, voglio *smtp.Sender", sender)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,12 +14,15 @@ import (
 	"gmail-tui/internal/app"
 	"gmail-tui/internal/cmd"
 	"gmail-tui/internal/config"
+	"gmail-tui/internal/keyring"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/mail/cache"
 	"gmail-tui/internal/mail/imap"
 	"gmail-tui/internal/mail/smtp"
 	"gmail-tui/internal/msg"
 	"gmail-tui/internal/theme"
+	"gmail-tui/internal/ui/styles"
+	"gmail-tui/internal/ui/wizard"
 )
 
 // version viene iniettata a build time: -ldflags "-X main.version=0.1.0"
@@ -51,38 +55,72 @@ func main() {
 			os.Exit(runFetch(os.Args[2:]))
 		case "send":
 			os.Exit(runSend(os.Args[2:]))
+		case "login":
+			// Setup guidato (Piano 4, Task 5): la TUI in modalità wizard
+			// forzata (il parsing dei flag precede ogni I/O).
+			os.Exit(runLogin(os.Args[2:]))
 		}
 	}
 	// Nessun argomento (o soli flag TUI come --theme): si avvia la TUI (Task
-	// 9). Un primo argomento sconosciuto (es. "foo") arriva qui e il FlagSet
-	// lo rigetta come posizionale inatteso — l'errore resta, il testo nuovo.
-	os.Exit(runTUI(os.Args[1:]))
+	// 9; wizard first-run quando serve — Piano 4, Task 5). Un primo argomento
+	// sconosciuto (es. "foo") arriva qui e il FlagSet lo rigetta come
+	// posizionale inatteso — l'errore resta, il testo nuovo.
+	os.Exit(runTUI(os.Args[1:], false))
+}
+
+// runLogin è il sottocomando `gmail-tui login` (Piano 4, Task 5): il parsing
+// dei flag precede ogni I/O (--help esce 0 senza avviare la TUI), poi la TUI
+// in modalità wizard FORZATA — indipendentemente da config/password presenti.
+func runLogin(args []string) int {
+	if code := cmd.ParseLoginArgs(args); code >= 0 {
+		return code
+	}
+	return runTUI(nil, true)
 }
 
 // runTUI avvia la TUI (Task 9): config → tema (flag --theme, poi config,
-// fallback default con warning) → store + sender (IMAP/SMTP reali se c'è
-// GMAIL_APP_PASSWORD — preset Gmail; altrimenti Mock in demo mode col banner,
-// che fa da store E sender — un solo oggetto, Piano 4 Task 4) → programma.
+// fallback default con warning) → risoluzione password (Piano 4 Task 5: env →
+// keychain → assente, via keyring.Resolve) → wizard first-run se la config
+// MANCA e nessuna password è risolvibile (o da `login`); altrimenti store +
+// sender (IMAP/SMTP reali se c'è una password — preset Gmail; altrimenti Mock
+// demo col seed di app.DemoStore() e il banner — store E sender un solo
+// oggetto) → programma.
 //
 // Limitazione documentata (mandato Task 8): q/esc/ctrl+c dentro la TUI escono
 // puliti cancellando il feed Watch; una SIGINT ESTERNA invece arriva al
 // runtime come tea.InterruptMsg e NON passa dall'Update — in quel percorso il
 // ctx del feed resta aperto fino all'uscita del processo (nessun effetto
 // visibile: è la fine del programma).
-func runTUI(args []string) int {
+func runTUI(args []string, forceWizard bool) int {
 	themeFlag, code := parseTUIArgs(args)
 	if code >= 0 {
 		return code
 	}
 	cfg, ok := loadConfig()
 	if !ok {
-		// Config assente/rotta: la TUI parte comunque dai default (in demo
-		// mode non serve proprio; con password l'errore vero uscirà in
+		// Config assente/rotta: la TUI parte comunque dai default (in wizard/
+		// demo mode non serve proprio; con password l'errore vero uscirà in
 		// status bar alla prima operazione).
 		cfg = config.Default()
 	}
 	th, warn := loadTheme(themeFlag, cfg.Theme)
-	store, sender, demo := selectStore(cfg, os.Getenv, openCache())
+
+	// Risoluzione password (Piano 4, Task 5): env GMAIL_APP_PASSWORD →
+	// keychain → assente. keyring.New nil-safe: senza keychain si risolve
+	// SOLO env (il panico non esiste, il degrado sì).
+	krStore, _ := keyring.New()
+	pw, src := resolvePassword(os.Getenv, krStore, cfg.Address)
+
+	// Config MANCANTE? (load non basta: Load su file assente torna Default
+	// senza errore — il controllo lo distingue come cmd.Doctor).
+	cfgPath, pathErr := config.Path()
+	cfgExists := pathErr == nil && fileExists(cfgPath)
+
+	if wizardNeeded(forceWizard, cfgExists, src) {
+		return runWizardTUI(cfgPath, krStore, th)
+	}
+
+	store, sender, demo := selectStore(cfg, pw, openCache())
 	m := app.New(store, sender, th)
 	m.SetIdentity(cfg.Address, cfg.Signature) // composer r/f/c (Piano 4, Task 3)
 	if demo {
@@ -92,15 +130,72 @@ func runTUI(args []string) int {
 		// Il warning del tema è più specifico del banner demo: vince.
 		m.SetStartupWarning(warn)
 	}
+	return runProgram(m)
+}
+
+// runProgram avvia il programma Bubble Tea col modello dato (condiviso dal
+// percorso normale e dal wizard). In tea v2 mouse e altscreen sono dichiarati
+// per-View dal Model (View() imposta MouseMode cell motion e AltScreen):
+// nessuna opzione di programma serve; WithContext (Task 8) giudicato non
+// necessario.
+func runProgram(m tea.Model) int {
 	p := tea.NewProgram(m)
-	// In tea v2 mouse e altscreen sono dichiarati per-View dal Model (View()
-	// imposta MouseMode cell motion e AltScreen): nessuna opzione di programma
-	// serve; WithContext (Task 8) giudicato non necessario.
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		return 1
 	}
 	return 0
+}
+
+// runWizardTUI avvia la TUI in modalità first-run (Piano 4, Task 5): il radice
+// nasce col placeholder demo (DemoStore — mai interrogato finché il wizard è
+// attivo) e col wizard attivo; al completamento il radice scambia store/sender
+// (skip → demo col seed; successo → factory reale con le credenziali
+// verificate) e avvia load/feed da sé (app.SetWizard).
+func runWizardTUI(cfgPath string, krStore keyring.Store, th theme.Theme) int {
+	mk := app.DemoStore()
+	m := app.New(mk, mk, th)
+	m.SetWizard(wizard.New(wizard.Deps{
+		TestConnect: testConnection,
+		Keyring:     krStore,
+		CfgPath:     cfgPath,
+	}, styles.New(th)), backendFactory)
+	return runProgram(m)
+}
+
+// wizardNeeded decide la modalità first-run (Piano 4, Task 5): wizard SOLO se
+// forzato (`gmail-tui login`) oppure se la config MANCA e nessuna password è
+// risolvibile (source ""). Config presente senza password → demo mode col
+// banner esistente (non wizard); config assente CON password → sessione reale.
+func wizardNeeded(force, cfgExists bool, source string) bool {
+	return force || (!cfgExists && source == "")
+}
+
+// resolvePassword applica l'ordine di risoluzione (Piano 4, Task 5) via
+// keyring.Resolve: env GMAIL_APP_PASSWORD → keychain → assente. Nil-safe: kr
+// nil (OS senza keychain, o keyring.New in errore) → SOLO env. Un errore del
+// keychain diverso da NotFound degrada ad "assente": la sessione parte
+// demo/wizard e l'errore vero uscirà alla prima operazione (nessun blocco
+// all'avvio per un keychain indisponibile).
+func resolvePassword(getenv func(string) string, kr keyring.Store, user string) (pw, source string) {
+	if kr == nil {
+		if pw := getenv("GMAIL_APP_PASSWORD"); pw != "" {
+			return pw, "env"
+		}
+		return "", ""
+	}
+	pw, source, err := keyring.Resolve(getenv, kr, user)
+	if err != nil {
+		return "", ""
+	}
+	return pw, source
+}
+
+// fileExists è il controllo "config sul disco?" (come cmd.Doctor distingue il
+// first-run): Load su file assente torna Default senza errore, non basta.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // parseTUIArgs parsa i flag della TUI (--theme; --help/-h ⇒ uso + exit 0).
@@ -118,11 +213,12 @@ func parseTUIArgs(args []string) (string, int) {
 }
 
 // tuiUsage stampa l'uso della TUI. Comprende le due righe richieste dal
-// mandato Task 8/9: la demo mode senza credenziali e la limitazione SIGINT.
+// mandato Task 8/9 (aggiornate al Piano 4 Task 5: wizard al primo avvio e
+// sottocomando login) e la limitazione SIGINT.
 func tuiUsage(fs *flag.FlagSet) {
 	out := fs.Output()
 	fmt.Fprintln(out, "gmail-tui — client Gmail nel terminale (senza argomenti avvia la TUI)")
-	fmt.Fprintln(out, "Senza GMAIL_APP_PASSWORD la TUI parte in demo mode (store finto).")
+	fmt.Fprintln(out, "Senza credenziali: se la config manca parte il wizard first-run (o esegui \"gmail-tui login\"); se la config c'è parte in demo mode (store finto).")
 	fmt.Fprintln(out, "Nota: q/ctrl+c escono puliti; una SIGINT esterna esce senza cancellare il feed Watch (nessun effetto visibile).")
 	fmt.Fprintln(out, "Flag:")
 	fs.PrintDefaults()
@@ -149,32 +245,70 @@ func loadTheme(flagTheme, cfgTheme string) (theme.Theme, string) {
 	return def, fmt.Sprintf("tema %q non disponibile — uso default", name)
 }
 
-// selectStore sceglie store e sender per la TUI (Task 9 + Piano 4 Task 4):
-// IMAP/SMTP reali se la password applicativa è presente (preset Gmail fisso —
-// host imap non configurabile; password via getenv, il keyring arriva in
-// Task 5), altrimenti Mock in demo mode che fa da store E sender (UN solo
-// oggetto: chi clona il repo vede l'app, incluso l'invio in Mock.Sent).
+// selectStore sceglie store e sender per la TUI (Task 9 + Piano 4 Task 4-5):
+// IMAP/SMTP reali se la password applicativa è risolta (preset Gmail fisso —
+// host imap non configurabile; la password arriva dalla risoluzione env →
+// keychain, sopra), altrimenti il Mock demo CON SEED (app.DemoStore(), Piano 4
+// Task 5: chi clona il repo vede l'app viva) che fa da store E sender (UN solo
+// oggetto: include l'invio registrato in Mock.Sent).
 // imap.NewStore e smtp.NewSender NON si connettono (la connessione avviene
 // alla prima operazione): la costruzione non tocca la rete. La cache è passata
 // dal chiamante (nil = senza cache): nei test non si tocca il disco utente.
-func selectStore(cfg config.Config, getenv func(string) string, c *cache.Cache) (store mail.MailStore, sender app.Sender, demo bool) {
-	if getenv("GMAIL_APP_PASSWORD") == "" {
-		mk := &mail.Mock{}
+func selectStore(cfg config.Config, password string, c *cache.Cache) (store mail.MailStore, sender app.Sender, demo bool) {
+	if password == "" {
+		mk := app.DemoStore()
 		return mk, mk, true
 	}
 	store = imap.NewStore(imap.Options{
 		Addr:     imapAddr,
 		Username: cfg.Address,
-		Password: getenv("GMAIL_APP_PASSWORD"),
+		Password: password,
 		Cache:    c,
 	})
 	sender = smtp.NewSender(smtp.Options{
 		Host:     smtpHost,
 		Port:     smtpPort,
 		Username: cfg.Address,
-		Password: getenv("GMAIL_APP_PASSWORD"),
+		Password: password,
 	})
 	return store, sender, false
+}
+
+// testConnection è la verifica di connessione REALE del wizard (Piano 4,
+// Task 5): preset Gmail (host fisso), TLS, Connect + ListMessages limit 1.
+// Il wizard applica il budget di 30s al ctx prima di chiamarla (cfr.
+// wizard.connectTimeout): nessun hang possibile oltre il budget.
+func testConnection(ctx context.Context, address, password string) error {
+	st := imap.NewStore(imap.Options{
+		Addr:     imapAddr,
+		Username: address,
+		Password: password,
+	})
+	if err := st.Connect(ctx); err != nil {
+		return err
+	}
+	_, err := st.ListMessages(ctx, msg.Query{}, mail.Page{Limit: 1})
+	return err
+}
+
+// backendFactory costruisce store e sender REALI con le credenziali verificate
+// dal wizard (preset Gmail); NESSUNA connessione qui (il dial avviene alla
+// prima operazione — come selectStore). Soddisfa app.BackendFactory, passata
+// al radice via SetWizard (Piano 4, Task 5).
+func backendFactory(address, password string) (mail.MailStore, app.Sender) {
+	store := imap.NewStore(imap.Options{
+		Addr:     imapAddr,
+		Username: address,
+		Password: password,
+		Cache:    openCache(),
+	})
+	sender := smtp.NewSender(smtp.Options{
+		Host:     smtpHost,
+		Port:     smtpPort,
+		Username: address,
+		Password: password,
+	})
+	return store, sender
 }
 
 // runFetch: gmail-tui fetch [--limit N] [--query "from:x is:unread"].
@@ -258,11 +392,15 @@ func loadConfig() (config.Config, bool) {
 	return cfg, true
 }
 
-// appPassword recupera la password applicativa (nessuna rete).
-func appPassword() (string, bool) {
-	pw := os.Getenv("GMAIL_APP_PASSWORD")
+// appPassword recupera la password applicativa per i sottocomandi CLI
+// (nessuna rete) con lo STESSO ordine della TUI (Piano 4, Task 5): env
+// GMAIL_APP_PASSWORD → keychain (keyring.Resolve) → assente. keyring.New
+// nil-safe: senza keychain si risolve solo env.
+func appPassword(cfg config.Config) (string, bool) {
+	krStore, _ := keyring.New()
+	pw, _ := resolvePassword(os.Getenv, krStore, cfg.Address)
 	if pw == "" {
-		fmt.Fprintln(os.Stderr, "GMAIL_APP_PASSWORD mancante — vedi README")
+		fmt.Fprintln(os.Stderr, "password non trovata (env GMAIL_APP_PASSWORD e keychain) — esegui \"gmail-tui login\" o vedi README")
 		return "", false
 	}
 	return pw, true
@@ -271,7 +409,7 @@ func appPassword() (string, bool) {
 // newIMAPStore costruisce lo store IMAP con preset Gmail; cache bbolt da
 // UserCacheDir (nil, cioè no cache, se non disponibile).
 func newIMAPStore(cfg config.Config) (mail.MailStore, bool) {
-	pw, ok := appPassword()
+	pw, ok := appPassword(cfg)
 	if !ok {
 		return nil, false
 	}
@@ -285,7 +423,7 @@ func newIMAPStore(cfg config.Config) (mail.MailStore, bool) {
 
 // newSMTPSender costruisce il sender SMTP con preset Gmail (587 STARTTLS).
 func newSMTPSender(cfg config.Config) (*smtp.Sender, bool) {
-	pw, ok := appPassword()
+	pw, ok := appPassword(cfg)
 	if !ok {
 		return nil, false
 	}

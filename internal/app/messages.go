@@ -67,10 +67,14 @@ type watchStarted struct {
 }
 
 // statusMsg è un messaggio effimero per la status bar: resta finché il
-// prossimo evento non lo sostituisce.
+// prossimo evento non lo sostituisce. isOK (Piano 3 polish, use-or-drop —
+// adottato al Piano 4 Task 5) distingue il feedback positivo ("inviato",
+// "salvato", "tema applicato", setup completato) che viene reso col stile
+// StatusOK anziché il normale StatusBar.
 type statusMsg struct {
 	text  string
 	isErr bool
+	isOK  bool
 }
 
 // attachmentSaved è il risultato di store.SaveAttachment (Piano 4, Task 2:
