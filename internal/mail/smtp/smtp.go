@@ -67,6 +67,12 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 	if err != nil {
 		return err
 	}
+	// Piano 7.2, fix review: MAIL FROM accetta solo addr-spec; il nome
+	// visualizzato di From resta nel solo header (buildMIME).
+	from, err := msg.BareAddress(m.From)
+	if err != nil {
+		return fmt.Errorf("smtp: mittente non valido %q: %w", m.From, err)
+	}
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", net.JoinHostPort(s.o.Host, strconv.Itoa(s.o.Port)))
 	if err != nil {
@@ -104,7 +110,7 @@ func (s *Sender) Send(ctx context.Context, m msg.Outgoing) error {
 		}
 	}
 
-	if err := c.Mail(m.From, nil); err != nil {
+	if err := c.Mail(from, nil); err != nil {
 		return fmt.Errorf("smtp: mail: %w", err)
 	}
 

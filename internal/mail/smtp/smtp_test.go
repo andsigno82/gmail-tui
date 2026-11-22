@@ -1,6 +1,7 @@
 package smtp
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -423,5 +424,23 @@ func TestSendStartTLSWrongServerName(t *testing.T) {
 		t.Fatal("want errore starttls (hostname mismatch), got nil")
 	} else if !strings.Contains(err.Error(), "starttls") {
 		t.Errorf("errore senza fase starttls: %v", err)
+	}
+}
+
+// Piano 7.2, fix review: con un nome visualizzato in From, MAIL FROM deve
+// contenere il solo addr-spec (RFC 5321); il nome resta nell'header From.
+func TestSendMailFromIsBareAddress(t *testing.T) {
+	addr, cap := startSMTPServer(t, nil)
+	m := sampleOutgoing()
+	m.From = "Ada Lovelace <ada@example.com>"
+	if err := testSender(t, addr).Send(context.Background(), m); err != nil {
+		t.Fatalf("Send: %v", err)
+	}
+	from, _, data := cap.snapshot()
+	if from != "ada@example.com" {
+		t.Errorf("MAIL FROM = %q, voglio %q", from, "ada@example.com")
+	}
+	if !strings.Contains(string(data), "From: Ada Lovelace <ada@example.com>\r\n") {
+		t.Errorf("header From senza nome visualizzato:\n%s", data)
 	}
 }
