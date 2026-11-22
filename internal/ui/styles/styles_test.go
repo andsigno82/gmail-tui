@@ -8,7 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"charm.land/lipgloss/v2/compat"
 
-	"gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/theme"
 )
 
 func loadTheme(t *testing.T, name string) theme.Theme {

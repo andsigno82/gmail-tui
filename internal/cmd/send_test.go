@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // fakeSender cattura l'Outgoing ricevuto (per gli assert).

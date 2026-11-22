@@ -34,4 +34,4 @@ Initial release: a complete terminal Gmail client built on the Charm stack — I
 - **Credentials never in config or logs** — the App Password lives only in the system keychain or the `GMAIL_APP_PASSWORD` env var; it is never written to `config.toml` and never logged, and keychain-related errors are masked so the secret cannot leak through them.
 - **Encrypted transport only** — IMAP over implicit TLS (`imap.gmail.com:993`) and SMTP over STARTTLS (`smtp.gmail.com:587`), the fixed Gmail preset.
 
-[0.1.0]: https://github.com/USER/gmail-tui/releases/tag/v0.1.0
+[0.1.0]: https://github.com/andsigno82/gmail-tui/releases/tag/v0.1.0

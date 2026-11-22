@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // TestSearchFrom: from:x → solo i messaggi del mittente x, dal più nuovo;

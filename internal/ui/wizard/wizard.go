@@ -26,9 +26,9 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/keyring"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/keyring"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // Step è il passo corrente della macchina a stati del wizard. CompletedMsg

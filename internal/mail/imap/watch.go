@@ -33,8 +33,8 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 const (

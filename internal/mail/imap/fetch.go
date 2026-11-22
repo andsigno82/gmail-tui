@@ -13,7 +13,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/jhillyerd/enmime"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // ErrMessageNotFound è wrappato nell'errore ritornato quando il fetch di un

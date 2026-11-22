@@ -14,7 +14,7 @@ import (
 	"github.com/emersion/go-sasl"
 	gosmtp "github.com/emersion/go-smtp"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Options configura il Sender. Insecure = true (SOLO nei test): niente

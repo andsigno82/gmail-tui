@@ -7,7 +7,7 @@ import (
 	"context"
 	"errors"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // maxAttachmentCandidates limita il post-filtro HasAttachment: al più tanti

@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // TestBuildMIMESimple verifica i header esatti del caso senza allegati:

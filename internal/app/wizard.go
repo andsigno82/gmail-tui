@@ -17,8 +17,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/ui/wizard"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
 // BackendFactory costruisce store e sender REALI con le credenziali verificate

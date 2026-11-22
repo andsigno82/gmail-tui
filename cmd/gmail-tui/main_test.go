@@ -5,12 +5,12 @@ import (
 	"strings"
 	"testing"
 
-	"gmail-tui/internal/app"
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/keyring"
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/mail/imap"
-	"gmail-tui/internal/mail/smtp"
+	"github.com/andsigno82/gmail-tui/internal/app"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/keyring"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/mail/imap"
+	"github.com/andsigno82/gmail-tui/internal/mail/smtp"
 )
 
 // Conformance (Piano 4, Task 4): sia il Sender SMTP che il Mock soddisfano

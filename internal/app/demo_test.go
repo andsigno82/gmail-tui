@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // TestDemoStoreRealisticSeed (Piano 4, Task 5): la factory della demo produce

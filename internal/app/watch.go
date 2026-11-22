@@ -31,7 +31,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/mail"
 )
 
 const (

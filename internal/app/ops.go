@@ -14,11 +14,11 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/ui/styles"
-	"gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/thread"
 )
 
 // labelPrompt è il prompt del mini-input delle label (render nella status

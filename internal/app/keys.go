@@ -15,7 +15,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // appKeys è la keymap dell'app: una definizione per azione, con i tasti

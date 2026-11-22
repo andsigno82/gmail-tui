@@ -11,9 +11,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // testStyles carica gli stili sul tema default.

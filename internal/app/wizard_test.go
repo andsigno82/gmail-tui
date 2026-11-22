@@ -13,10 +13,10 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/thread"
-	"gmail-tui/internal/ui/wizard"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
 // --- doppio per le dipendenze del wizard ----------------------------------------

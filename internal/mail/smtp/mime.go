@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // buildMIME costruisce il messaggio MIME completo (header + corpo) per

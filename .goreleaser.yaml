@@ -54,21 +54,21 @@ changelog:
 # Homebrew tap — COMMENTED OUT until the tap repository exists.
 #
 # After the first push (repo/org decided), create a tap repo named
-# homebrew-gmail-tui under your account, then uncomment and replace USER:
+# homebrew-gmail-tui under your account, then uncomment:
 #
 #   brew:
 #     tap:
-#       owner: USER
+#       owner: andsigno82
 #       name: homebrew-gmail-tui
 #       # GITHUB_TOKEN cannot push outside the release repo: create a fine-grained
 #       # PAT with contents:write on the tap repo and add it as a repo secret.
 #       token: "{{ .Env.TAP_GITHUB_TOKEN }}"
 #     folder: Formula
-#     homepage: "https://github.com/USER/gmail-tui"
+#     homepage: "https://github.com/andsigno82/gmail-tui"
 #     description: "A Gmail client for your terminal, built with Charm."
 #     license: MIT
 #
-# Users will then install with:  brew install USER/gmail-tui/gmail-tui
+# Users will then install with:  brew install andsigno82/gmail-tui/gmail-tui
 
 release:
   footer: >-
@@ -77,5 +77,5 @@ release:
     Download the archive for your platform, or install with Go:
 
     ```
-    go install github.com/USER/gmail-tui/cmd/gmail-tui@{{ .Tag }}
+    go install github.com/andsigno82/gmail-tui/cmd/gmail-tui@{{ .Tag }}
     ```

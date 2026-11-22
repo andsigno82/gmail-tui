@@ -9,8 +9,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // watchModel costruisce il modello consolidato (3 ref, cursore su 0, pending

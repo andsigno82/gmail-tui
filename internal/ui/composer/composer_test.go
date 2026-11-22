@@ -8,8 +8,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // --- helper -------------------------------------------------------------------

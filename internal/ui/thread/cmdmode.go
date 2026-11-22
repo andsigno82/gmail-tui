@@ -32,9 +32,9 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // SaveRequested chiede alla radice il salvataggio di un allegato (n dell'

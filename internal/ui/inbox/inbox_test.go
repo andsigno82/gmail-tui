@@ -8,9 +8,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // now fissa per i test: 2026-11-21 è sabato, 09:05 UTC.

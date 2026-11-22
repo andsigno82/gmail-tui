@@ -12,15 +12,15 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/composer"
-	"gmail-tui/internal/ui/inbox"
-	"gmail-tui/internal/ui/styles"
-	"gmail-tui/internal/ui/thread"
-	"gmail-tui/internal/ui/wizard"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/composer"
+	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
 // view identifica la vista attiva (routing del Model radice).

@@ -6,7 +6,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // TestSearchCriteria verifica la tabella di traduzione Query → SEARCH:

@@ -126,16 +126,17 @@ review finale whole-branch → merge su main. Ledger di progresso in
 
 ## Passi manuali rimasti (solo tu puoi)
 
-1. Crea il repo GitHub (`github.com/TUOUTENTE/gmail-tui`)
-2. Sostituisci `USER` ovunque (`git grep -l USER`) e rinomina il module:
-   `go mod edit -module github.com/TUOUTENTE/gmail-tui` + sostituzione import
-   + `go mod tidy && go build`
-3. `git push` + `git tag v0.1.0 && git push origin v0.1.0` → la release
-   workflow pubblica i binari
+1. ~~Crea il repo GitHub~~ ✅ fatto (github.com/andsigno82/gmail-tui)
+2. ~~Sostituisci `USER` e rinomina il module~~ ✅ fatto (2026-11-22,
+   module = `github.com/andsigno82/gmail-tui`)
+3. `git push origin main` + `git tag v0.1.0 && git push origin v0.1.0` → la
+   release workflow pubblica i binari
 4. Settings → Pages → Source: **GitHub Actions** → la landing page va live
 5. (Opzionale) tap Homebrew `homebrew-gmail-tui` + decommenta la sezione brew
    in `.goreleaser.yaml`; FUNDING; description/topics/social preview del repo
-6. Smoke con credenziali reali seguendo `docs/smoke-checklist.md`
+6. Imposta una vera email di contatto in SECURITY.md / CODE_OF_CONDUCT.md
+   (oggi: placeholder `USER@example.com`)
+7. Smoke con credenziali reali seguendo `docs/smoke-checklist.md`
 
 ## Roadmap v1.1 (già documentata in ROADMAP.md)
 

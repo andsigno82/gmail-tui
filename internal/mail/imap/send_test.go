@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Send è uno stub (l'invio è responsabilità di smtp.Sender): deve sempre

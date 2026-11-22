@@ -10,11 +10,11 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
-	"gmail-tui/internal/ui/inbox"
-	"gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
+	"github.com/andsigno82/gmail-tui/internal/ui/thread"
 )
 
 // newTestModel costruisce il Model radice contro il Mock e il tema default.

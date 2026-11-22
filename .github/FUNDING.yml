@@ -3,8 +3,8 @@
 # PLACEHOLDER: every key below is commented out, so GitHub shows no funding
 # button for this repository (an all-comment FUNDING.yml is a valid no-op
 # configuration). To enable the "Sponsor this project" button after the first
-# push, uncomment the line and replace USER with your GitHub username:
+# push, uncomment the line below to enable the Sponsor button:
 #
-#   github: USER
+#   github: andsigno82
 #
 # See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository

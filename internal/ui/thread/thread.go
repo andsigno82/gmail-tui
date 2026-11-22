@@ -19,8 +19,8 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // Layout: 4 righe header (Da/A/Oggetto/Data) + 1 riga vuota di separazione;

@@ -1,9 +1,9 @@
 # gmail-tui
 
-[![CI](https://github.com/USER/gmail-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/gmail-tui/actions/workflows/ci.yml)
+[![CI](https://github.com/andsigno82/gmail-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/andsigno82/gmail-tui/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-🌐 **[Landing page](https://USER.github.io/gmail-tui/)** — screenshots, themes showcase *(after the first push + Pages setup)*
+🌐 **[Landing page](https://andsigno82.github.io/gmail-tui/)** — screenshots, themes showcase *(after the first push + Pages setup)*
 
 Docs: [CHANGELOG](CHANGELOG.md) · [SECURITY](SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md)
 
@@ -24,9 +24,9 @@ Inbox, threads, search, compose/reply/forward with attachments, labels, themes a
 
 ```sh
 # 1. Install (any one of)
-brew install USER/gmail-tui/gmail-tui                       # placeholder tap — created after the first release
-go install github.com/USER/gmail-tui/cmd/gmail-tui@latest
-git clone https://github.com/USER/gmail-tui && cd gmail-tui && go build ./cmd/gmail-tui
+brew install andsigno82/gmail-tui/gmail-tui                       # placeholder tap — created after the first release
+go install github.com/andsigno82/gmail-tui/cmd/gmail-tui@latest
+git clone https://github.com/andsigno82/gmail-tui && cd gmail-tui && go build ./cmd/gmail-tui
 
 # 2. Configure — first-run wizard (stores the password in the system keychain)
 gmail-tui login
@@ -37,17 +37,6 @@ gmail-tui
 ```
 
 Without a config file the app launches the **first-run wizard**; with a config but no password it starts in **demo mode** with seeded mail and a banner.
-
-> **Renaming the module for your own fork/repo:** the module path is currently the local name `gmail-tui`; the URLs above use the `github.com/USER/gmail-tui` placeholder. After pushing under your account, rename once:
->
-> ```sh
-> go mod edit -module github.com/YOURUSER/gmail-tui
-> grep -rl '"gmail-tui/' --include='*.go' . | xargs sed -i '' \
->   's|"gmail-tui/|"github.com/YOURUSER/gmail-tui/|g'
-> go mod tidy && go build ./...
-> ```
->
-> (`sed -i ''` is macOS; use `sed -i` on Linux. The `go install` path only works after this rename.)
 
 ## Keymap
 

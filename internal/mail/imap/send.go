@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Send implementa MailStore, ma l'invio NON è una capacità IMAP: la

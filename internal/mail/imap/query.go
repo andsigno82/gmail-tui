@@ -5,7 +5,7 @@ package imap
 import (
 	"github.com/emersion/go-imap/v2"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // searchCriteria traduce msg.Query in criteri IMAP SEARCH (funzione pura,

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Mock è un MailStore in-memory per i test della UI e della logica.

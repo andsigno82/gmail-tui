@@ -4,8 +4,8 @@
 package app
 
 import (
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Tipi Msg di risultato delle Cmd: uno per operazione, con errore incorporato.

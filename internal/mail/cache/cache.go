@@ -12,7 +12,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 	bbolterrors "go.etcd.io/bbolt/errors"
 
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Cache è la cache locale dei messaggi.

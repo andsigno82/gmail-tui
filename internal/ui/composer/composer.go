@@ -16,8 +16,8 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // Field identifica il campo attivo del composer (ordine di navigazione).

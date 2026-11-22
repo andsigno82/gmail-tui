@@ -8,8 +8,8 @@ package app
 import (
 	"time"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // DemoStore costruisce il Mock della demo con il seed realistico. Le date sono

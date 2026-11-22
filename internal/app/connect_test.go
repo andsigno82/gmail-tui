@@ -17,9 +17,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
-	"gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/theme"
 )
 
 // requiresConnectStore incapsula un Mock e replica il contratto dello store

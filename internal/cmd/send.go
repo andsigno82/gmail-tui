@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Sender è l'interfaccia minima di invio richiesta dal sottocomando send;

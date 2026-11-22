@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/mail/cache"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/mail/cache"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // pdfContent è il payload binario (PDF-ish) dell'allegato del seed multipart.

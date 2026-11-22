@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // fetchLimitDefault è il limite di righe usato quando limit <= 0.

@@ -7,8 +7,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"gmail-tui/internal/config"
-	"gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/theme"
 )
 
 // Doctor diagnostica la configurazione e stampa un report.

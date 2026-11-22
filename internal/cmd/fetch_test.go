@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"gmail-tui/internal/mail"
-	"gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 func fetchRef(id msg.MessageID, from, subject string, date time.Time, unread, starred bool) msg.MessageRef {
