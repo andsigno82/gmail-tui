@@ -55,6 +55,8 @@ func main() {
 			os.Exit(runFetch(os.Args[2:]))
 		case "send":
 			os.Exit(runSend(os.Args[2:]))
+		case "mcp":
+			os.Exit(runMCP(os.Args[2:])) // Piano 14, Task 5: server MCP in sola lettura su stdio
 		case "login":
 			// Setup guidato (Piano 4, Task 5): la TUI in modalità wizard
 			// forzata (il parsing dei flag precede ogni I/O).
