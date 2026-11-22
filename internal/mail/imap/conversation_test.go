@@ -104,6 +104,24 @@ func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 		case strings.HasPrefix(cmd, "UID FETCH"):
 			// come il server reale: solo gli UID del set richiesto
 			asked := fetchSet(cmd)
+			if strings.Contains(cmd, "BODY.PEEK[]") {
+				// corpo (fetchRaw): il literal {n} porta il testo, con X-GM-* nella stessa risposta
+				var lines []string
+				for _, m := range boxes[box] {
+					if asked != nil && !asked[m.uid] {
+						continue
+					}
+					body := "Subject: s\r\n\r\nciao"
+					flags := ""
+					if m.read {
+						flags = `\Seen`
+					}
+					lines = append(lines, fmt.Sprintf(
+						`* %d FETCH (UID %d X-GM-MSGID %d X-GM-THRID %d X-GM-LABELS () FLAGS (%s) BODY[] {%d}`,
+						m.uid, m.uid, 1000+m.uid, m.thread, flags, len(body)), body+")")
+				}
+				return lines
+			}
 			var lines []string
 			for _, m := range boxes[box] {
 				if asked != nil && !asked[m.uid] {
@@ -258,5 +276,27 @@ func TestListConversationsTettoDiScansioneSegnalato(t *testing.T) {
 	}
 	if !errors.Is(err, mail.ErrScanLimit) {
 		t.Fatalf("err = %v, voglio mail.ErrScanLimit: la lista è limitata, non esaurita", err)
+	}
+}
+
+// Piano 8, review (punto 1): FetchMessage porta gli ID Gmail (X-GM-MSGID, X-GM-THRID)
+// nel Ref, così la cache e la deduplica per GmailID hanno una chiave reale.
+func TestFetchMessageCarriesGmailIDs(t *testing.T) {
+	box := []gmailFetch{{uid: 4, thread: 7, login: "ann", date: "01-Nov-2026", read: true}}
+	addr := scriptedGmailServer(t, map[string][]gmailFetch{"INBOX": box, "[Gmail]/All Mail": box})
+
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true})
+	ctx := context.Background()
+	if err := s.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	m, err := s.FetchMessage(ctx, msg.NewID("INBOX", 4))
+	if err != nil {
+		t.Fatalf("FetchMessage: %v", err)
+	}
+	if m.Ref.GmailID != 1004 || m.Ref.ThreadID != 7 {
+		t.Errorf("GmailID = %d, ThreadID = %d; voglio 1004 e 7 (X-GM-MSGID/THRID del server)", m.Ref.GmailID, m.Ref.ThreadID)
 	}
 }

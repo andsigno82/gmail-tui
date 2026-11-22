@@ -338,3 +338,20 @@ func TestMutationsKeepCacheCoherent(t *testing.T) {
 		t.Error("cache incoerente: Ref.Starred = false dopo Star, voglio true")
 	}
 }
+
+// Piano 8, review punto 3: withLabel aggiunge e toglie una label senza duplicati,
+// così la propagazione alle copie in cache è idempotente.
+func TestWithLabelIdempotente(t *testing.T) {
+	got := withLabel([]string{"Work"}, "Work", true)
+	if strings.Join(got, ",") != "Work" {
+		t.Errorf("add di una label già presente = %v, voglio [Work] senza duplicati", got)
+	}
+	got = withLabel([]string{"Work", "Urgent"}, "Work", false)
+	if strings.Join(got, ",") != "Urgent" {
+		t.Errorf("remove = %v, voglio [Urgent]", got)
+	}
+	got = withLabel([]string{"Work"}, "Projects", true)
+	if strings.Join(got, ",") != "Work,Projects" {
+		t.Errorf("add nuova = %v, voglio [Work Projects]", got)
+	}
+}

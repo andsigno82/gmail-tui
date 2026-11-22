@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	bolt "go.etcd.io/bbolt"
@@ -22,9 +23,10 @@ type Cache struct {
 }
 
 // schemaVersion è la versione dei messaggi in cache. Piano 8, Task 8: alla 2
-// msg.MessageRef ha GmailID, ThreadID e Labels; le entry della versione
-// precedente non hanno quei campi e vengono scartate all'apertura.
-const schemaVersion = 2
+// msg.MessageRef ha GmailID, ThreadID e Labels. Alla 3 anche il fetch del corpo li
+// riempie (review punto 1): le entry della versione 2 hanno quei campi a zero e
+// vengono scartate all'apertura.
+const schemaVersion = 3
 
 // Open apre/crea il database bbolt in path.
 func Open(path string) (*Cache, error) {
@@ -173,4 +175,51 @@ func binaryUint32(b []byte) uint32 {
 		return 0
 	}
 	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
+}
+
+// UpdateGmailCopies applica mutate a ogni copia in cache del messaggio con GmailID
+// gmailID, in qualunque mailbox (INBOX, Tutti i messaggi, label): stesso messaggio
+// Gmail, stessi flag e label (Piano 8, review punto 3). mutate riporta se ha cambiato
+// la copia: solo le copie cambiate vengono riscritte. gmailID 0 (non Gmail) non fa nulla.
+func (c *Cache) UpdateGmailCopies(gmailID uint64, mutate func(*msg.Message) bool) error {
+	if gmailID == 0 {
+		return nil
+	}
+	type pending struct {
+		bucket, key, data []byte
+	}
+	var todo []pending
+	err := c.db.View(func(tx *bolt.Tx) error {
+		return tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+			if !strings.HasPrefix(string(name), "msgs:") {
+				return nil
+			}
+			return b.ForEach(func(k, v []byte) error {
+				var m msg.Message
+				if err := json.Unmarshal(v, &m); err != nil {
+					return fmt.Errorf("unmarshal %s: %w", name, err)
+				}
+				if m.Ref.GmailID != gmailID || !mutate(&m) {
+					return nil
+				}
+				data, err := json.Marshal(&m)
+				if err != nil {
+					return fmt.Errorf("marshal %s: %w", m.Ref.ID, err)
+				}
+				todo = append(todo, pending{bucket: append([]byte(nil), name...), key: append([]byte(nil), k...), data: data})
+				return nil
+			})
+		})
+	})
+	if err != nil || len(todo) == 0 {
+		return err
+	}
+	return c.db.Update(func(tx *bolt.Tx) error {
+		for _, p := range todo {
+			if err := tx.Bucket(p.bucket).Put(p.key, p.data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

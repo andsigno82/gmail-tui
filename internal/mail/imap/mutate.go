@@ -99,6 +99,9 @@ func (s *Store) ApplyLabel(ctx context.Context, ids []msg.MessageID, label strin
 				return fmt.Errorf("imap copy %s → %s: %w", mailbox, label, err)
 			}
 		}
+		if err := s.updateCachedLabels(ids, label, on); err != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -239,8 +242,69 @@ func (s *Store) updateCachedFlags(mailbox string, uidValidity uint32, uids []ima
 		if err := s.opts.Cache.SetMessage(mailbox, uidValidity, m); err != nil {
 			return fmt.Errorf("cache set %s: %w", id, err)
 		}
+		// Piano 8, review punto 3: lo stesso messaggio Gmail sta anche in altre
+		// mailbox (INBOX e Tutti i messaggi): ogni copia prende lo stesso cambio.
+		if err := s.opts.Cache.UpdateGmailCopies(m.Ref.GmailID, func(c *msg.Message) bool {
+			mutate(c)
+			return true
+		}); err != nil {
+			return fmt.Errorf("cache copie %s: %w", id, err)
+		}
 	}
 	return nil
+}
+
+// updateCachedLabels mantiene la cache coerente con ApplyLabel (Piano 8, review
+// punto 3): la label entra o esce dai Ref.Labels di ogni copia dello stesso messaggio.
+func (s *Store) updateCachedLabels(ids []msg.MessageID, label string, on bool) error {
+	if s.opts.Cache == nil {
+		return nil
+	}
+	mutate := func(m *msg.Message) {
+		m.Ref.Labels = withLabel(m.Ref.Labels, label, on)
+	}
+	for _, id := range ids {
+		box, uid, err := id.Split()
+		if err != nil {
+			continue
+		}
+		m, ok, err := s.opts.Cache.GetMessage(box, uid)
+		if err != nil {
+			return fmt.Errorf("cache get %s: %w", id, err)
+		}
+		if !ok {
+			continue
+		}
+		if m.Ref.GmailID == 0 {
+			continue // non Gmail: nessuna label Gmail da propagare
+		}
+		if err := s.opts.Cache.UpdateGmailCopies(m.Ref.GmailID, func(c *msg.Message) bool {
+			mutate(c)
+			return true
+		}); err != nil {
+			return fmt.Errorf("cache copie %s: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// withLabel aggiunge (on) o toglie label da labels, senza duplicati (idempotente).
+func withLabel(labels []string, label string, on bool) []string {
+	out := make([]string, 0, len(labels)+1)
+	has := false
+	for _, l := range labels {
+		if l == label {
+			has = true
+			if !on {
+				continue
+			}
+		}
+		out = append(out, l)
+	}
+	if on && !has {
+		out = append(out, label)
+	}
+	return out
 }
 
 // groupByMailbox raggruppa gli uid degli id per mailbox di appartenenza
