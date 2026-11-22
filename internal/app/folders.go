@@ -170,7 +170,8 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.status = statusMsg{}
 	m.startup = true
 	m.pending++
-	m.listGen++ // nuova generazione: le pagine e i refresh della cartella precedente sono stanti (fix review 2)
+	m.listGen++   // nuova generazione: le pagine e i refresh della cartella precedente sono stanti (fix review 2)
+	m.setSel(nil) // Piano 10, Task 2 (D10-S3): la selezione non passa alla cartella nuova
 	return m, tea.Batch(clearRows, loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
 }
 

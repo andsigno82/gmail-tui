@@ -28,7 +28,7 @@ const DoubleClickWindow = 500 * time.Millisecond
 // due celle, la data è allineata a destra, il mittente ha una colonna
 // adattiva fra senderMin e senderMax, l'oggetto riempie il resto.
 const (
-	markerCol  = 4 // "● " + "★ "
+	markerCol  = 6 // "☐ " + "● " + "★ " (casella di selezione, Piano 10, Task 2)
 	senderMin  = 10
 	senderMax  = 24
 	subjectMin = 3
@@ -60,7 +60,8 @@ func (i item) FilterValue() string { return i.ref.From + " " + i.ref.Subject }
 type Model struct {
 	list  list.Model
 	st    styles.Styles
-	clock func() time.Time // date relative e doppio click (seam di test)
+	clock func() time.Time       // date relative e doppio click (seam di test)
+	sel   map[msg.MessageID]bool // righe selezionate per ID della conversazione (Piano 10, Task 2)
 
 	// stato del click per il riconoscimento del doppio click.
 	lastClick    time.Time
@@ -164,6 +165,25 @@ func (m *Model) SetConvUnread(id msg.MessageID, unread bool) tea.Cmd {
 	return nil
 }
 
+// SetSelection imposta le righe selezionate (Piano 10, Task 2, D10-T1): la casella
+// ☑ segue l'ID della conversazione. Ricostruisce il delegate, come SetStyles.
+func (m *Model) SetSelection(sel map[msg.MessageID]bool) {
+	m.sel = sel
+	m.list.SetDelegate(delegate{st: m.st, clock: m.clock, sel: sel})
+}
+
+// Conversations restituisce le conversazioni caricate nella lista, nell'ordine
+// visualizzato (Piano 10, Task 2: selezione di tutte le righe e azioni su selezione).
+func (m Model) Conversations() []mail.Conversation {
+	out := make([]mail.Conversation, 0, len(m.list.Items()))
+	for _, it := range m.list.Items() {
+		if row, ok := it.(item); ok {
+			out = append(out, row.conv)
+		}
+	}
+	return out
+}
+
 // SetSize propaga le dimensioni del corpo (l'app radice riserva l'ultima
 // riga alla status bar) alla lista interna.
 func (m *Model) SetSize(width, height int) { m.list.SetSize(width, height) }
@@ -246,7 +266,7 @@ func (m Model) SelectedIndex() int { return m.list.Index() }
 // seam per test deterministici.
 func (m *Model) SetClock(f func() time.Time) {
 	m.clock = f
-	m.list.SetDelegate(delegate{st: m.st, clock: f})
+	m.list.SetDelegate(delegate{st: m.st, clock: f, sel: m.sel})
 }
 
 // SetStyles sostituisce gli stili del tema a runtime (cambio tema con `:theme`,
@@ -254,7 +274,7 @@ func (m *Model) SetClock(f func() time.Time) {
 // custodisce gli stili per il render delle righe. Lista e cursore restano.
 func (m *Model) SetStyles(st styles.Styles) {
 	m.st = st
-	m.list.SetDelegate(delegate{st: st, clock: m.clock})
+	m.list.SetDelegate(delegate{st: st, clock: m.clock, sel: m.sel})
 }
 
 // openSelected produce la Cmd che notifica il ref sotto il cursore.
@@ -355,6 +375,7 @@ func stessoGiorno(a, b time.Time) bool {
 type delegate struct {
 	st    styles.Styles
 	clock func() time.Time
+	sel   map[msg.MessageID]bool // righe selezionate (Piano 10, Task 2): casella ☑
 }
 
 // Height implementa list.ItemDelegate: una riga per messaggio.
@@ -373,7 +394,7 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
 	if !ok {
 		return
 	}
-	fmt.Fprint(w, d.row(m.Width(), it.conv, index == m.Index()))
+	fmt.Fprint(w, d.row(m.Width(), it.conv, index == m.Index(), d.sel[it.conv.Latest.ID]))
 }
 
 // row compone la riga della conversazione (Piano 8, Task 9): marker e grassetto
@@ -381,7 +402,7 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
 // partecipanti con contatore su colonna adattiva, oggetto del messaggio più
 // recente, etichette utente e data relativa allineata a destra. Larghezza
 // adattiva: la riga riempie esattamente la larghezza della lista.
-func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
+func (d delegate) row(width int, conv mail.Conversation, selected, checked bool) string {
 	ref := conv.Latest
 	marker := "○"
 	if conv.Unread {
@@ -396,7 +417,7 @@ func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
 	// Larghezza non ancora nota (nessun WindowSizeMsg): riga minima senza
 	// truncation né data.
 	if width <= markerCol {
-		return fmt.Sprintf("%s %s %s %s", marker, star, sender, ref.Subject)
+		return fmt.Sprintf("%s %s %s %s %s", checkMark(checked), marker, star, sender, ref.Subject)
 	}
 
 	date := RelativeDate(ref.Date, d.clock())
@@ -427,8 +448,8 @@ func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
 		if chipsW > 0 {
 			chips = " " + plainChips
 		}
-		return d.st.ListSelected.Render(marker + " " + star + " " + mid + chips +
-			strings.Repeat(" ", gap) + date)
+		return d.st.ListCheckSel.Render(checkMark(checked)) + d.st.ListSelected.Render(" "+marker+" "+star+" "+mid+chips+
+			strings.Repeat(" ", gap)+date)
 	}
 	markerSt, bodySt := d.st.ListNormal, d.st.ListNormal
 	if conv.Unread {
@@ -442,8 +463,17 @@ func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
 	if chipsW > 0 {
 		chips = " " + d.renderChips(shown, more, false)
 	}
-	return markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
+	return d.st.ListCheck.Render(checkMark(checked)) + " " + markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
 		chips + strings.Repeat(" ", gap) + d.st.ListDate.Render(date)
+}
+
+// checkMark è la casella di selezione della riga (Piano 10, Task 2, D10-S1): ☑ se
+// la conversazione è selezionata, ☐ altrimenti. Colore dallo stile della riga.
+func checkMark(checked bool) string {
+	if checked {
+		return "☑"
+	}
+	return "☐"
 }
 
 // senderLabel compone il nome dei partecipanti come Gmail: il primo, "e altri N"

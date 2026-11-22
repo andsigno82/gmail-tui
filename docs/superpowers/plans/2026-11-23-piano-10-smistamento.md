@@ -77,7 +77,7 @@ Scelte tecniche del piano (da confermare solo se contestate):
 - `TestRowRendersCheckbox` (`internal/ui/inbox`): ☑ per selezionata, ☐ altrimenti.
 - `TestStatusBarShowsSelectedCount`: "2 selezionate" con due righe; assente senza selezione.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(app): selezione multipla nella lista con x/X/esc (Piano 10, Task 2)`.
+- [x] RED riportato, implementazione, gate, commit `feat(app): selezione multipla nella lista con x/X/esc (Piano 10, Task 2)`.
 
 ## Task 3: azioni su selezione (a, #, s, v)
 

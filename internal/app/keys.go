@@ -57,6 +57,9 @@ type appKeys struct {
 	SetSave    key.Binding // invio — salva e chiude (menu impostazioni, voce a scelta)
 	SetDone    key.Binding // esc — torna alla lista delle voci (campo in modifica)
 	Focus      key.Binding // tab — sposta il focus fra lista e anteprima (Piano 7.2, Task 4)
+	Select     key.Binding // x — marca/smarca la conversazione sotto il cursore (Piano 10, Task 2)
+	SelectAll  key.Binding // X — seleziona tutte le righe caricate, o le azzera (Piano 10, Task 2)
+	SelectNone key.Binding // esc — azzera la selezione (lista con selezione attiva, Piano 10, Task 2)
 }
 
 // keys è LA keymap centrale dell'app: condivisa da Update e dal help. Se un
@@ -98,6 +101,9 @@ var keys = appKeys{
 	SetSave:    key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "salva")),
 	SetDone:    key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "torna alla lista")),
 	Focus:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "lista/anteprima")),
+	Select:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "seleziona")),
+	SelectAll:  key.NewBinding(key.WithKeys("X"), key.WithHelp("X", "seleziona tutte")),
+	SelectNone: key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "deseleziona")),
 }
 
 // newHelp costruisce il modello help (bubbles/help) con gli stili del tema:
@@ -209,6 +215,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 		return [][]key.Binding{
 			{keys.Move, keys.OpenSel, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Quit},
 			{keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Settings},
+			{keys.Select, keys.SelectAll, keys.SelectNone},
 			{keys.Help},
 		}
 	}

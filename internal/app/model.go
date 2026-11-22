@@ -139,22 +139,23 @@ type Model struct {
 	queryRaw      string         // stringa digitata della query corrente ("" = inbox)
 	prevQueryRaw  string         // query precedente, ripristinata se la ricerca fallisce (Piano 8, Task 11)
 	prevQuery     msg.Query
-	status        statusMsg      // ultimo messaggio di status (effimero)
-	startup       bool           // status d'avvio (banner demo/warning tema): sopravvive al primo load
-	pending       int            // op store in flight (>0: spinner attivo)
-	connectFailed bool           // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
-	refreshing    bool           // re-list silenzioso in flight (coalescing, Task 8)
-	listGen       int            // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
-	refreshGen    int            // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
-	dirty         bool           // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
-	dirtyDeep     bool           // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
-	exhausted     bool           // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
-	loadingMore   bool           // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
-	folder        mail.Mailbox   // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
-	folderOpen    bool           // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
-	folderList    list.Model     // elenco del selettore cartelle (bubbles/list, folders.go)
-	trashOpen     bool           // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
-	trashRef      msg.MessageRef // messaggio in conferma: letto all'apertura, non al sì
+	status        statusMsg              // ultimo messaggio di status (effimero)
+	startup       bool                   // status d'avvio (banner demo/warning tema): sopravvive al primo load
+	pending       int                    // op store in flight (>0: spinner attivo)
+	connectFailed bool                   // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
+	refreshing    bool                   // re-list silenzioso in flight (coalescing, Task 8)
+	listGen       int                    // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
+	refreshGen    int                    // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
+	dirty         bool                   // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+	dirtyDeep     bool                   // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
+	exhausted     bool                   // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
+	loadingMore   bool                   // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
+	folder        mail.Mailbox           // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
+	folderOpen    bool                   // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
+	folderList    list.Model             // elenco del selettore cartelle (bubbles/list, folders.go)
+	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
+	trashRef      msg.MessageRef         // messaggio in conferma: letto all'apertura, non al sì
+	sel           map[msg.MessageID]bool // righe selezionate nella lista, per ID della conversazione (Piano 10, Task 2)
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -299,6 +300,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.connectFailed = false
 		m.pending++
 		m.listGen++
+		m.setSel(nil) // Piano 10, Task 2 (D10-S3): nuova lista, selezione azzerata
 		return m, tea.Batch(loadRefs(m.store, m.folder.Name, m.listGen), m.spinner.Tick, startWatch(m.store, m.ctx))
 
 	case msgsLoaded:
@@ -1244,6 +1246,16 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// Mutazioni (Task 7): agiscono sul ref corrente — nell'inbox la
 			// riga selezionata, nel thread il messaggio aperto.
 			return m.runOp(ev.String())
+		case m.view == viewInbox && key.Matches(ev, keys.Select):
+			// Piano 10, Task 2: x marca la riga sotto il cursore (D10-S1).
+			return m.toggleSel()
+		case m.view == viewInbox && key.Matches(ev, keys.SelectAll):
+			// Piano 10, Task 2: X seleziona tutte le righe caricate.
+			return m.selectAllRows()
+		case m.view == viewInbox && len(m.sel) > 0 && key.Matches(ev, keys.SelectNone):
+			// Piano 10, Task 2: con selezione attiva esc la azzera e NON esce dall'app.
+			m.setSel(nil)
+			return m, nil
 		case key.Matches(ev, keys.Quit):
 			if m.view == viewInbox {
 				// Uscita pulita (Task 9): cancel del feed Watch + QuitMsg.
@@ -1482,8 +1494,9 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 	if raw != "" {
 		m.query = searchQuery(m.store, raw)
 	}
-	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
-	m.listGen++ // nuova generazione: i risultati della lista precedente sono stanti (fix review 2)
+	m.pending++   // ricerca/re-list in flight: spinner finché msgsLoaded
+	m.listGen++   // nuova generazione: i risultati della lista precedente sono stanti (fix review 2)
+	m.setSel(nil) // Piano 10, Task 2 (D10-S3): la selezione non sopravvive a una nuova ricerca
 	return m, tea.Batch(submitQuery(m.store, raw, m.folder.Name, m.listGen), m.spinner.Tick)
 }
 
@@ -1693,6 +1706,15 @@ func (m Model) statusBar() string {
 			text = tag
 		} else {
 			text = tag + " " + text
+		}
+	}
+	if n := len(m.sel); n > 0 {
+		// Piano 10, Task 2: con selezione attiva la barra dice quante righe sono marcate.
+		sel := fmt.Sprintf("%d selezionate", n)
+		if text == "" {
+			text = sel
+		} else {
+			text = sel + " " + text
 		}
 	}
 	if m.pending > 0 {

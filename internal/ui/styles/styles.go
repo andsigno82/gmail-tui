@@ -21,6 +21,8 @@ type Styles struct {
 	ListStarred     lipgloss.Style // riga con stella (★)
 	ListDate        lipgloss.Style // metadati riga: data relativa, mittente
 	ListSelected    lipgloss.Style // riga sotto il cursore
+	ListCheck       lipgloss.Style // casella di selezione ☐/☑ a inizio riga (Piano 10, Task 2): contrasto WCAG sullo sfondo del tema
+	ListCheckSel    lipgloss.Style // casella ☐/☑ sulla riga sotto il cursore: sfondo Selection (Piano 10, Task 2)
 	SearchInput     lipgloss.Style // prompt/cursore della ricerca
 	StatusErr       lipgloss.Style // barra colorata: conferme modali (invio, scarta, cestino) e errori del wizard
 	StatusBar       lipgloss.Style // status bar: stato normale
@@ -49,6 +51,8 @@ func New(t theme.Theme) Styles {
 		ListStarred:     lipgloss.NewStyle().Foreground(adaptive(t.Starred)),
 		ListDate:        lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
 		ListSelected:    lipgloss.NewStyle().Foreground(onColor(t.Selection, t.Fg, t.Bg)).Background(adaptive(t.Selection)).Bold(true),
+		ListCheck:       lipgloss.NewStyle().Foreground(onColor(t.Bg, t.Accent, t.Fg)),
+		ListCheckSel:    lipgloss.NewStyle().Foreground(onColor(t.Selection, t.Accent, t.Fg)).Background(adaptive(t.Selection)).Bold(true),
 		SearchInput:     lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
 		StatusErr:       lipgloss.NewStyle().Foreground(onColor(t.Error, t.Fg, t.Bg)).Background(adaptive(t.Error)).Bold(true).Padding(0, 1),
 		StatusBar:       lipgloss.NewStyle().Foreground(onColor(t.Primary, t.Fg, t.Bg)).Background(adaptive(t.Primary)).Padding(0, 1),
