@@ -92,7 +92,7 @@ Trash(ctx context.Context, ids []msg.MessageID) error
 
 **Test (imapmemserver):** Watch dopo list su un'altra cartella (vedi sopra); mailbox cestino creata con `user.Create("[Gmail]/Trash", &imap.CreateOptions{SpecialUse: []imap.MailboxAttr{imap.MailboxAttrTrash}})` (memserver la restituisce con `ReturnSpecialUse`, verificato in `imapmemserver/mailbox.go`). Casi: ruoli mappati e `\Noselect` scartata; Trash sposta (sparisce da INBOX, compare nel cestino); cestino assente → errore e INBOX intatta; id già nel cestino → errore; ids misti da due mailbox.
 
-- [ ] RED → impl → GREEN → vet/lint/race → Commit `feat(mail): ListMailboxes and Trash in MailStore (IMAP SPECIAL-USE, UID MOVE)`
+- [x] RED → impl → GREEN → vet/lint/race → Commit `feat(mail): ListMailboxes and Trash in MailStore (IMAP SPECIAL-USE, UID MOVE)`
 
 ### Task 2: validazione destinatari (dominio + CLI)
 
@@ -108,7 +108,7 @@ func ValidateRecipients(o Outgoing) error
 - Validi: `a@b.it`, `Mario Rossi <m@x.it>`. Non validi: `abc`, `a@`, stringa con soli spazi.
 - `cmd.Send`: chiama `msg.ValidateRecipients` dopo `splitAddrs`/`dedupAddrs` e PRIMA di `sender.Send`; errore → stderr ed exit code 1, coerente con gli altri errori di `send.go` e con `send_test.go`.
 
-- [ ] RED → impl → GREEN → Commit `feat(msg): recipient validation before SMTP (CLI send)`
+- [x] RED → impl → GREEN → Commit `feat(msg): recipient validation before SMTP (CLI send)`
 
 ### Task 3: paginazione dell'inbox
 
@@ -125,7 +125,7 @@ func ValidateRecipients(o Outgoing) error
 
 **Test:** Mock con 120 messaggi: load iniziale 50; cursore in fondo → 100; poi 120 + `exhausted`; nessuna richiesta doppia con `loadingMore`; dedup quando arriva posta nuova tra due pagine; messaggio archiviato tra due pagine (caso "salto": il refresh a profondità piena lo recupera); refresh dopo archive mantiene 100 ref; refresh dopo star usa `Limit: 50`.
 
-- [ ] RED → impl → GREEN → Commit `feat(app): load older mail on scroll (inbox pagination)`
+- [x] RED → impl → GREEN → Commit `feat(app): load older mail on scroll (inbox pagination)`
 
 ### Task 4: selettore cartelle e label (dip. T1)
 
@@ -142,7 +142,7 @@ func ValidateRecipients(o Outgoing) error
 
 **Test:** apertura/chiusura modale; selezione → ListMessages con Label giusta (recorder); ricerca dentro cartella; cambio cartella con ricerca attiva la azzera; refresh dopo op resta nella cartella; risultato stantio della cartella precedente scartato; con la modale aperta i tasti globali (`a`, `s`…) e il mouse non agiscono.
 
-- [ ] RED → impl → GREEN → Commit `feat(app): folder and label picker (m)`
+- [x] RED → impl → GREEN → Commit `feat(app): folder and label picker (m)`
 
 ### Task 5: cestino nella UI (dip. T1)
 
@@ -155,7 +155,7 @@ func ValidateRecipients(o Outgoing) error
 
 **Test:** conferma/annulla; Trash chiamato con l'ID giusto; errore mostrato; dalla thread view torna alla lista.
 
-- [ ] RED → impl → GREEN → Commit `feat(app): move to trash (#) with confirmation`
+- [x] RED → impl → GREEN → Commit `feat(app): move to trash (#) with confirmation`
 
 ### Task 6: validazione nel composer (dip. T2)
 
@@ -165,7 +165,7 @@ func ValidateRecipients(o Outgoing) error
 
 **Test:** indirizzo malformato → niente conferma, bozza intatta; indirizzo valido → flusso invariato (test di invio esistenti verdi).
 
-- [ ] RED → impl → GREEN → Commit `feat(app): validate recipients before send confirmation`
+- [x] RED → impl → GREEN → Commit `feat(app): validate recipients before send confirmation`
 
 ### Task 7: documentazione
 
@@ -177,15 +177,15 @@ func ValidateRecipients(o Outgoing) error
 - `docs/superpowers/specs/2026-11-20-gmail-tui-design.md`: sezione MailStore con i due metodi nuovi.
 - `AGENTS.md`: gotcha "`g`/`G` occupati da bubbles/list"; regola "Trash mai con EXPUNGE generico".
 
-- [ ] Commit `docs: v1.1 daily-use features (pagination, folders, trash, validation)`
+- [x] Commit `docs: v1.1 daily-use features (pagination, folders, trash, validation)`
 
 ### Task 8: verifica finale (Livello B, obbligatoria)
 
-- [ ] `go build ./... && go vet ./...`, `go test -race ./...`, `golangci-lint run ./...`, `govulncheck ./...`, `CGO_ENABLED=0 GOOS={linux,darwin,windows} go build ./...`
-- [ ] Check go-imap fuori da `internal/mail/imap` → nessun output
-- [ ] Skill `criticalthink --iterative` su tutto il diff del branch + `/code-review`
-- [ ] Analisi impatti: ricontrollo dei chiamanti di `MailStore` già adattati in T1 e del Watch dopo cambio cartella
-- [ ] Anti-regressione: suite esistente verde senza modifiche non motivate; demo mode (`go run ./cmd/gmail-tui` → `s`) con prova manuale di `m`, `#` e scorrimento
+- [x] `go build ./... && go vet ./...`, `go test -race ./...`, `golangci-lint run ./...`, `govulncheck ./...`, `CGO_ENABLED=0 GOOS={linux,darwin,windows} go build ./...`
+- [x] Check go-imap fuori da `internal/mail/imap` → nessun output
+- [x] Review indipendenti per fase (3 subagenti) + `/code-review` high sul branch + critica dell'ultimo commit di fix
+- [x] Analisi impatti: ricontrollo dei chiamanti di `MailStore` già adattati in T1 e del Watch dopo cambio cartella
+- [x] Anti-regressione: suite esistente verde senza modifiche non motivate; demo mode (`go run ./cmd/gmail-tui` → `s`) con prova manuale di `m`, `#` e `a` fuori da Inbox (scorrimento coperto solo dai test: la demo ha meno di 50 messaggi)
 - [ ] Smoke su account reale da `docs/smoke-checklist.md` (lo esegue Andrea: credenziali reali)
 
 ## Rischi e mitigazioni

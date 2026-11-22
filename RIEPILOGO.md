@@ -147,6 +147,23 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Raffinamento successivo (962011f): retry senza Connect concorrenti
   (`connectFailed` spento al dispatch, `pending` risale)
 
+### Piano 7 — Uso quotidiano (branch `feat/piano-7`, non ancora mergiato)
+- `MailStore` + `ListMailboxes` (ruoli SPECIAL-USE) e `Trash` (UID MOVE; rifiuta
+  i server senza MOVE né UIDPLUS: mai EXPUNGE generico); Mock filtra per mailbox
+- Fix Watch: `Select(INBOX)` prima di ogni IDLE (prima, dopo un'op su un'altra
+  mailbox, il push di INBOX si fermava fino al re-IDLE)
+- Inbox: carica 50 messaggi più vecchi quando il cursore arriva in fondo;
+  refresh a profondità piena (tetto 500) solo dove cambia la lista
+- `m` selettore cartelle/label, `#` cestino con conferma, `a` solo in INBOX
+  (sulla mailbox della riga), `l` rifiuta la label della riga stessa
+- Validazione destinatari (`net/mail`) in composer e `gmail-tui send`
+- Demo con Inviati e Work; docs (README, site, ROADMAP, CHANGELOG [Unreleased],
+  smoke, spec, AGENTS.md)
+- 3 review indipendenti + `/code-review`: corretti stantii tra cartelle
+  (`listGen`), follow-up perso del refresh, guard sulla mailbox sbagliata,
+  ordine di valutazione nelle return
+- Decisioni D1-D7 confermate da Andrea; conversazioni Gmail → Piano 8
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
