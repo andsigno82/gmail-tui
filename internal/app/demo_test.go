@@ -1,6 +1,9 @@
 package app
 
 import (
+	"context"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -257,4 +260,32 @@ func senders(refs []msg.MessageRef) []string {
 		out = append(out, r.From)
 	}
 	return out
+}
+
+// TestDemoBookWritesNoFile (Piano 9, Task 13): in demo la rubrica resta in memoria.
+// Con HOME e cache isolate, lista e lettura non devono creare contacts.json.
+func TestDemoBookWritesNoFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	mk := DemoStore()
+	m, _ := newTestModelMock(t, mk.Msgs...)
+	m.SetAddressBook(nil, nil) // come il main in modalità demo
+	refs, err := mk.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListMessages: %v", err)
+	}
+	mm, _ := step(m, teaSize())
+	mm, _ = step(mm, msgsLoaded{refs: refs})
+	_, _ = step(mm, msgLoaded{m: mk.Msgs[0]})
+	var found []string
+	_ = filepath.WalkDir(home, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.Name() == "contacts.json" {
+			found = append(found, p)
+		}
+		return nil
+	})
+	if len(found) != 0 {
+		t.Errorf("demo ha scritto la rubrica su disco: %v", found)
+	}
 }

@@ -183,7 +183,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestLoadedListFeedsBook`; `TestOpenedMessageBumpsRecipients`; `TestDemoDraftsFolderHasSample`; `TestDemoBookWritesNoFile`.
 
-- [ ] RED, implementazione, commit `feat(app): rubrica alimentata da messaggi e invii; bozza d'esempio in demo (Piano 9, Task 13)`.
+- [x] RED, implementazione, commit `feat(app): rubrica alimentata da messaggi e invii; bozza d'esempio in demo (Piano 9, Task 13)`.
 
 ## Task 14: documentazione e gate finali
 
