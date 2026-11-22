@@ -215,6 +215,19 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   dichiarati
 - Toolchain go1.27.4 (GO-2026-6859 diventata raggiungibile con l'SDK)
 
+### Piano 9 — Scrittura (bozze, rubrica, annulla invio)
+- Bozze in [Gmail]/Bozze: esc salva, ctrl+d scarta, ripresa da `m` → Bozze
+  con allegati riscaricati in una directory privata; campo Ccn nel composer
+- Annulla invio di 5 s (`u`): il messaggio va in Bozze alla conferma e ne
+  esce solo dopo l'invio riuscito (nessuna perdita per crash o uscita)
+- Rubrica locale (0600, frequenza/recenza) + `address_book_cmd` senza shell
+- Review: password mai nell'ambiente dei comandi esterni (`internal/childenv`)
+
+### Piano 11 — Notifiche desktop
+- `notify_command` (argv TOML, senza shell) alla posta nuova in INBOX; dati
+  solo in variabili d'ambiente sanificate; un processo alla volta, timeout
+  5 s con kill del gruppo; solo messaggi non letti, anche dopo uno standby
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
