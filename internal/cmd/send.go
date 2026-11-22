@@ -26,15 +26,16 @@ type SendArgs struct {
 	Attach      []string
 }
 
-// sendTimeout è il budget dell'intera operazione di invio (dial → STARTTLS →
+// SendTimeout è il budget dell'intera operazione di invio (dial → STARTTLS →
 // AUTH → MAIL → RCPT → DATA → QUIT del sender SMTP): oltre, il ctx passato
-// al sender viene annullato e Send fallisce.
-const sendTimeout = 60 * time.Second
+// al sender viene annullato e Send fallisce. Condivisa col flusso di invio
+// della TUI (internal/app, Piano 4 Task 4: stesso budget per il Sender).
+const SendTimeout = 60 * time.Second
 
 // Send legge il corpo del messaggio da body, costruisce msg.Outgoing
 // (From = cfg.Address, subject e allegati dagli argomenti: la codifica
 // Q-encoded dell'oggetto è responsabilità del Sender/buildMIME) e lo
-// consegna a sender con un ctx che scade dopo sendTimeout (il sender SMTP
+// consegna a sender con un ctx che scade dopo SendTimeout (il sender SMTP
 // usa il ctx per il dial; niente hang indefiniti su rete in balia).
 // Su ok stampa "sent to N recipients" su out, dove N è
 // il numero di destinatari UNICI di To+Cc+Bcc (stessa semantica di dedup
@@ -62,7 +63,7 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		BodyText:    string(text),
 		Attachments: args.Attach,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), sendTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), SendTimeout)
 	defer cancel()
 	if err := sender.Send(ctx, m); err != nil {
 		fmt.Fprintf(os.Stderr, "send: %v\n", err)

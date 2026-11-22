@@ -3,9 +3,12 @@
 // ComposerConfig precompilata; l'apertura vera (openComposer) aggiunge l'
 // identità dell'utente (mittente/firma via SetIdentity) e sostituisce la vista
 // corrente. `r`/`f` nell'inbox girano fetch-then-compose (cache-first via
-// store.FetchMessage); nel thread usano il messaggio già caricato. Il flusso
-// di invio (conferma + Sender) è Task 4: SendRequestedMsg si limita a
-// custodire la bozza e mostrare lo status placeholder.
+// store.FetchMessage); nel thread usano il messaggio già caricato.
+// Piano 4, Task 4: flusso di invio — SendRequestedMsg apre la conferma modale
+// ("Invio a …" nella status bar); `s` consegna la bozza al Sender fuori dal
+// loop UI (budget di timeout condiviso col sottocomando send), l'esito torna
+// come opDone{"inviato"} (ritorno inbox + refresh) o opDone errore (composer
+// resta aperto con la bozza, riprova possibile).
 package app
 
 import (
@@ -15,6 +18,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"gmail-tui/internal/cmd"
 	"gmail-tui/internal/config"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
@@ -38,8 +42,10 @@ type composeLoaded struct {
 // "Re: …", qualsiasi capitalizzazione, resta intatto), corpo citato con
 // header "Il <data>, <from> ha scritto:" e ogni riga prefissata "> ".
 // Il ref del MESSAGGIO COMPLETO è la fonte veritiera (mittente/oggetto/data):
-// quello di lista può essere una riga appena ri-listata — se full è presente
-// vince il suo Ref.
+// quello di lista può essere una riga appena ri-listata — vince il suo Ref.
+// REQUISITO: full deve essere non-nil (i call site lo garantiscono: il handler
+// di composeLoaded guarda ev.m != nil, il thread passa il messaggio caricato
+// dopo aver controllato Loaded()) — il corpo citato legge full.BodyText.
 func replyFor(ref msg.MessageRef, full *msg.Message) composer.ComposerConfig {
 	if full != nil && full.Ref.From != "" {
 		ref = full.Ref
@@ -57,6 +63,8 @@ func replyFor(ref msg.MessageRef, full *msg.Message) composer.ComposerConfig {
 // gli allegati ORIGINALI INDICATI. LIMITAZIONE v1 documentata: gli allegati
 // NON sono ri-allegati (il composer allega solo file locali) — il blocco li
 // elenca perché l'utente sappia cosa manca.
+// REQUISITO: full deve essere non-nil (vedi replyFor) — il corpo citato legge
+// full.BodyText.
 func forwardFor(ref msg.MessageRef, full *msg.Message) composer.ComposerConfig {
 	if full != nil && full.Ref.From != "" {
 		ref = full.Ref
@@ -216,4 +224,57 @@ func (m *Model) handleComposerCancel() {
 func (m *Model) discardDraft() {
 	m.closeComposer()
 	m.status = statusMsg{text: "bozza scartata"}
+}
+
+// --- invio (Piano 4, Task 4) --------------------------------------------------
+
+// sendConfirmText compone il testo della conferma pre-invio (status bar, stile
+// StatusErr): "Invio a <to> — <oggetto> — <n> allegati — s conferma · esc
+// annulla". I destinatari sono decodificati da Out.To (join virgole); i
+// segmenti vuoti (nessun destinatario — placeholder esplicito, oggetto vuoto,
+// nessun allegato) sono omessi. Con un solo allegato il conteggio è al
+// singolare ("1 allegato").
+func sendConfirmText(out msg.Outgoing) string {
+	to := strings.Join(out.To, ", ")
+	if to == "" {
+		to = "(nessun destinatario)"
+	}
+	segs := []string{"Invio a " + to}
+	if out.Subject != "" {
+		segs = append(segs, out.Subject)
+	}
+	if n := len(out.Attachments); n == 1 {
+		segs = append(segs, "1 allegato")
+	} else if n > 1 {
+		segs = append(segs, fmt.Sprintf("%d allegati", n))
+	}
+	return strings.Join(append(segs, "s conferma · esc annulla"), " — ")
+}
+
+// sendCmd consegna la bozza al Sender fuori dal loop UI: il ctx porta il
+// budget SendTimeout (const condivisa col sottocomando `send` — stessa semantica
+// anti-hang). L'esito torna come opDone: errore → {"invio", err} (la radice
+// resta nel composer con la bozza: StatusErr col dettaglio, riprova possibile);
+// successo → {"inviato"} con closeComposer (ritorno inbox, Piano 4 Task 4) e
+// refresh (re-list silenzioso della lista corrente).
+func sendCmd(sender Sender, out msg.Outgoing) tea.Cmd {
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
+		defer cancel()
+		if err := sender.Send(ctx, out); err != nil {
+			return opDone{label: "invio", err: err}
+		}
+		return opDone{label: "inviato", refresh: true, closeComposer: true}
+	}
+}
+
+// finishSend chiude il composer dopo l'invio riuscito: torna all'inbox (come
+// da piano — la vista di provenienza NON viene ripristinata, il feedback
+// "inviato" riguarda la lista) e azzera stato composer e bozza custodita.
+func (m *Model) finishSend() {
+	m.composer = composer.Model{}
+	m.confirmSend = false
+	m.discardOpen = false
+	m.draft = msg.Outgoing{}
+	m.view = viewInbox
 }

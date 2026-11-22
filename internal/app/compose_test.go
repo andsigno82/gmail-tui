@@ -1,22 +1,31 @@
 // Test del composer a livello radice (Piano 4, Task 3): entry paths c/r/f,
 // builders reply/forward/new, cancel con conferma discard, rebind scroll
-// (f/b liberati nel thread), status placeholder per SendRequestedMsg.
+// (f/b liberati nel thread). Piano 4, Task 4: flusso di invio (conferma
+// modale → Sender → feedback inbox/errore).
 package app
 
 import (
+	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"gmail-tui/internal/config"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/msg"
+	"gmail-tui/internal/theme"
 	"gmail-tui/internal/ui/composer"
 	"gmail-tui/internal/ui/inbox"
 	"gmail-tui/internal/ui/thread"
 )
+
+// Conformance (Piano 4, Task 4): il Mock è anche Sender — in demo mode store e
+// sender sono UN solo oggetto.
+var _ Sender = (*mail.Mock)(nil)
 
 // testIdentity è l'identità del mittente per i test (via SetIdentity).
 const (
@@ -410,14 +419,20 @@ func TestFInThreadOpensForwardNotHalfPage(t *testing.T) {
 	}
 }
 
-// TestBInThreadIsInert: `b` è liberato (uso futuro): non scorre più la
-// viewport né fa altro — no-op silenzioso.
+// TestBInThreadIsInert (review Task 3 — test DISCRIMINANTE): `b` è liberato
+// (uso futuro). Il test prima scorre giù con `d` (offset > 0: se `b` fosse
+// ancora bound alla PageUp del viewport, ora agirebbe) e poi afferma che `b`
+// non muove nulla — a offset 0 la vecchia versione non poteva fallire.
 func TestBInThreadIsInert(t *testing.T) {
 	ref := testRefs(t)[1]
 	m, _ := composerModel(t, fullMessage(ref))
 	mm := openThread(t, m, ref)
 	mm, _ = step(mm, teaSize())
+	mm, _ = step(mm, pressKey("d")) // scroll giù: la vecchia binding b (PageUp) ora agirebbe
 	before := mm.thread.YOffset()
+	if before <= 0 {
+		t.Fatalf("precondizione: d deve scorrere la viewport (offset=%d)", before)
+	}
 	mm, cmd := step(mm, pressKey("b"))
 	if cmd != nil {
 		t.Errorf("b: cmd = %v, voglio nil", cmd)
@@ -528,20 +543,48 @@ func TestComposerTypingDoesNotTriggerOps(t *testing.T) {
 	}
 }
 
-// --- send placeholder (il flusso vero è Task 4) -------------------------------------
+// --- invio: conferma + Sender (Piano 4, Task 4) -------------------------------------
 
-// TestSendRequestedShowsPlaceholder: ctrl+s nel composer emette
-// SendRequestedMsg — per ora la radice custodisce la bozza e mostra lo status
-// placeholder; il composer resta aperto.
-func TestSendRequestedShowsPlaceholder(t *testing.T) {
-	m, _ := composerModel(t)
-	mm, _ := step(m, pressKey("c"))
-	// Bozza precompilata via config (API esportata del composer).
-	mm.composer = composer.New(composer.ComposerConfig{
-		From: testFrom, Signature: testSig,
-		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
-	}, mm.styles)
-	mm, cmd := step(mm, pressKey("ctrl+s"))
+// senderRecorder è un Sender di test: registra le bozze consegnate (e il ctx
+// ricevuto, per il budget di timeout) e può fallire on demand.
+type senderRecorder struct {
+	calls []msg.Outgoing
+	ctx   context.Context
+	err   error
+}
+
+func (r *senderRecorder) Send(ctx context.Context, out msg.Outgoing) error {
+	r.ctx = ctx
+	r.calls = append(r.calls, out)
+	return r.err
+}
+
+// senderModel prepara il radice con lo store Mock e un Sender dato (recorder
+// nei test del flusso di invio, Mock nei test demo — un solo oggetto).
+func senderModel(t *testing.T, sender Sender, msgs ...*msg.Message) (Model, *mail.Mock) {
+	t.Helper()
+	th, err := theme.Load("default")
+	if err != nil {
+		t.Fatalf("tema default: %v", err)
+	}
+	mock := &mail.Mock{Msgs: msgs}
+	return New(mock, sender, th), mock
+}
+
+// draftComposer apre il composer del radice sulla bozza data, come farebbe
+// l'utente: passa da openComposer (view switch, bozza custodita azzerata,
+// fill-if-empty dell'identity — la config del test porta già mittente/firma).
+func draftComposer(m Model, cfg composer.ComposerConfig) Model {
+	cfg.From, cfg.Signature = testFrom, testSig
+	m.openComposer(cfg)
+	return m
+}
+
+// sendRequested porta il radice allo stato di conferma invio: composer con
+// bozza completa + ctrl+s + consegna del SendRequestedMsg alla radice.
+func sendRequested(t *testing.T, m Model) Model {
+	t.Helper()
+	mm, cmd := step(m, pressKey("ctrl+s"))
 	if cmd == nil {
 		t.Fatal("ctrl+s: cmd nil, voglio SendRequestedMsg")
 	}
@@ -549,23 +592,348 @@ func TestSendRequestedShowsPlaceholder(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd = %T, voglio composer.SendRequestedMsg", cmd())
 	}
-	if res.Out.To[0] != "anna@x.dev" || !strings.HasSuffix(res.Out.BodyText, "\n\n--\n"+testSig) {
-		t.Errorf("SendRequestedMsg.Out = %+v, voglio la bozza col mittente e la firma", res.Out)
-	}
-	mm, cmd2 := step(mm, res)
-	if cmd2 != nil {
-		t.Errorf("cmd dopo SendRequestedMsg = %v, voglio nil", cmd2)
+	mm, _ = step(mm, res)
+	return mm
+}
+
+// ansiRe toglie le sequenze di stile lipgloss (il render della barra porta colori).
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// wsRe collassa le sequenze di whitespace (il wrap a 80 colonne spezza il
+// testo della conferma, il padding della barra riempie le righe).
+var wsRe = regexp.MustCompile(`\s+`)
+
+// plainBar rende la status bar come testo puro a whitespace normalizzato: il
+// testo della conferma può andare a capo ai 80 colonne del terminale di test.
+func plainBar(m Model) string {
+	return wsRe.ReplaceAllString(ansiRe.ReplaceAllString(m.statusBar(), ""), " ")
+}
+
+// TestSendRequestedOpensConfirmation: ctrl+s emette SendRequestedMsg — la
+// radice custodisce la bozza e apre la conferma modale ("Invio a …" nella
+// status bar); il composer resta la vista attiva e il sender NON è toccato.
+func TestSendRequestedOpensConfirmation(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev, bob@y.dev", Subject: "oggetto", Body: "corpo",
+		Attachments: []string{"/tmp/a.pdf"},
+	})
+	mm = sendRequested(t, mm)
+	if !mm.confirmSend {
+		t.Error("ctrl+s deve aprire la conferma di invio")
 	}
 	if mm.currentView() != viewComposer {
 		t.Errorf("vista dopo ctrl+s = %v, voglio composer (resta aperto)", mm.currentView())
 	}
-	if mm.draft.Subject != "oggetto" || !strings.HasSuffix(mm.draft.BodyText, "\n\n--\n"+testSig) {
+	if mm.draft.To[0] != "anna@x.dev" || !strings.HasSuffix(mm.draft.BodyText, "\n\n--\n"+testSig) {
 		t.Errorf("draft custodito = %+v, voglio la bozza con firma", mm.draft)
 	}
-	if mm.statusText() != "composer pronto — invio in Task 4" {
-		t.Errorf("status = %q, voglio il placeholder", mm.statusText())
+	if len(rec.calls) != 0 {
+		t.Errorf("sender chiamato alla sola conferma: %d chiamate", len(rec.calls))
 	}
 }
+
+// TestSendConfirmationShowsToSubjectAttachments: il testo della conferma porta
+// i destinatari decodificati da Out.To (join virgole), l'oggetto e il numero
+// di allegati (plurale italiano); senza destinatari il placeholder è esplicito.
+func TestSendConfirmationShowsToSubjectAttachments(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  composer.ComposerConfig
+		want []string
+		not  string
+	}{
+		{
+			name: "to+oggetto+2 allegati",
+			cfg:  composer.ComposerConfig{To: "anna@x.dev, bob@y.dev", Subject: "Re: seconda", Body: "c", Attachments: []string{"/tmp/a.pdf", "/tmp/b.pdf"}},
+			want: []string{"Invio a anna@x.dev, bob@y.dev", "Re: seconda", "2 allegati", "s conferma", "esc annulla"},
+		},
+		{
+			name: "1 allegato (singolare)",
+			cfg:  composer.ComposerConfig{To: "anna@x.dev", Subject: "s", Body: "c", Attachments: []string{"/tmp/a.pdf"}},
+			want: []string{"Invio a anna@x.dev", "1 allegato"},
+			not:  "allegati",
+		},
+		{
+			name: "nessun destinatario (inoltro da riempire)",
+			cfg:  composer.ComposerConfig{Subject: "Fwd: prima", Body: "c"},
+			want: []string{"Invio a (nessun destinatario)", "Fwd: prima"},
+			not:  "allegat",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := &senderRecorder{}
+			m, _ := senderModel(t, rec)
+			mm, _ := step(m, teaSize())
+			mm = sendRequested(t, draftComposer(mm, tc.cfg))
+			bar := plainBar(mm)
+			for _, w := range tc.want {
+				if !strings.Contains(bar, w) {
+					t.Errorf("status bar senza %q: %q", w, bar)
+				}
+			}
+			if tc.not != "" && strings.Contains(bar, tc.not) {
+				t.Errorf("status bar contiene %q a sproposito: %q", tc.not, bar)
+			}
+		})
+	}
+}
+
+// TestSendConfirmEscPreservesDraft: esc alla conferma riprende il composer —
+// bozza intatta nei campi, nessun invio, conferma chiusa.
+func TestSendConfirmEscPreservesDraft(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+		Attachments: []string{"/tmp/a.pdf"},
+	}))
+	mm, cmd := step(mm, pressKey("esc"))
+	if cmd != nil {
+		t.Errorf("esc alla conferma: cmd = %v, voglio nil", cmd)
+	}
+	if mm.confirmSend {
+		t.Error("esc deve chiudere la conferma")
+	}
+	if mm.currentView() != viewComposer {
+		t.Errorf("vista dopo esc = %v, voglio composer (bozza preservata)", mm.currentView())
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("esc deve annullare: sender chiamato %d volte", len(rec.calls))
+	}
+	d := mm.composer.Draft()
+	if d.To[0] != "anna@x.dev" || d.Subject != "oggetto" || len(d.Attachments) != 1 {
+		t.Errorf("bozza dopo esc = %+v, voglio i campi intatti", d)
+	}
+}
+
+// TestSendConfirmSendsExactOutgoing: s alla conferma chiama il sender con la
+// bozza ESATTA (mittente/firma/destinatari/oggetto/corpo/allegati) dentro un
+// ctx con budget di timeout; niente ritorno alla vista finché l'opDone non
+// arriva (spinner: pending 1).
+func TestSendConfirmSendsExactOutgoing(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm, _ = step(mm, msgsLoaded{}) // consolida il load iniziale (pending 0)
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev, bob@y.dev", Cc: "cc@x.dev", Subject: "oggetto", Body: "corpo",
+		Attachments: []string{"/tmp/a.pdf", "/tmp/b.pdf"},
+	}))
+	mm, cmd := step(mm, pressKey("s"))
+	if mm.pending != 1 {
+		t.Errorf("pending dopo s = %d, voglio 1 (invio in flight)", mm.pending)
+	}
+	if mm.confirmSend {
+		t.Error("s deve chiudere la conferma")
+	}
+	var done opDone
+	found := false
+	for _, ms := range runCmd(cmd) {
+		if od, ok := ms.(opDone); ok {
+			done, found = od, true
+		}
+	}
+	if !found {
+		t.Fatalf("cmd di s: voglio opDone dentro il batch (msgs %v)", cmd())
+	}
+	if done.err != nil {
+		t.Errorf("opDone err = %v, voglio nil (recorder ok)", done.err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("sender chiamato %d volte, voglio 1", len(rec.calls))
+	}
+	got := rec.calls[0]
+	if got.From != testFrom {
+		t.Errorf("Out.From = %q, voglio %q (identity)", got.From, testFrom)
+	}
+	if len(got.To) != 2 || got.To[0] != "anna@x.dev" || got.To[1] != "bob@y.dev" {
+		t.Errorf("Out.To = %v, voglio [anna@x.dev bob@y.dev]", got.To)
+	}
+	if len(got.Cc) != 1 || got.Cc[0] != "cc@x.dev" {
+		t.Errorf("Out.Cc = %v, voglio [cc@x.dev]", got.Cc)
+	}
+	if got.Subject != "oggetto" {
+		t.Errorf("Out.Subject = %q, voglio %q", got.Subject, "oggetto")
+	}
+	if !strings.HasPrefix(got.BodyText, "corpo") || !strings.HasSuffix(got.BodyText, "\n\n--\n"+testSig) {
+		t.Errorf("Out.BodyText = %q, voglio corpo+firma appended", got.BodyText)
+	}
+	if len(got.Attachments) != 2 || got.Attachments[0] != "/tmp/a.pdf" || got.Attachments[1] != "/tmp/b.pdf" {
+		t.Errorf("Out.Attachments = %v, voglio i 2 allegati", got.Attachments)
+	}
+	// Budget di timeout: il ctx porta una deadline entro ~60s (const condivisa
+	// col sottocomando send) e non è già scaduta.
+	dl, ok := rec.ctx.Deadline()
+	if !ok {
+		t.Fatal("ctx senza deadline: voglio il budget sendTimeout")
+	}
+	if rem := time.Until(dl); rem <= 0 || rem > 61*time.Second {
+		t.Errorf("deadline del ctx a %v, voglio ~60s", rem)
+	}
+	// Finchè l'opDone non arriva il composer resta (spinner in status bar).
+	if mm.currentView() != viewComposer {
+		t.Errorf("vista durante l'invio = %v, voglio composer", mm.currentView())
+	}
+}
+
+// TestSendSuccessReturnsToInboxAndRefreshes: opDone{"inviato", nil} → back
+// inbox, composer chiuso, feedback "inviato" e re-list silenzioso della lista.
+func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "anna@x.dev", Subject: "s", Body: "c"}))
+	mm, cmd := step(mm, pressKey("s"))
+	var done opDone
+	for _, ms := range runCmd(cmd) {
+		if od, ok := ms.(opDone); ok {
+			done = od
+		}
+	}
+	mm, cmd2 := step(mm, done)
+	if cmd2 == nil {
+		t.Fatal("opDone ok: cmd nil, voglio il re-list silenzioso")
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo l'invio = %v, voglio inbox", mm.currentView())
+	}
+	if mm.confirmSend || mm.discardOpen {
+		t.Errorf("modali aperte dopo l'invio: confirm=%v discard=%v", mm.confirmSend, mm.discardOpen)
+	}
+	if mm.draft.Subject != "" || len(mm.draft.To) != 0 || mm.draft.BodyText != "" {
+		t.Errorf("draft = %+v, voglio azzerato dopo l'invio", mm.draft)
+	}
+	if mm.statusText() != "inviato" {
+		t.Errorf("status = %q, voglio %q", mm.statusText(), "inviato")
+	}
+	if !mm.refreshing {
+		t.Error("dopo l'invio deve partire il refresh silenzioso della lista")
+	}
+}
+
+// TestSendErrorStaysInComposerWithStatusErr: errore del sender → StatusErr col
+// dettaglio; il composer resta aperto con la bozza intatta (riprovabile con
+// ctrl+s — la conferma si riapre).
+func TestSendErrorStaysInComposerWithStatusErr(t *testing.T) {
+	rec := &senderRecorder{err: errBoom()}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+	}))
+	mm, cmd := step(mm, pressKey("s"))
+	var done opDone
+	for _, ms := range runCmd(cmd) {
+		if od, ok := ms.(opDone); ok {
+			done = od
+		}
+	}
+	mm, cmd2 := step(mm, done)
+	if cmd2 != nil {
+		t.Errorf("opDone errore: cmd = %v, voglio nil (nessun refresh)", cmd2)
+	}
+	if !mm.status.isErr {
+		t.Errorf("status isErr = false, voglio errore per %q", mm.statusText())
+	}
+	if !strings.Contains(mm.statusText(), "invio") || !strings.Contains(mm.statusText(), "boom") {
+		t.Errorf("status = %q, voglio il dettaglio del sender", mm.statusText())
+	}
+	if mm.currentView() != viewComposer {
+		t.Errorf("vista dopo l'errore = %v, voglio composer (bozza preservata)", mm.currentView())
+	}
+	d := mm.composer.Draft()
+	if d.To[0] != "anna@x.dev" || d.Subject != "oggetto" {
+		t.Errorf("bozza dopo l'errore = %+v, voglio i campi intatti (riprova)", d)
+	}
+	// Riprova: ctrl+s riapre la conferma sulla stessa bozza.
+	mm = sendRequested(t, mm)
+	if !mm.confirmSend {
+		t.Error("ctrl+s dopo l'errore deve riaprire la conferma")
+	}
+}
+
+// TestSendConfirmOtherKeysAndMouseIgnored: con la conferma aperta i tasti
+// estranei (e il mouse) sono ignorati — niente testo nei campi, niente ops,
+// nessun invio (stessa regola dei modali discard/help/prompt).
+func TestSendConfirmOtherKeysAndMouseIgnored(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+	}))
+	for _, k := range []string{"x", "j", "r", "enter", "tab"} {
+		mm, cmd := step(mm, pressKey(k))
+		if cmd != nil {
+			t.Errorf("tasto %s alla conferma: cmd = %v, voglio nil", k, cmd)
+		}
+		if !mm.confirmSend {
+			t.Fatalf("tasto %s ha chiuso la conferma", k)
+		}
+	}
+	if got := mm.composer.Draft().To; len(got) != 1 || got[0] != "anna@x.dev" {
+		t.Errorf("To dopo tasti estranei = %v, voglio i campi intatti (niente typing)", got)
+	}
+	mm, cmd := step(mm, tea.MouseClickMsg{Y: 3, Button: tea.MouseLeft})
+	if cmd != nil || !mm.confirmSend {
+		t.Errorf("click alla conferma: cmd=%v confirmSend=%v, voglio nil/true", cmd, mm.confirmSend)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("sender chiamato senza s: %d chiamate", len(rec.calls))
+	}
+}
+
+// TestSendDemoMockRecordsSent: in demo mode il Mock è store E sender (un solo
+// oggetto): il flusso completo finisce in Mock.Sent — osservabile dai test e
+// dal wizard (Piano 4, Task 5).
+func TestSendDemoMockRecordsSent(t *testing.T) {
+	m, mk := composerModel(t)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+		Attachments: []string{"/tmp/a.pdf"},
+	}))
+	mm, cmd := step(mm, pressKey("s"))
+	for _, ms := range runCmd(cmd) {
+		mm, _ = step(mm, ms)
+	}
+	if len(mk.Sent) != 1 {
+		t.Fatalf("Mock.Sent = %d messaggi, voglio 1", len(mk.Sent))
+	}
+	sent := mk.Sent[0]
+	if sent.From != testFrom || sent.To[0] != "anna@x.dev" || sent.Subject != "oggetto" {
+		t.Errorf("Sent[0] = %+v, voglio la bozza inviata", sent)
+	}
+	if !strings.HasSuffix(sent.BodyText, "\n\n--\n"+testSig) {
+		t.Errorf("Sent[0].BodyText senza firma: %q", sent.BodyText)
+	}
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista = %v, voglio inbox dopo l'invio demo", mm.currentView())
+	}
+}
+
+// TestSendRequestedStaleDropped: SendRequestedMsg arrivato fuori dal composer
+// (bozza stante: cambio vista fra pressione e consegna) è scartato — nessuna
+// conferma fantasma.
+func TestSendRequestedStaleDropped(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm, cmd := step(mm, composer.SendRequestedMsg{Out: msg.Outgoing{Subject: "stante"}})
+	if cmd != nil {
+		t.Errorf("cmd = %v, voglio nil", cmd)
+	}
+	if mm.confirmSend || mm.draft.Subject != "" {
+		t.Errorf("SendRequestedMsg stante accettato: confirm=%v draft=%+v", mm.confirmSend, mm.draft)
+	}
+}
+
+// --- mouse gate ---------------------------------------------------------------------
 
 // --- mouse gate ---------------------------------------------------------------------
 
@@ -585,13 +953,17 @@ func TestMouseIgnoredInComposer(t *testing.T) {
 
 // --- help ---------------------------------------------------------------------------
 
-// TestComposerHelpEntry: l'help breve della vista composer documenta annulla
-// e aiuto (il resto dei tasti è nella riga d'uso del composer).
+// TestComposerHelpEntry: l'help breve della vista composer documenta SOLO
+// annulla — `?` nel composer è testo nel campo focalizzato, la binding Help
+// non va pubblicizzata (review Task 3, precedente viewSearch).
 func TestComposerHelpEntry(t *testing.T) {
 	m := newTestModel(t)
 	m.view = viewComposer
 	descs := bindingDescs(m.shortHelpFor(false, viewComposer))
-	if !descs["annulla"] || !descs["aiuto"] {
-		t.Errorf("short help composer = %v, voglio annulla+aiuto", descs)
+	if !descs["annulla"] {
+		t.Errorf("short help composer = %v, voglio annulla", descs)
+	}
+	if descs["aiuto"] {
+		t.Errorf("short help composer pubblica ? ma il tasto è irraggiungibile: %v", descs)
 	}
 }

@@ -60,8 +60,9 @@ func main() {
 }
 
 // runTUI avvia la TUI (Task 9): config → tema (flag --theme, poi config,
-// fallback default con warning) → store (IMAP reale se c'è
-// GMAIL_APP_PASSWORD, altrimenti Mock in demo mode col banner) → programma.
+// fallback default con warning) → store + sender (IMAP/SMTP reali se c'è
+// GMAIL_APP_PASSWORD — preset Gmail; altrimenti Mock in demo mode col banner,
+// che fa da store E sender — un solo oggetto, Piano 4 Task 4) → programma.
 //
 // Limitazione documentata (mandato Task 8): q/esc/ctrl+c dentro la TUI escono
 // puliti cancellando il feed Watch; una SIGINT ESTERNA invece arriva al
@@ -81,8 +82,8 @@ func runTUI(args []string) int {
 		cfg = config.Default()
 	}
 	th, warn := loadTheme(themeFlag, cfg.Theme)
-	store, demo := selectStore(cfg, os.Getenv, openCache())
-	m := app.New(store, th)
+	store, sender, demo := selectStore(cfg, os.Getenv, openCache())
+	m := app.New(store, sender, th)
 	m.SetIdentity(cfg.Address, cfg.Signature) // composer r/f/c (Piano 4, Task 3)
 	if demo {
 		m.SetDemoBanner()
@@ -148,21 +149,32 @@ func loadTheme(flagTheme, cfgTheme string) (theme.Theme, string) {
 	return def, fmt.Sprintf("tema %q non disponibile — uso default", name)
 }
 
-// selectStore sceglie lo store per la TUI (Task 9): IMAP reale se la password
-// applicativa è presente, altrimenti Mock in demo mode (chi clona il repo vede
-// subito l'app). imap.NewStore NON si connette (la connessione avviene alla
-// prima operazione): la costruzione non tocca la rete. La cache è passata dal
-// chiamante (nil = senza cache): nei test non si tocca il disco utente.
-func selectStore(cfg config.Config, getenv func(string) string, c *cache.Cache) (store mail.MailStore, demo bool) {
+// selectStore sceglie store e sender per la TUI (Task 9 + Piano 4 Task 4):
+// IMAP/SMTP reali se la password applicativa è presente (preset Gmail fisso —
+// host imap non configurabile; password via getenv, il keyring arriva in
+// Task 5), altrimenti Mock in demo mode che fa da store E sender (UN solo
+// oggetto: chi clona il repo vede l'app, incluso l'invio in Mock.Sent).
+// imap.NewStore e smtp.NewSender NON si connettono (la connessione avviene
+// alla prima operazione): la costruzione non tocca la rete. La cache è passata
+// dal chiamante (nil = senza cache): nei test non si tocca il disco utente.
+func selectStore(cfg config.Config, getenv func(string) string, c *cache.Cache) (store mail.MailStore, sender app.Sender, demo bool) {
 	if getenv("GMAIL_APP_PASSWORD") == "" {
-		return &mail.Mock{}, true
+		mk := &mail.Mock{}
+		return mk, mk, true
 	}
-	return imap.NewStore(imap.Options{
+	store = imap.NewStore(imap.Options{
 		Addr:     imapAddr,
 		Username: cfg.Address,
 		Password: getenv("GMAIL_APP_PASSWORD"),
 		Cache:    c,
-	}), false
+	})
+	sender = smtp.NewSender(smtp.Options{
+		Host:     smtpHost,
+		Port:     smtpPort,
+		Username: cfg.Address,
+		Password: getenv("GMAIL_APP_PASSWORD"),
+	})
+	return store, sender, false
 }
 
 // runFetch: gmail-tui fetch [--limit N] [--query "from:x is:unread"].

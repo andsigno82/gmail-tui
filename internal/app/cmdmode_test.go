@@ -55,7 +55,7 @@ func cmdThreadModel(tb testing.TB) (Model, *mail.Mock, msg.MessageRef) {
 	if err != nil {
 		tb.Fatalf("tema default: %v", err)
 	}
-	m := New(mock, th)
+	m := New(mock, mock, th)
 	m, _ = step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, cmd := step(m, inbox.SelectedMsg{Ref: ref})
 	var loaded msgLoaded

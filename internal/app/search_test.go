@@ -67,7 +67,7 @@ func searchModel(tb testing.TB, refs []msg.MessageRef) (Model, *recorder) {
 	if err != nil {
 		tb.Fatalf("tema default: %v", err)
 	}
-	m := New(rec, th)
+	m := New(rec, noopSender{}, th)
 	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, _ = step(mm, msgsLoaded{refs: refs})
 	return mm, rec
@@ -342,7 +342,7 @@ func TestSearchErrorShowsStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tema default: %v", err)
 	}
-	m := New(rec, th)
+	m := New(rec, noopSender{}, th)
 	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, _ = step(mm, msgsLoaded{}) // consolida il load iniziale (pending 0)
 	mm, _ = step(mm, pressKey("/"))

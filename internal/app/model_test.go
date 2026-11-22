@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -17,17 +18,19 @@ import (
 )
 
 // newTestModel costruisce il Model radice contro il Mock e il tema default.
+// Il Mock è anche Sender (Piano 4, Task 4): un solo oggetto, come il demo mode.
 func newTestModel(tb testing.TB, msgs ...*msg.Message) Model {
 	tb.Helper()
 	th, err := theme.Load("default")
 	if err != nil {
 		tb.Fatalf("tema default: %v", err)
 	}
-	return New(&mail.Mock{Msgs: msgs}, th)
+	mock := &mail.Mock{Msgs: msgs}
+	return New(mock, mock, th)
 }
 
 // newTestModelMock come newTestModel ma restituisce anche il Mock (per gli
-// assert sulle chiamate store, es. auto MarkRead).
+// assert sulle chiamate store, es. auto MarkRead, e sul Send registrato).
 func newTestModelMock(tb testing.TB, msgs ...*msg.Message) (Model, *mail.Mock) {
 	tb.Helper()
 	th, err := theme.Load("default")
@@ -35,7 +38,7 @@ func newTestModelMock(tb testing.TB, msgs ...*msg.Message) (Model, *mail.Mock) {
 		tb.Fatalf("tema default: %v", err)
 	}
 	mock := &mail.Mock{Msgs: msgs}
-	return New(mock, th), mock
+	return New(mock, mock, th), mock
 }
 
 // fullMessage costruisce un messaggio completo per il Mock: corpo lungo
@@ -64,6 +67,15 @@ func testRefs(tb testing.TB) []msg.MessageRef {
 func step(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.Update(msg)
 	return next.(Model), cmd
+}
+
+// noopSender è il Sender dei modelli di test che NON toccano il flusso di
+// invio (ops/ricerca/watch): se il flusso scattasse, fallisce rumorosamente
+// invece di passare in silenzio.
+type noopSender struct{}
+
+func (noopSender) Send(context.Context, msg.Outgoing) error {
+	return errors.New("send inatteso nel test")
 }
 
 // runCmd esegue una cmd e restituisce tutti i Msg prodotti, srotolando
@@ -501,7 +513,7 @@ func TestStaleFetchResultIgnoredWhenNewerOpenRendered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tema default: %v", err)
 	}
-	m := New(mock, th)
+	m := New(mock, mock, th)
 	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, _ = step(mm, msgsLoaded{refs: refs})
 
@@ -561,7 +573,7 @@ func TestFetchResultAfterBackIgnored(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tema default: %v", err)
 	}
-	m := New(mock, th)
+	m := New(mock, mock, th)
 	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
 
@@ -607,7 +619,7 @@ func TestSelectedMsgAutoMarkRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tema default: %v", err)
 	}
-	m := New(mock, th)
+	m := New(mock, mock, th)
 	mm, _ := step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
 	mm, cmd := step(mm, inbox.SelectedMsg{Ref: ref})

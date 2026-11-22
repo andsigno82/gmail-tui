@@ -64,7 +64,7 @@ func opsModel(tb testing.TB, store mail.MailStore) Model {
 	if err != nil {
 		tb.Fatalf("tema default: %v", err)
 	}
-	m := New(store, th)
+	m := New(store, noopSender{}, th)
 	m, _ = step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m, _ = step(m, msgsLoaded{refs: opsRefs(tb)})
 	return m

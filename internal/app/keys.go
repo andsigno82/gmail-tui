@@ -104,8 +104,10 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
 	case viewComposer:
 		// Nel composer i tasti operativi sono nella riga d'uso del modello
-		// (tab/ctrl+e/ctrl+s): la barra documenta solo annulla e aiuto.
-		return []key.Binding{keys.Cancel, keys.Help}
+		// (tab/ctrl+e/ctrl+s) e la barra documenta solo annulla: `?` qui è
+		// testo nel campo focalizzato (tutti i tasti vanno al composer),
+		// pubblicizzarlo sarebbe mentire — come nella vista ricerca.
+		return []key.Binding{keys.Cancel}
 	default: // inbox
 		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Help}
 	}

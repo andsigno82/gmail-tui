@@ -34,7 +34,7 @@ const (
 
 // Model è la radice della TUI: routing viste, status bar globale, keymap
 // centrale (Task 9: definizioni in keys.go, help via bubbles/help). Tutte le
-// chiamate MailStore girano in tea.Cmd — la rete non blocca mai.
+// chiamate MailStore e Sender girano in tea.Cmd — la rete non blocca mai.
 //
 // Shutdown (mandato Task 8): q/esc nell'inbox e ctrl+c da qualunque stato
 // escono puliti via quitCmd, che cancella il ctx del feed Watch PRIMA del
@@ -45,6 +45,7 @@ const (
 // intercettazione via WithFilter è stata scartata in review (Task 8).
 type Model struct {
 	store     mail.MailStore
+	sender    Sender // invio composer (P4 Task 4): Mock in demo, SMTP altrimenti
 	styles    styles.Styles
 	spinner   spinner.Model
 	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
@@ -57,14 +58,15 @@ type Model struct {
 	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
 	demo      bool            // demo mode (Task 9): banner iniziale in stile DemoBanner
 
-	// Composer (Piano 4, Task 3): identity mittente/firma (SetIdentity, il
-	// wiring dalla config arriva in Task 4), vista di provenienza per il back,
-	// conferma discard aperta e ultima bozza richiesta (SendRequestedMsg,
-	// placeholder finché Task 4 non collega il sender).
+	// Composer (Piano 4, Task 3-4): identity mittente/firma (SetIdentity,
+	// seam per il wiring dalla config del main), vista di provenienza per il
+	// back, conferma discard aperta, bozza in attesa di conferma invio
+	// (SendRequestedMsg → conferma modale → Sender) e conferma invio aperta.
 	from, signature string
 	composeBack     view
 	discardOpen     bool
 	draft           msg.Outgoing
+	confirmSend     bool // conferma pre-invio aperta ("Invio a …" nella status bar)
 
 	// Percorso della config per la persistenza del tema (Piano 4, Task 2:
 	// `:theme`): risolto in New da config.Path(). "" = non disponibile
@@ -97,11 +99,19 @@ type Model struct {
 // Conformance: il Model radice implementa tea.Model (v2: View rende tea.View).
 var _ tea.Model = Model{}
 
-// New costruisce il Model radice per lo store e il tema dati. Il ctx del feed
-// Watch nasce qui (Task 8): l'Init lo passa a Watch e il loop waitForChange
-// muore quando viene annullato — il wiring del cancel all'uscita del programma
-// è del Task 9 (main); nei test il cancel è esplicito.
-func New(store mail.MailStore, th theme.Theme) Model {
+// Sender è l'astrazione di invio del composer (Piano 4, Task 4): la UI parla
+// SOLO con questa interfaccia, mai con SMTP. È soddisfatta da *smtp.Sender
+// (modalità reale) e da *mail.Mock (demo mode: store e sender sono un solo
+// oggetto) — assert di conformance nel main e nei test dell'app.
+type Sender interface {
+	Send(ctx context.Context, m msg.Outgoing) error
+}
+
+// New costruisce il Model radice per lo store, il sender e il tema dati. Il
+// ctx del feed Watch nasce qui (Task 8): l'Init lo passa a Watch e il loop
+// waitForChange muore quando viene annullato — il wiring del cancel all'uscita
+// del programma è del Task 9 (main); nei test il cancel è esplicito.
+func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	st := styles.New(th)
 	ctx, cancel := context.WithCancel(context.Background())
 	// Percorso config per la persistenza del tema (Piano 4, Task 2): con
@@ -113,6 +123,7 @@ func New(store mail.MailStore, th theme.Theme) Model {
 	}
 	return Model{
 		store:   store,
+		sender:  sender,
 		styles:  st,
 		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
 		help:    newHelp(st),
@@ -277,6 +288,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = statusMsg{text: ev.label}
+		if ev.closeComposer {
+			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
+			// torna all'inbox (come da piano); il feedback "inviato" resta in
+			// status e il refresh sotto rilista la lista corrente.
+			m.finishSend()
+		}
 		if ev.refresh {
 			// Mutazione utente riuscita (Task 7): rilista la lista corrente
 			// (query corrente) in silenzio — refs e cursore aggiornati, il
@@ -416,11 +433,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case composer.SendRequestedMsg:
-		// ctrl+s nel composer (Piano 4, Task 3): la bozza viene custodita e
-		// il feedback è il placeholder — conferma modale e sendCmd con il
-		// Sender arrivano in Task 4 (m.draft verrà sostituito dal flusso vero).
+		// ctrl+s nel composer (Piano 4, Task 4): la bozza viene custodita e
+		// si apre la conferma modale ("Invio a …" nella status bar): s →
+		// sendCmd col Sender, esc → ripresa (bozza intatta). Messaggio STANTE
+		// (la vista è cambiata fra pressione e consegna): scartato, come i
+		// risultati di fetch stanti.
+		if m.view != viewComposer {
+			return m, nil
+		}
 		m.draft = ev.Out
-		m.status = statusMsg{text: "composer pronto — invio in Task 4"}
+		m.confirmSend = true
 		return m, nil
 
 	case spinner.TickMsg:
@@ -493,6 +515,21 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case "esc":
 				m.discardOpen = false
+			}
+			return m, nil
+		}
+		if m.confirmSend {
+			// Conferma pre-invio del composer (Piano 4, Task 4): s consegna la
+			// bozza al Sender fuori dal loop UI (spinner finché opDone), esc
+			// riprende il composer con la bozza intatta — gli altri tasti (e
+			// il mouse, gate sotto) sono ignorati: nessuna azione "alla cieca".
+			switch ev.String() {
+			case "s":
+				m.confirmSend = false
+				m.pending++ // invio in flight: spinner finché opDone
+				return m, tea.Batch(sendCmd(m.sender, m.draft), m.spinner.Tick)
+			case "esc":
+				m.confirmSend = false // back al composer: la bozza resta
 			}
 			return m, nil
 		}
@@ -620,9 +657,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// alla riga sbagliata (rompendo l'invariante di confirmLabel); con la
 		// command line/filepicker del thread (Piano 4, Task 2) click e rotella
 		// non devono toccare ciò che c'è dietro il modale; nel composer
-		// (P4 Task 3) il mouse non tocca i campi (keyboard-first) e sotto la
-		// conferma discard è ignorato come i tasti.
-		if m.showHelp || m.labelOpen || m.discardOpen || m.thread.ModalOpen() {
+		// (P4 Task 3) il mouse non tocca i campi (keyboard-first) e sotto le
+		// conferme discard/invio (P4 Task 4) è ignorato come i tasti.
+		if m.showHelp || m.labelOpen || m.discardOpen || m.confirmSend || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -853,6 +890,12 @@ func (m Model) statusBar() string {
 		// Conferma discard del composer (Piano 4, Task 3): occupa la barra
 		// per intero (stile StatusErr: azione distruttiva, ben visibile).
 		return m.renderBar(m.styles.StatusErr, "scartare la bozza? s conferma · esc annulla")
+	}
+	if m.confirmSend {
+		// Conferma pre-invio del composer (Piano 4, Task 4): occupa la barra
+		// per intero — destinatari decodificati dalla bozza, oggetto e numero
+		// di allegati (testo in sendConfirmText, compose.go).
+		return m.renderBar(m.styles.StatusErr, sendConfirmText(m.draft))
 	}
 	text := m.status.text
 	if m.pending > 0 {

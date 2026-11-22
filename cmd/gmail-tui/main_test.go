@@ -4,9 +4,18 @@ import (
 	"strings"
 	"testing"
 
+	"gmail-tui/internal/app"
 	"gmail-tui/internal/config"
 	"gmail-tui/internal/mail"
 	"gmail-tui/internal/mail/imap"
+	"gmail-tui/internal/mail/smtp"
+)
+
+// Conformance (Piano 4, Task 4): sia il Sender SMTP che il Mock soddisfano
+// l'interfaccia Sender richiesta dal radice (app.New).
+var (
+	_ app.Sender = (*smtp.Sender)(nil)
+	_ app.Sender = (*mail.Mock)(nil)
 )
 
 // getenvOf costruisce un getenv finto dalla mappa data (chiave assente = "").
@@ -17,24 +26,33 @@ func getenvOf(env map[string]string) func(string) string {
 // --- selectStore -------------------------------------------------------------
 
 // TestSelectStoreDemoMode: senza GMAIL_APP_PASSWORD la factory restituisce il
-// Mock (demo mode): costruzione senza rete, demo=true.
+// Mock (demo mode): costruzione senza rete, demo=true. Il Mock è ANCHE il
+// sender — store e sender sono UN solo oggetto (Piano 4, Task 4).
 func TestSelectStoreDemoMode(t *testing.T) {
-	store, demo := selectStore(config.Default(), getenvOf(nil), nil)
+	store, sender, demo := selectStore(config.Default(), getenvOf(nil), nil)
 	if !demo {
 		t.Error("demo = false, voglio true senza GMAIL_APP_PASSWORD")
 	}
-	if _, ok := store.(*mail.Mock); !ok {
+	mk, ok := store.(*mail.Mock)
+	if !ok {
 		t.Errorf("store = %T, voglio *mail.Mock", store)
+	}
+	s, ok := sender.(*mail.Mock)
+	if !ok {
+		t.Errorf("sender = %T, voglio *mail.Mock (demo: un solo oggetto)", sender)
+	}
+	if s != mk {
+		t.Error("store e sender devono essere lo STESSO Mock in demo mode")
 	}
 }
 
 // TestSelectStoreIMAP: con GMAIL_APP_PASSWORD la factory costruisce lo store
-// IMAP reale (preset Gmail) SENZA connettersi: NewStore non tocca la rete (la
-// connessione avviene alla prima operazione), demo=false. Cache nil: il test
-// non tocca il disco.
+// IMAP reale e il sender SMTP (preset Gmail) SENZA connettersi: né NewStore né
+// NewSender toccano la rete (la connessione avviene alla prima operazione),
+// demo=false. Cache nil: il test non tocca il disco.
 func TestSelectStoreIMAP(t *testing.T) {
 	cfg := config.Config{Address: "user@gmail.com"}
-	store, demo := selectStore(cfg, getenvOf(map[string]string{"GMAIL_APP_PASSWORD": "pw"}), nil)
+	store, sender, demo := selectStore(cfg, getenvOf(map[string]string{"GMAIL_APP_PASSWORD": "pw"}), nil)
 	if demo {
 		t.Error("demo = true, voglio false con GMAIL_APP_PASSWORD presente")
 	}
@@ -44,6 +62,13 @@ func TestSelectStoreIMAP(t *testing.T) {
 	}
 	if s == nil {
 		t.Error("store IMAP nil")
+	}
+	snd, ok := sender.(*smtp.Sender)
+	if !ok {
+		t.Fatalf("sender = %T, voglio *smtp.Sender", sender)
+	}
+	if snd == nil {
+		t.Error("sender SMTP nil")
 	}
 }
 

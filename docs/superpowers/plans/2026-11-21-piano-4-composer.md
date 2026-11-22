@@ -109,7 +109,7 @@ type SendRequestedMsg struct{ Out msg.Outgoing }
 - msg.Outgoing.From = cfg.Address (il campo From del composer è readonly-vista ma precompilato)
 - Test: conferma→send chiamato con l'Outgoing giusto (recorder Sender), annulla→non chiamato, errore sender → StatusErr, ritorno inbox dopo invio, signature presente nell'invio
 
-- [ ] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(app): send flow with confirmation and sender integration`
+- [x] Steps: RED → impl → GREEN → vet/lint/race → Commit `feat(app): send flow with confirmation and sender integration`
 
 ### Task 5: first-run wizard + login + demo seed + polish
 

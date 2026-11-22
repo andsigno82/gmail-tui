@@ -40,11 +40,13 @@ type msgLoaded struct {
 // chiede il re-list della lista corrente al risultato (le op dell'utente,
 // Task 7); le op automatiche — es. auto MarkRead al fetch (Task 5) — non
 // rilistano (lo status resta l'unico feedback, la lista si aggiorna via
-// Watch/nuova ricerca).
+// Watch/nuova ricerca). closeComposer (Piano 4, Task 4) è dell'invio riuscito:
+// il composer si chiude e si torna all'inbox prima del re-list.
 type opDone struct {
-	label   string
-	err     error
-	refresh bool
+	label         string
+	err           error
+	refresh       bool
+	closeComposer bool
 }
 
 // changeEvt è un evento push del feed Watch.
