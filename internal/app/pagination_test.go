@@ -12,6 +12,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // pagedMsgs costruisce n messaggi INBOX con date desc: il messaggio i ha
@@ -233,8 +234,8 @@ func TestMoreLoadedErrorKeepsListAndRetries(t *testing.T) {
 	m := pagedModel(t, rec)
 	m, _ = step(m, pressKey("G"))
 	m, _ = step(m, moreLoaded{err: errors.New("boom"), query: ""})
-	if !strings.Contains(m.statusText(), "boom") || !m.status.isErr {
-		t.Errorf("status = %q, voglio errore con boom", m.statusText())
+	if !strings.Contains(toastText(m), "boom") || !toastIs(m, toast.Error) {
+		t.Errorf("status = %q, voglio errore con boom", toastText(m))
 	}
 	if len(m.refs) != 50 || m.loadingMore || m.exhausted {
 		t.Errorf("dopo errore: refs=%d loadingMore=%v exhausted=%v", len(m.refs), m.loadingMore, m.exhausted)

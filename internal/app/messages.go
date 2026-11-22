@@ -91,15 +91,12 @@ type watchStarted struct {
 	err error
 }
 
-// statusMsg è un messaggio effimero per la status bar: resta finché il
-// prossimo evento non lo sostituisce. isOK (Piano 3 polish, use-or-drop —
-// adottato al Piano 4 Task 5) distingue il feedback positivo ("inviato",
-// "salvato", "tema applicato", setup completato) che viene reso col stile
-// StatusOK anziché il normale StatusBar.
+// statusMsg è lo stato persistente della status bar (cartella, badge di
+// ricerca, ⟳ riconnessione, banner): resta finché il prossimo evento non lo
+// sostituisce. Gli esiti delle azioni (inviato, archiviata, errori…) non vi
+// passano: sono toast (internal/ui/toast, Piano 7.3).
 type statusMsg struct {
-	text  string
-	isErr bool
-	isOK  bool
+	text string
 }
 
 // attachmentSaved è il risultato di store.SaveAttachment (Piano 4, Task 2:

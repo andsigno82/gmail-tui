@@ -25,6 +25,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/composer"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // composeLoaded è il risultato del fetch per r/f nell'inbox
@@ -215,9 +216,10 @@ func (m *Model) handleComposerCancel() {
 }
 
 // discardDraft chiude il composer scartando la bozza (tasto `s` del modale).
-func (m *Model) discardDraft() {
+// Restituisce la cmd del toast di conferma (Piano 7.3, Task 2).
+func (m *Model) discardDraft() tea.Cmd {
 	m.closeComposer()
-	m.status = statusMsg{text: "bozza scartata"}
+	return m.toast.Push(toast.Info, "bozza scartata")
 }
 
 // --- invio (Piano 4, Task 4) --------------------------------------------------

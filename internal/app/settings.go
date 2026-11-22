@@ -23,6 +23,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // settingsRow è una voce del menu, nell'ordine di decisione U3.
@@ -141,9 +142,9 @@ func (m Model) settingsKey(ev tea.KeyPressMsg) (Model, tea.Cmd) {
 	case "down", "j":
 		m.menu.cur = min(rowCount-1, m.menu.cur+1)
 	case "left", "h":
-		return m.settingsStep(-1), nil
+		return m.settingsStep(-1)
 	case "right", "l":
-		return m.settingsStep(+1), nil
+		return m.settingsStep(+1)
 	case "enter":
 		if m.menu.cur == rowName || m.menu.cur == rowSignature {
 			return m.startEditing()
@@ -156,13 +157,13 @@ func (m Model) settingsKey(ev tea.KeyPressMsg) (Model, tea.Cmd) {
 // settingsStep cambia il valore della voce selezionata di un passo (dir ±1,
 // con giro). Tema: re-styling immediato; layout: applicato subito; segna come
 // letto: bozza. Nome e firma non hanno valori a scelta.
-func (m Model) settingsStep(dir int) Model {
+func (m Model) settingsStep(dir int) (Model, tea.Cmd) {
 	switch m.menu.cur {
 	case rowTheme:
 		th, err := theme.Load(nextValue(theme.Names(), m.th.Name, dir))
 		if err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("tema: %v", err), isErr: true}
-			return m
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("tema: %v", err))
+			return m, cmd
 		}
 		m.th = th
 		m.applyStyles(styles.New(th))
@@ -172,7 +173,7 @@ func (m Model) settingsStep(dir int) Model {
 	case rowMarkRead:
 		m.menu.markRead = nextValue(config.PreviewMarkReadValues(), m.menu.markRead, dir)
 	}
-	return m
+	return m, nil
 }
 
 // settingsCancel chiude il menu annullando: tema e layout tornano ai valori
@@ -209,7 +210,7 @@ func (m Model) settingsCommit() (Model, tea.Cmd) {
 		Signature:       sig,
 	})
 	if cmd == nil {
-		m.status = statusMsg{text: "impostazioni applicate (config non disponibile: non salvate)"}
+		cmd = m.toast.Push(toast.Info, "impostazioni applicate (config non disponibile: non salvate)")
 	}
 	return m, cmd
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // watchModel costruisce il modello consolidato (3 ref, cursore su 0, pending
@@ -133,7 +134,7 @@ func TestChangeNewMailRefreshesListAndStatus(t *testing.T) {
 	mock.Msgs = append(mock.Msgs, &msg.Message{Ref: fourth})
 
 	mm, cmd := step(m, changeEvt{c: mail.Change{Kind: mail.ChangeNewMail}})
-	if got := mm.statusText(); got != newMailText {
+	if got := toastText(mm); got != newMailText {
 		t.Errorf("status dopo ChangeNewMail = %q, voglio %q", got, newMailText)
 	}
 	if mm.pending != 1 {
@@ -156,7 +157,7 @@ func TestChangeNewMailRefreshesListAndStatus(t *testing.T) {
 	if len(mm2.refs) != 4 {
 		t.Errorf("refs sul modello = %d, voglio 4 (lista aggiornata)", len(mm2.refs))
 	}
-	if got := mm2.statusText(); got != newMailText {
+	if got := toastText(mm2); got != newMailText {
 		t.Errorf("status dopo il re-list silenzioso = %q, voglio %q (intatto)", got, newMailText)
 	}
 }
@@ -170,12 +171,12 @@ func TestChangeFlagsRelistsSilentlyWithoutStatus(t *testing.T) {
 	mock := &mail.Mock{Msgs: mockMsgs(t)}
 	m := watchModel(t, mock)
 
-	mm0, _ := step(m, statusMsg{text: "stella on"})
+	mm0, _ := step(m, opDone{label: "stella on"}) // esito d'op: toast (Piano 7.3)
 	mock.Msgs[0].Ref.Starred = true
 
 	mm, cmd := step(mm0, changeEvt{c: mail.Change{Kind: mail.ChangeFlags}})
-	if got := mm.statusText(); got != "stella on" {
-		t.Errorf("status dopo ChangeFlags = %q, voglio \"stella on\" (intatto)", got)
+	if got := toastText(mm); got != "stella on" {
+		t.Errorf("toast dopo ChangeFlags = %q, voglio \"stella on\" (intatto)", got)
 	}
 	loaded := loadedOf(t, drainCmd(t, mm, cmd))
 	if !loaded.silent {
@@ -185,8 +186,8 @@ func TestChangeFlagsRelistsSilentlyWithoutStatus(t *testing.T) {
 		t.Error("il re-list non riflette il flag aggiornato nello store")
 	}
 	mm2, _ := step(mm, loaded)
-	if got := mm2.statusText(); got != "stella on" {
-		t.Errorf("status dopo il re-list = %q, voglio \"stella on\" (intatto)", got)
+	if got := toastText(mm2); got != "stella on" {
+		t.Errorf("toast dopo il re-list = %q, voglio \"stella on\" (intatto)", got)
 	}
 }
 
@@ -263,7 +264,7 @@ func TestChangeCoalescesWhileRefreshInFlight(t *testing.T) {
 	m.refreshing = true // refresh silenzioso già in flight (es. da un'op)
 
 	mm, cmd := step(m, changeEvt{c: mail.Change{Kind: mail.ChangeNewMail}})
-	if got := mm.statusText(); got != newMailText {
+	if got := toastText(mm); got != newMailText {
 		t.Errorf("status = %q, voglio %q (il feedback arriva comunque)", got, newMailText)
 	}
 	if !mm.dirty {
@@ -301,8 +302,8 @@ func TestOpDoneRefreshCoalescesWhileRefreshInFlight(t *testing.T) {
 	if mm.pending != 0 {
 		t.Errorf("pending = %d, voglio 0 (refresh coalescato: nessuna op aggiunta)", mm.pending)
 	}
-	if cmd != nil {
-		t.Error("cmd = non-nil, voglio nil (refresh coalescato nel flight)")
+	if msgs := dropExpired(runCmd(cmd)); len(msgs) != 0 {
+		t.Errorf("cmd = %v, voglio nessun refresh (coalescato nel flight)", msgs)
 	}
 	if !mm.dirty {
 		t.Error("dirty = false, voglio true")
@@ -362,8 +363,8 @@ func TestWatchLoopConsumesChannelEvents(t *testing.T) {
 
 // --- errori del Watch --------------------------------------------------------
 
-// TestWatchStartedErrorShowsStatus: un Watch fallito finisce in status bar
-// (isErr) e NON arma il loop — la TUI resta usabile (nessun push, i re-list
+// TestWatchStartedErrorShowsStatus: un Watch fallito finisce in un toast d'errore
+// (errore) e NON arma il loop — la TUI resta usabile (nessun push, i re-list
 // espliciti funzionano).
 func TestWatchStartedErrorShowsStatus(t *testing.T) {
 	m := newTestModel(t)
@@ -371,8 +372,8 @@ func TestWatchStartedErrorShowsStatus(t *testing.T) {
 	if cmd != nil {
 		t.Error("cmd = non-nil, voglio nil (nessun loop da armare)")
 	}
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "rete giù") {
-		t.Errorf("status = %q (isErr=%v), voglio l'errore del Watch", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "rete giù") {
+		t.Errorf("status = %q (errore=%v), voglio l'errore del Watch", toastText(mm), toastIs(mm, toast.Error))
 	}
 }
 

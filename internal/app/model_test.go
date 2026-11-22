@@ -15,6 +15,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // newTestModel costruisce il Model radice contro il Mock e il tema default.
@@ -229,14 +230,14 @@ func TestMsgsLoadedStoresRefs(t *testing.T) {
 	}
 }
 
-func TestMsgsLoadedErrorShowsStatusErr(t *testing.T) {
+func TestMsgsLoadedErrorShowsErrorToast(t *testing.T) {
 	m := newTestModel(t)
 	mm, _ := step(m, msgsLoaded{err: errors.New("boom")})
-	if !mm.status.isErr {
-		t.Error("status.isErr = false, voglio true per un errore di list")
+	if !toastIs(mm, toast.Error) {
+		t.Error("toast non di errore, voglio true per un errore di list")
 	}
-	if !strings.Contains(mm.statusText(), "boom") {
-		t.Errorf("statusText = %q, voglio contenga \"boom\"", mm.statusText())
+	if !strings.Contains(toastText(mm), "boom") {
+		t.Errorf("statusText = %q, voglio contenga \"boom\"", toastText(mm))
 	}
 	if mm.pending != 0 {
 		t.Errorf("pending = %d, voglio 0 dopo il risultato", mm.pending)
@@ -292,12 +293,12 @@ func TestStatusBarTextChanges(t *testing.T) {
 func TestOpDoneFeedback(t *testing.T) {
 	m := newTestModel(t)
 	mm, _ := step(m, opDone{label: "archiviata"})
-	if got := mm.statusText(); got != "archiviata" {
+	if got := toastText(mm); got != "archiviata" {
 		t.Errorf("statusText = %q, voglio \"archiviata\"", got)
 	}
 	mm, _ = step(mm, opDone{label: "archivia", err: errors.New("nope")})
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "nope") {
-		t.Errorf("statusText = %q (isErr=%v), voglio errore \"nope\"", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "nope") {
+		t.Errorf("statusText = %q (errore=%v), voglio errore \"nope\"", toastText(mm), toastIs(mm, toast.Error))
 	}
 }
 
@@ -593,7 +594,7 @@ func TestFetchResultAfterBackIgnored(t *testing.T) {
 	if mm.thread.Loaded() {
 		t.Error("il risultato tardo non deve costruire la thread view")
 	}
-	if got := mm.statusText(); got != "" {
+	if got := toastText(mm); got != "" {
 		t.Errorf("status = %q, voglio vuoto (risultato ignorato)", got)
 	}
 	if mm.pending != 0 {
@@ -646,25 +647,25 @@ func TestSelectedMsgAutoMarkRead(t *testing.T) {
 		t.Error("Mock dopo markRead: Unread = true, voglio false")
 	}
 	mm, _ = step(mm, od)
-	if mm.statusText() != "letta" {
-		t.Errorf("status dopo opDone = %q, voglio \"letta\"", mm.statusText())
+	if toastText(mm) != "letta" {
+		t.Errorf("status dopo opDone = %q, voglio \"letta\"", toastText(mm))
 	}
 }
 
-// TestMsgLoadedErrorShowsStatusErr: un fetch fallito finisce in status bar
-// (isErr) e chiude l'op in flight, senza costruire thread view. Il fetch è in
+// TestMsgLoadedErrorShowsErrorToast: un fetch fallito finisce in un toast d'errore
+// (errore) e chiude l'op in flight, senza costruire thread view. Il fetch è in
 // volo solo dopo SelectedMsg (vista thread): è lo stato che il handler si
 // aspetta — un risultato con altra vista o altro ID è scartato come stante
 // (fix merge-gate anti-race).
-func TestMsgLoadedErrorShowsStatusErr(t *testing.T) {
+func TestMsgLoadedErrorShowsErrorToast(t *testing.T) {
 	m := newTestModel(t)
 	m.view = viewThread // fetch in flight (SelectedMsg ha già impostato la vista)
 	mm, cmd := step(m, msgLoaded{err: errors.New("rete giù")})
 	if cmd != nil {
 		t.Errorf("cmd = %v, voglio nil", cmd)
 	}
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "rete giù") {
-		t.Errorf("status = %q (isErr=%v), voglio l'errore del fetch", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "rete giù") {
+		t.Errorf("status = %q (errore=%v), voglio l'errore del fetch", toastText(mm), toastIs(mm, toast.Error))
 	}
 	if mm.pending != 0 {
 		t.Errorf("pending = %d, voglio 0 dopo il risultato", mm.pending)
@@ -715,17 +716,17 @@ func TestOpenRequestedWiresExecCmd(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("OpenRequested err: cmd = %v, voglio nil", cmd)
 	}
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "disco pieno") {
-		t.Errorf("status = %q (isErr=%v), voglio l'errore", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "disco pieno") {
+		t.Errorf("status = %q (errore=%v), voglio l'errore", toastText(mm), toastIs(mm, toast.Error))
 	}
 
 	mm, _ = step(m, thread.OpenedMsg{Err: nil})
-	if mm.statusText() != "aperto nel browser" {
-		t.Errorf("status = %q, voglio \"aperto nel browser\"", mm.statusText())
+	if toastText(mm) != "aperto nel browser" {
+		t.Errorf("status = %q, voglio \"aperto nel browser\"", toastText(mm))
 	}
 	mm, _ = step(m, thread.OpenedMsg{Err: errors.New("open assente")})
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "open assente") {
-		t.Errorf("status = %q (isErr=%v), voglio l'errore del browser", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "open assente") {
+		t.Errorf("status = %q (errore=%v), voglio l'errore del browser", toastText(mm), toastIs(mm, toast.Error))
 	}
 }
 

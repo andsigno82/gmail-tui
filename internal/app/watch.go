@@ -32,6 +32,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 const (
@@ -88,10 +89,11 @@ func (m Model) handleChange(ev changeEvt) (Model, tea.Cmd) {
 	rearm := waitForChange(m.ctx, m.watchCh)
 	switch ev.c.Kind {
 	case mail.ChangeNewMail:
-		m.status = statusMsg{text: newMailText}
+		// Piano 7.3, Task 2: "nuova posta" è un toast informativo, non stato.
+		toastCmd := m.toast.Push(toast.Info, newMailText)
 		// Piano 7, fix code-review 3: requestRefresh muta m: prima del return.
 		follow := m.requestRefresh(true)
-		return m, tea.Batch(follow, rearm)
+		return m, tea.Batch(toastCmd, follow, rearm)
 	case mail.ChangeFlags:
 		// nessun feedback: solo la lista si aggiorna (prima pagina, D5)
 		follow := m.requestRefresh(false) // Piano 7, fix code-review 3: prima del return

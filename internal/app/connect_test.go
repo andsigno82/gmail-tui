@@ -146,7 +146,7 @@ func TestConnectFailureShowsStatusAndRRetries(t *testing.T) {
 	if c2 != nil {
 		t.Fatal("dopo un connect fallito non deve partire load/watch")
 	}
-	if st := m.statusText(); !strings.Contains(st, "connessione fallita") || !strings.Contains(st, "boom rete") {
+	if st := toastText(m); !strings.Contains(st, "connessione fallita") || !strings.Contains(st, "boom rete") {
 		t.Fatalf("status = %q, atteso 'connessione fallita: boom rete'", st)
 	}
 	if !m.connectFailed {

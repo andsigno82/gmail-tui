@@ -21,6 +21,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // cmdRefs costruisce il messaggio di test: due allegati con PartIndex "buchi"
@@ -256,10 +257,10 @@ func TestSaveWithExplicitPathWritesMockRaw(t *testing.T) {
 	mm3, saveCmd := step(mm2, sr)
 	saved := attachmentSavedOf(t, runCmd(saveCmd))
 	mm4, cmd4 := step(mm3, saved)
-	if cmd4 != nil {
-		t.Errorf("cmd dopo il salvataggio = %v, voglio nil (niente refresh per un salvataggio)", cmd4)
+	if msgs := dropExpired(runCmd(cmd4)); len(msgs) != 0 {
+		t.Errorf("cmd dopo il salvataggio = %v, voglio solo il timer del toast (niente refresh)", msgs)
 	}
-	if got := mm4.statusText(); got != "salvato in "+out {
+	if got := toastText(mm4); got != "salvato in "+out {
 		t.Errorf("status = %q, voglio \"salvato in %s\"", got, out)
 	}
 	if mm4.pending != 0 {
@@ -301,9 +302,9 @@ func TestSaveMapsNToPartIndexAtStore(t *testing.T) {
 	}
 }
 
-// TestSaveErrorShowsStatusErr: un salvataggio fallito finisce in status bar
+// TestSaveErrorShowsErrorToast: un salvataggio fallito finisce in un toast d'errore
 // in stile errore e chiude l'op.
-func TestSaveErrorShowsStatusErr(t *testing.T) {
+func TestSaveErrorShowsErrorToast(t *testing.T) {
 	m, mock, _ := cmdThreadModel(t)
 	mock.Err = errors.New("rete giù")
 	out := filepath.Join(t.TempDir(), "out.pdf")
@@ -320,10 +321,10 @@ func TestSaveErrorShowsStatusErr(t *testing.T) {
 	if cmd4 != nil {
 		t.Errorf("cmd dopo errore = %v, voglio nil", cmd4)
 	}
-	if !mm4.status.isErr {
-		t.Error("status.isErr = false, voglio true")
+	if !toastIs(mm4, toast.Error) {
+		t.Error("toast non di errore, voglio true")
 	}
-	if got := mm4.statusText(); !strings.Contains(got, "salva allegato") || !strings.Contains(got, "rete giù") {
+	if got := toastText(mm4); !strings.Contains(got, "salva allegato") || !strings.Contains(got, "rete giù") {
 		t.Errorf("status = %q, voglio \"salva allegato: rete giù\"", got)
 	}
 	if mm4.pending != 0 {
@@ -368,7 +369,7 @@ func TestOpenAttachmentFlow(t *testing.T) {
 	}
 	// Il browser è uscito: feedback in status bar.
 	mm5, _ := step(mm4, thread.OpenedMsg{})
-	if got := mm5.statusText(); got != "aperto nel browser" {
+	if got := toastText(mm5); got != "aperto nel browser" {
 		t.Errorf("status dopo OpenedMsg = %q, voglio \"aperto nel browser\"", got)
 	}
 }
@@ -391,17 +392,17 @@ func TestThemeListShowsStatus(t *testing.T) {
 		t.Error("elenco temi con IsErr = true, voglio feedback informativo")
 	}
 	mm3, _ := step(mm2, fb)
-	if got := mm3.statusText(); !strings.HasPrefix(got, "temi:") || !strings.Contains(got, "default") || !strings.Contains(got, "dracula") {
+	if got := toastText(mm3); !strings.HasPrefix(got, "temi:") || !strings.Contains(got, "default") || !strings.Contains(got, "dracula") {
 		t.Errorf("status = %q, voglio l'elenco dei temi", got)
 	}
-	if mm3.status.isErr {
+	if toastIs(mm3, toast.Error) {
 		t.Error("elenco temi in stile errore")
 	}
 }
 
-// TestUnknownCommandShowsStatusErr: comando sconosciuto → status d'errore con
+// TestUnknownCommandShowsErrorToast: comando sconosciuto → status d'errore con
 // l'elenco dei comandi.
-func TestUnknownCommandShowsStatusErr(t *testing.T) {
+func TestUnknownCommandShowsErrorToast(t *testing.T) {
 	m, _, _ := cmdThreadModel(t)
 	mm := openCmdMode(m, "pippo")
 	mm2, cmd := step(mm, pressKey("enter"))
@@ -415,12 +416,12 @@ func TestUnknownCommandShowsStatusErr(t *testing.T) {
 		t.Error("comando sconosciuto con IsErr = false")
 	}
 	mm3, _ := step(mm2, fb)
-	if !mm3.status.isErr {
-		t.Error("status.isErr = false per comando sconosciuto")
+	if !toastIs(mm3, toast.Error) {
+		t.Error("toast non di errore per comando sconosciuto")
 	}
 	for _, want := range []string{"pippo", ":save", ":open", ":theme"} {
-		if !strings.Contains(mm3.statusText(), want) {
-			t.Errorf("status senza %q: %q", want, mm3.statusText())
+		if !strings.Contains(toastText(mm3), want) {
+			t.Errorf("status senza %q: %q", want, toastText(mm3))
 		}
 	}
 }
@@ -452,7 +453,7 @@ func TestThemeChangeReThemesRoot(t *testing.T) {
 	if v := mm3.thread.View(); !strings.Contains(v, mm3.styles.ThreadHeaderKey.Render("Da:")) {
 		t.Error("il thread non è ri-renderizzato con i nuovi stili")
 	}
-	if got := mm3.statusText(); got != "tema dracula applicato" {
+	if got := toastText(mm3); got != "tema dracula applicato" {
 		t.Errorf("status = %q, voglio \"tema dracula applicato\"", got)
 	}
 }
@@ -475,7 +476,7 @@ func TestThemeChangePersistsConfig(t *testing.T) {
 	if persist == nil {
 		t.Fatal("cmd di persistenza nil, voglio saveThemeCmd")
 	}
-	pmsgs := runCmd(persist)
+	pmsgs := dropExpired(runCmd(persist))
 	if len(pmsgs) != 1 {
 		t.Fatalf("msgs persistenza = %T, voglio un solo themePersisted", pmsgs)
 	}
@@ -484,7 +485,7 @@ func TestThemeChangePersistsConfig(t *testing.T) {
 		t.Fatalf("themePersisted = (%T, %v), voglio {err:nil}", pmsgs[0], tp.err)
 	}
 	mm4, _ := step(mm3, tp)
-	if got := mm4.statusText(); got != "tema dracula applicato" {
+	if got := toastText(mm4); got != "tema dracula applicato" {
 		t.Errorf("status dopo il salvataggio = %q, voglio il feedback del tema intatto", got)
 	}
 
@@ -514,7 +515,7 @@ func TestThemePersistErrorNonFatal(t *testing.T) {
 	if mm3.styles.SearchInput.Render("x") == m.styles.SearchInput.Render("x") {
 		t.Fatal("precondizione: tema runtime non applicato")
 	}
-	pmsgs := runCmd(persist)
+	pmsgs := dropExpired(runCmd(persist))
 	if len(pmsgs) != 1 {
 		t.Fatalf("msgs persistenza = %T, voglio un solo themePersisted", pmsgs)
 	}
@@ -523,8 +524,8 @@ func TestThemePersistErrorNonFatal(t *testing.T) {
 		t.Fatalf("themePersisted = (%T, %v), voglio {err:…}", pmsgs[0], tp.err)
 	}
 	mm4, _ := step(mm3, tp)
-	if !mm4.status.isErr || !strings.Contains(mm4.statusText(), "salvataggio tema") {
-		t.Errorf("status = %q (isErr %v), voglio l'errore di salvataggio tema", mm4.statusText(), mm4.status.isErr)
+	if !toastIs(mm4, toast.Error) || !strings.Contains(toastText(mm4), "salvataggio tema") {
+		t.Errorf("status = %q (errore %v), voglio l'errore di salvataggio tema", toastText(mm4), toastIs(mm4, toast.Error))
 	}
 	if mm4.styles.SearchInput.Render("x") == m.styles.SearchInput.Render("x") {
 		t.Error("l'errore di salvataggio non deve perdere il tema runtime")
@@ -541,8 +542,8 @@ func TestThemeWithoutPathNoPersist(t *testing.T) {
 	mm2, cmd := step(mm, pressKey("enter"))
 	tc := themeChangedOf(t, runCmd(cmd))
 	mm3, persist := step(mm2, tc)
-	if persist != nil {
-		t.Errorf("cmd persistenza = %v, voglio nil (percorso sconosciuto)", persist)
+	if msgs := dropExpired(runCmd(persist)); len(msgs) != 0 {
+		t.Errorf("cmd persistenza = %v, voglio nessuna persistenza (percorso sconosciuto)", msgs)
 	}
 	if mm3.styles.SearchInput.Render("x") == m.styles.SearchInput.Render("x") {
 		t.Error("tema non applicato")

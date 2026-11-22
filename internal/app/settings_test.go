@@ -13,6 +13,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // settingsModel prepara un radice con inbox caricata, config in t.TempDir e
@@ -184,8 +185,8 @@ func TestSettingsEnterSavesConfig(t *testing.T) {
 	if c.Name != "Ada" || c.Signature != "ciao" {
 		t.Errorf("Name/Signature = %q/%q, voglio Ada/ciao", c.Name, c.Signature)
 	}
-	if !strings.Contains(mm.status.text, "salvate") || !mm.status.isOK {
-		t.Errorf("status = %+v, voglio conferma di salvataggio", mm.status)
+	if !strings.Contains(toastText(mm), "salvate") || !toastIs(mm, toast.Success) {
+		t.Errorf("toast = %q, voglio conferma di salvataggio", toastText(mm))
 	}
 }
 
@@ -273,8 +274,8 @@ func TestSettingsSaveErrorKeepsRuntimeValues(t *testing.T) {
 	mm, _ = step(mm, keyRight) // layout split (anteprima)
 	mm, cmd := step(mm, pressKey("enter"))
 	mm = runSettingsCmd(t, mm, cmd)
-	if !mm.status.isErr || !strings.Contains(mm.status.text, "salvataggio impostazioni") {
-		t.Errorf("status = %+v, voglio errore di salvataggio", mm.status)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "salvataggio impostazioni") {
+		t.Errorf("toast = %q, voglio errore di salvataggio", toastText(mm))
 	}
 	if mm.layout != config.LayoutSplit {
 		t.Errorf("layout a runtime = %q, voglio split nonostante l'errore", mm.layout)
@@ -288,11 +289,11 @@ func TestSettingsWithoutConfigPathNotSaved(t *testing.T) {
 	m.SetConfigPath("")
 	mm, _ := step(m, pressKey(","))
 	mm, cmd := step(mm, pressKey("enter"))
-	if cmd != nil {
-		t.Errorf("senza config: cmd = %v, voglio nil", cmd)
+	if msgs := dropExpired(runCmd(cmd)); len(msgs) != 0 {
+		t.Errorf("senza config: cmd = %v, voglio nessun salvataggio", msgs)
 	}
-	if mm.menu.open || !strings.Contains(mm.status.text, "non salvate") {
-		t.Errorf("status = %q (menu aperto %v)", mm.status.text, mm.menu.open)
+	if mm.menu.open || !strings.Contains(toastText(mm), "non salvate") {
+		t.Errorf("toast = %q (menu aperto %v)", toastText(mm), mm.menu.open)
 	}
 }
 

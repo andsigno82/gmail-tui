@@ -6,6 +6,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/composer"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // TestSendMalformedRecipientOpensNoConfirmation: un indirizzo malformato
@@ -32,8 +33,8 @@ func TestSendMalformedRecipientOpensNoConfirmation(t *testing.T) {
 			if mm.currentView() != viewComposer {
 				t.Errorf("vista = %v, voglio composer (bozza preservata)", mm.currentView())
 			}
-			if !mm.status.isErr || !strings.Contains(mm.statusText(), tc.want) {
-				t.Errorf("status = %q (err=%v), voglio errore con %q", mm.statusText(), mm.status.isErr, tc.want)
+			if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), tc.want) {
+				t.Errorf("status = %q (errore=%v), voglio errore con %q", toastText(mm), toastIs(mm, toast.Error), tc.want)
 			}
 			// BodyText porta la firma in coda: si confronta il prefisso del corpo.
 			if d := mm.composer.Draft(); d.Subject != "s" || !strings.HasPrefix(d.BodyText, "c") || strings.Join(d.To, ", ") != tc.cfg.To {
@@ -55,8 +56,8 @@ func TestSendValidRecipientKeepsConfirmation(t *testing.T) {
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
 		To: "Anna Rossi <anna@x.dev>", Cc: "bob@y.dev", Subject: "s", Body: "c",
 	}))
-	if !mm.confirmSend || mm.status.isErr {
-		t.Errorf("indirizzi validi: confirm=%v status=%q (err=%v)", mm.confirmSend, mm.statusText(), mm.status.isErr)
+	if !mm.confirmSend || toastIs(mm, toast.Error) {
+		t.Errorf("indirizzi validi: confirm=%v status=%q (errore=%v)", mm.confirmSend, toastText(mm), toastIs(mm, toast.Error))
 	}
 }
 
@@ -69,25 +70,25 @@ func TestSendValidationRunsAfterGuards(t *testing.T) {
 	rec := &senderRecorder{}
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize()) // vista inbox: richiesta stante
-	before := mm.statusText()
+	before := toastText(mm)
 	mm, _ = step(mm, bad)
-	if mm.statusText() != before || mm.status.isErr {
-		t.Errorf("richiesta stante: status = %q, voglio invariato (%q)", mm.statusText(), before)
+	if toastText(mm) != before || toastIs(mm, toast.Error) {
+		t.Errorf("richiesta stante: status = %q, voglio invariato (%q)", toastText(mm), before)
 	}
 
 	mm = draftComposer(mm, composer.ComposerConfig{Subject: "s", Body: "c"})
 	mm.discardOpen = true
-	before = mm.statusText()
+	before = toastText(mm)
 	mm, _ = step(mm, bad)
-	if mm.statusText() != before || mm.status.isErr {
-		t.Errorf("discard aperto: status = %q, voglio invariato", mm.statusText())
+	if toastText(mm) != before || toastIs(mm, toast.Error) {
+		t.Errorf("discard aperto: status = %q, voglio invariato", toastText(mm))
 	}
 
 	mm.discardOpen = false
 	mm.sending = true
 	mm, _ = step(mm, bad)
-	if mm.statusText() != before || mm.status.isErr {
-		t.Errorf("invio in volo: status = %q, voglio invariato", mm.statusText())
+	if toastText(mm) != before || toastIs(mm, toast.Error) {
+		t.Errorf("invio in volo: status = %q, voglio invariato", toastText(mm))
 	}
 }
 
@@ -102,8 +103,8 @@ func TestSendWithoutRecipientsIsBlocked(t *testing.T) {
 	if mm.confirmSend {
 		t.Error("bozza senza destinatari: conferma aperta")
 	}
-	if !mm.status.isErr || mm.statusText() != "nessun destinatario" {
-		t.Errorf("status = %q (err=%v), voglio errore \"nessun destinatario\"", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || toastText(mm) != "nessun destinatario" {
+		t.Errorf("status = %q (errore=%v), voglio errore \"nessun destinatario\"", toastText(mm), toastIs(mm, toast.Error))
 	}
 	if mm.currentView() != viewComposer {
 		t.Errorf("vista = %v, voglio composer (bozza preservata)", mm.currentView())
@@ -123,8 +124,8 @@ func TestSendCcOnlyKeepsConfirmation(t *testing.T) {
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{Cc: "bob@y.dev", Subject: "s", Body: "c"}))
-	if !mm.confirmSend || mm.status.isErr {
-		t.Fatalf("solo Cc: confirm=%v status=%q (err=%v)", mm.confirmSend, mm.statusText(), mm.status.isErr)
+	if !mm.confirmSend || toastIs(mm, toast.Error) {
+		t.Fatalf("solo Cc: confirm=%v status=%q (errore=%v)", mm.confirmSend, toastText(mm), toastIs(mm, toast.Error))
 	}
 	if bar := plainBar(mm); !strings.Contains(bar, "Invio a bob@y.dev") {
 		t.Errorf("conferma = %q, voglio l'indirizzo in Cc", bar)
@@ -139,8 +140,8 @@ func TestSendConfirmsNormalizedRecipient(t *testing.T) {
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "x@café.it", Subject: "s", Body: "c"}))
-	if !mm.confirmSend || mm.status.isErr {
-		t.Fatalf("IDN valido: confirm=%v status=%q (err=%v)", mm.confirmSend, mm.statusText(), mm.status.isErr)
+	if !mm.confirmSend || toastIs(mm, toast.Error) {
+		t.Fatalf("IDN valido: confirm=%v status=%q (errore=%v)", mm.confirmSend, toastText(mm), toastIs(mm, toast.Error))
 	}
 	if bar := plainBar(mm); !strings.Contains(bar, "Invio a x@xn--caf-dma.it") {
 		t.Errorf("conferma = %q, voglio l'indirizzo in punycode", bar)

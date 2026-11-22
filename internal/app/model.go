@@ -22,6 +22,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
@@ -51,6 +52,7 @@ type Model struct {
 	store     mail.MailStore
 	sender    Sender // invio composer (P4 Task 4): Mock in demo, SMTP altrimenti
 	styles    styles.Styles
+	toast     toast.Model // pila delle notifiche di esito (Piano 7.3, Task 2)
 	spinner   spinner.Model
 	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
@@ -60,7 +62,7 @@ type Model struct {
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
 	labelOpen bool            // prompt label attivo: i tasti vanno all'input
 	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
-	demo      bool            // demo mode (Task 9): banner iniziale in stile DemoBanner
+	demo      bool            // demo mode (Task 9): banner iniziale nello stato della barra
 
 	// Composer (Piano 4, Task 3-4): identity mittente/firma (SetIdentity,
 	// seam per il wiring dalla config del main), vista di provenienza per il
@@ -170,6 +172,7 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 		store:      store,
 		sender:     sender,
 		styles:     st,
+		toast:      toast.New(st),
 		spinner:    spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
 		help:       newHelp(st),
 		inbox:      inbox.New(nil, st),
@@ -232,6 +235,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 // tasti di routing e resize del terminale.
 func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	switch ev := ev.(type) {
+	case toast.ExpiredMsg:
+		// Piano 7.3, Task 2: scadenza di un toast di successo/info (un errore non
+		// scade mai); gli altri toast in pila restano.
+		m.toast.Update(ev)
+		return m, nil
+
 	case statusMsg:
 		// Timeout logico: lo status resta finché il prossimo evento non lo
 		// sostituisce; nessun timer.
@@ -246,8 +255,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.doneOp()
 		if ev.err != nil {
 			m.connectFailed = true
-			m.status = statusMsg{text: fmt.Sprintf("connessione fallita: %v — premi R per riprovare", ev.err), isErr: true}
-			return m, nil
+			// Piano 7.3, Task 2: "R per riprovare" è stato persistente (barra
+			// neutra); l'errore è un toast che resta finché un tasto.
+			m.status = statusMsg{text: "connessione fallita — premi R per riprovare"}
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("connessione fallita: %v", ev.err))
+			return m, cmd
 		}
 		m.connectFailed = false
 		m.pending++
@@ -281,18 +293,18 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, follow
 		}
 		if ev.err != nil {
-			// La query distingue l'errore di ricerca da quello di list.
+			// La query distingue l'errore di ricerca da quello di list (toast d'errore).
+			text := fmt.Sprintf("lettura messaggi: %v", ev.err)
 			if ev.query != "" {
-				m.status = statusMsg{text: fmt.Sprintf("ricerca %q: %v", ev.query, ev.err), isErr: true}
-			} else {
-				m.status = statusMsg{text: fmt.Sprintf("lettura messaggi: %v", ev.err), isErr: true}
+				text = fmt.Sprintf("ricerca %q: %v", ev.query, ev.err)
 			}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, text)
+			return m, cmd
 		}
 		// L'indicatore di riconnessione (Task 8) si spegne al primo msgsLoaded
 		// riuscito che non lo abbia già sostituito (op, badge di ricerca): la
 		// riconnessione è andata a buon fine e la lista è fresca.
-		if m.status.text == reconnectIndicator && !m.status.isErr {
+		if m.status.text == reconnectIndicator {
 			m.status = statusMsg{}
 		}
 		// Il refresh dopo un'op (silent) deve ritrovare il cursore: la
@@ -390,14 +402,14 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("apertura messaggio: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura messaggio: %v", ev.err))
+			return m, cmd
 		}
 		if ev.m == nil {
 			// Difensiva (il contratto MailStore non prevede (nil, nil)):
 			// senza guardia thread.New dereferenzerebbe un puntatore nullo.
-			m.status = statusMsg{text: "apertura messaggio: risposta vuota dallo store", isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, "apertura messaggio: risposta vuota dallo store")
+			return m, cmd
 		}
 		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
 		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
@@ -425,8 +437,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if ev.err != nil {
 			m.folderOpen = false
-			m.status = statusMsg{text: fmt.Sprintf("cartelle: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("cartelle: %v", ev.err))
+			return m, cmd
 		}
 		items := make([]list.Item, len(ev.boxes))
 		cur := 0
@@ -453,8 +465,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.loadingMore = false
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("caricamento messaggi: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("caricamento messaggi: %v", ev.err))
+			return m, cmd
 		}
 		m.exhausted = len(ev.refs) < pageSize
 		m.refs = appendUnique(m.refs, ev.refs)
@@ -477,10 +489,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.sending = false
 		}
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("%s: %v", ev.label, ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("%s: %v", ev.label, ev.err))
+			return m, cmd
 		}
-		m.status = statusMsg{text: ev.label, isOK: true}
+		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
+		toastCmd := m.toast.Push(toast.Success, ev.label)
 		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
 		localCmd := m.setLocalRead(ev.localID, ev.localRead)
 		if ev.closeComposer {
@@ -499,17 +512,17 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// Piano 7, fix code-review 3: requestRefresh muta m (ricevitore puntatore):
 			// va chiamato prima di restituire m, mai nella stessa return.
 			follow := m.requestRefresh(ev.deep)
-			return m, tea.Batch(localCmd, follow)
+			return m, tea.Batch(toastCmd, localCmd, follow)
 		}
-		return m, localCmd
+		return m, tea.Batch(toastCmd, localCmd)
 
 	case watchStarted:
 		// Apertura del feed Watch (Task 8): si custodisce il canale e si
 		// arma il loop waitForChange. Con errore solo feedback in status: la
 		// TUI resta usabile (re-list espliciti, nessun push).
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("watch: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("watch: %v", ev.err))
+			return m, cmd
 		}
 		m.watchCh = ev.ch
 		return m, waitForChange(m.ctx, ev.ch)
@@ -539,24 +552,24 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// `o` nel thread: il tmpfile HTML è pronto (o la preparazione è
 		// fallita). La exec vera sospende la TUI via tea.ExecProcess.
 		if ev.Err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("apertura browser: %v", ev.Err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura browser: %v", ev.Err))
+			return m, cmd
 		}
 		return m, thread.OpenCmd(ev.Path)
 
 	case thread.OpenedMsg:
 		// Il browser è uscito: solo feedback in status bar.
 		if ev.Err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("browser: %v", ev.Err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("browser: %v", ev.Err))
+			return m, cmd
 		}
-		m.status = statusMsg{text: "aperto nel browser", isOK: true}
-		return m, nil
+		cmd := m.toast.Push(toast.Success, "aperto nel browser")
+		return m, cmd
 
 	case thread.SaveRequested:
 		// `:save`/`:open` della command line (Piano 4, Task 2): il salvataggio
 		// gira fuori dal loop UI (spinner finché attachmentSaved); il feedback
-		// — "salvato in …" (StatusBar; StatusOK adottato in Task 5) o l'exec
+		// — "salvato in …" (toast di successo, Piano 7.3) o l'exec
 		// del browser per :open — arriva al risultato.
 		m.pending++
 		return m, tea.Batch(saveAttachment(m.store, ev), m.spinner.Tick)
@@ -564,22 +577,26 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	case attachmentSaved:
 		m.doneOp()
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("salva allegato: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("salva allegato: %v", ev.err))
+			return m, cmd
 		}
 		if ev.open {
 			// `:open`: il tmpfile col nome originale è pronto — stessa exec
 			// del tasto `o`; il feedback viene da OpenedMsg.
 			return m, thread.OpenCmd(ev.path)
 		}
-		m.status = statusMsg{text: "salvato in " + ev.path, isOK: true}
-		return m, nil
+		cmd := m.toast.Push(toast.Success, "salvato in "+ev.path)
+		return m, cmd
 
 	case thread.CommandFeedback:
 		// Esito dei comandi senza effetto store (elenco temi, uso errato,
 		// comando sconosciuto): direttamente in status bar.
-		m.status = statusMsg{text: ev.Text, isErr: ev.IsErr}
-		return m, nil
+		kind := toast.Info
+		if ev.IsErr {
+			kind = toast.Error
+		}
+		cmd := m.toast.Push(kind, ev.Text)
+		return m, cmd
 
 	case thread.ThemeChanged:
 		// `:theme <nome>` (Piano 4, Task 2): la UI cambia SUBITO — stili della
@@ -589,14 +606,15 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// (saveThemeCmd): errore → themePersisted → status, tema intatto.
 		m.th = ev.Th
 		m.applyStyles(ev.St)
-		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name), isOK: true}
-		return m, saveThemeCmd(m.cfgPath, ev.Th.Name)
+		cmd := m.toast.Push(toast.Success, fmt.Sprintf("tema %s applicato", ev.Th.Name))
+		return m, tea.Batch(cmd, saveThemeCmd(m.cfgPath, ev.Th.Name))
 
 	case themePersisted:
 		// Persistenza del tema riuscita: il feedback "tema … applicato" resta.
 		// Fallita: solo status d'errore, il tema runtime non si perde.
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("salvataggio tema: %v", ev.err), isErr: true}
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("salvataggio tema: %v", ev.err))
+			return m, cmd
 		}
 		return m, nil
 
@@ -604,11 +622,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Piano 7.2, Task 3: salvataggio del menu `,`. Fallito → status d'errore;
 		// i valori restano applicati a runtime (come per il tema).
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("salvataggio impostazioni: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("salvataggio impostazioni: %v", ev.err))
+			return m, cmd
 		}
-		m.status = statusMsg{text: "impostazioni salvate", isOK: true}
-		return m, nil
+		cmd := m.toast.Push(toast.Success, "impostazioni salvate")
+		return m, cmd
 
 	case previewDue:
 		// Piano 7.2, Task 4: cursore fermo da 150 ms → fetch dell'anteprima, salvo
@@ -634,12 +652,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if ev.err != nil {
-			m.status = statusMsg{text: fmt.Sprintf("anteprima: %v", ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("anteprima: %v", ev.err))
+			return m, cmd
 		}
 		if ev.m == nil {
-			m.status = statusMsg{text: "anteprima: risposta vuota dallo store", isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, "anteprima: risposta vuota dallo store")
+			return m, cmd
 		}
 		m.thread = thread.New(m.prevRef, ev.m, m.styles)
 		m.relayout()
@@ -669,13 +687,13 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if ev.forward {
 				label = "inoltro"
 			}
-			m.status = statusMsg{text: fmt.Sprintf("%s: %v", label, ev.err), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("%s: %v", label, ev.err))
+			return m, cmd
 		}
 		if ev.m == nil {
 			// Difensiva (il contratto MailStore non prevede (nil, nil)).
-			m.status = statusMsg{text: "risposta: messaggio vuoto dallo store", isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, "risposta: messaggio vuoto dallo store")
+			return m, cmd
 		}
 		cfg := replyFor(ev.ref, ev.m)
 		if ev.forward {
@@ -710,8 +728,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// punycode, nome RFC 2047): conferma e Sender vedono la stessa forma.
 		norm, err := msg.NormalizeRecipients(ev.Out)
 		if err != nil {
-			m.status = statusMsg{text: err.Error(), isErr: true}
-			return m, nil
+			cmd := m.toast.Push(toast.Error, err.Error())
+			return m, cmd
 		}
 		m.draft = norm
 		m.confirmSend = true
@@ -756,6 +774,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		// Piano 7.3, Task 2: ogni tasto chiude i toast d'errore; il tasto viene
+		// comunque eseguito dal routing sotto.
+		m.toast.DismissErrors()
 		// Nota v2: KeyMsg è un'interfaccia press|release; si matchano solo le
 		// pressioni (KeyPressMsg) per non duplicare le azioni.
 		if ev.String() == "ctrl+c" {
@@ -838,8 +859,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// azione "alla cieca", come sotto l'overlay help).
 			switch ev.String() {
 			case "s":
-				m.discardDraft()
-				return m, nil
+				cmd := m.discardDraft()
+				return m, cmd
 			case "esc":
 				m.discardOpen = false
 			}
@@ -1156,7 +1177,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 // cell motion (click + rotella: tutto ciò che list/viewport custom usano —
 // AllMotion aggiungerebbe solo traffico hover).
 func (m Model) View() tea.View {
-	v := tea.NewView(m.content())
+	v := tea.NewView(m.overlayToasts(m.content()))
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
@@ -1168,6 +1189,7 @@ func (m Model) View() tea.View {
 // (Piano 7.2, Task 3), che al ripristino riapplica il tema di apertura.
 func (m *Model) applyStyles(st styles.Styles) {
 	m.styles = st
+	m.toast.SetStyles(st)
 	m.spinner.Style = st.Spinner
 	m.help = newHelp(st)
 	m.inbox.SetStyles(st)
@@ -1248,8 +1270,8 @@ const (
 )
 
 // demoBannerText è il banner di avvio in demo mode (nessuna GMAIL_APP_PASSWORD,
-// Task 9): status iniziale impostato dal main via SetDemoBanner, reso con lo
-// stile DemoBanner finché un evento vero non lo sostituisce.
+// Task 9): stato iniziale impostato dal main via SetDemoBanner, reso nella
+// barra neutra finché un evento vero non lo sostituisce (Piano 7.3).
 const demoBannerText = "demo mode — set GMAIL_APP_PASSWORD"
 
 // SetDemoBanner attiva la modalità demo (chiamato dal main PRIMA di avviare il
@@ -1299,6 +1321,22 @@ func (m Model) content() string {
 		}
 	}
 	return body + "\n" + bar
+}
+
+// overlayToasts sovrappone la pila dei toast al contenuto (Piano 7.3, Task 2):
+// senza toast (o senza size nota) il contenuto torna identico; con toast il
+// compositor nativo di lipgloss v2 disegna i riquadri in alto a destra (Z=1)
+// sopra il corpo e la barra di stato, che è il layer base (Z=0).
+func (m Model) overlayToasts(content string) string {
+	if m.width <= 0 {
+		return content
+	}
+	layers := m.toast.Layers(m.width)
+	if len(layers) == 0 {
+		return content
+	}
+	all := append([]*lipgloss.Layer{lipgloss.NewLayer(content)}, layers...)
+	return lipgloss.NewCompositor(all...).Render()
 }
 
 // tooSmall dice se la finestra è sotto il minimo 80×24 (solo quando la size è
@@ -1360,10 +1398,11 @@ func (m Model) body() string {
 }
 
 // statusBar rende l'ultima riga: il mini-prompt label quando è aperto (Task
-// 7), altrimenti lo spinner se pending > 0, l'ultimo statusMsg e — sempre
-// visibile, Task 9 — l'help breve per la vista corrente (bubbles/help). Un
-// errore riempie la barra da solo (visibilità prima dell'help); il banner
-// demo usa lo stile DemoBanner.
+// 7), altrimenti lo spinner se pending > 0, lo stato persistente (statusMsg:
+// Piano 7.3 lo separa dagli esiti, che sono toast) e — sempre
+// visibile, Task 9 — l'help breve per la vista corrente (bubbles/help). Lo
+// stato resta in barra neutra (Piano 7.3): le conferme modali sono le sole
+// barre colorate.
 func (m Model) statusBar() string {
 	if m.labelOpen {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
@@ -1400,17 +1439,8 @@ func (m Model) statusBar() string {
 	if m.pending > 0 {
 		text = m.spinner.View() + " " + text
 	}
-	if m.status.isErr {
-		return m.renderBar(m.styles.StatusErr, text)
-	}
-	if m.status.isOK {
-		// Feedback positivo (Piano 3 polish, use-or-drop — adottato al Piano 4
-		// Task 5): "inviato", "salvato", "tema applicato", setup completato.
-		return m.renderBar(m.styles.StatusOK, text)
-	}
-	if m.demo && m.status.text == demoBannerText {
-		return m.renderBar(m.styles.DemoBanner, text)
-	}
+	// Piano 7.3, Task 2: la barra è neutra. Esiti e errori stanno nei toast;
+	// qui restano stato persistente (cartella, ricerca, ⟳, connessione, banner).
 	return m.renderBar(m.styles.StatusBar, m.joinHelp(text))
 }
 

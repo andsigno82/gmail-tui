@@ -16,7 +16,9 @@ import (
 )
 
 // Duration è la vita di un toast di successo, info o avviso (decisione T3).
-const Duration = 3 * time.Second
+// È una variabile solo perché il pacchetto app la abbassa nei test (che
+// eseguono le cmd in modo sincrono): nessuna attesa reale (Piano 7.3, Task 2).
+var Duration = 3 * time.Second
 
 // maxToasts è il numero massimo di notifiche in pila (decisione T4): oltre,
 // esce la più vecchia.
@@ -79,7 +81,8 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	for i, it := range m.items {
-		if it.id == ev.ID {
+		// Un errore non arma timer: un ExpiredMsg con il suo ID è stantio.
+		if it.id == ev.ID && it.kind != Error {
 			m.items = append(m.items[:i], m.items[i+1:]...)
 			break
 		}
@@ -104,6 +107,15 @@ func (m Model) Texts() []string {
 	out := make([]string, 0, len(m.items))
 	for _, it := range m.items {
 		out = append(out, it.text)
+	}
+	return out
+}
+
+// Kinds è il tipo di ogni toast in pila, dal più vecchio.
+func (m Model) Kinds() []Kind {
+	out := make([]Kind, 0, len(m.items))
+	for _, it := range m.items {
+		out = append(out, it.kind)
 	}
 	return out
 }

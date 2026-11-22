@@ -18,6 +18,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
@@ -296,8 +297,8 @@ func TestWizardSuccessBuildsRealBackends(t *testing.T) {
 	if got := m.currentView(); got != viewInbox {
 		t.Errorf("vista dopo il completamento = %v, voglio viewInbox", got)
 	}
-	if !m.status.isOK || !strings.Contains(m.statusText(), "configurazione completata") {
-		t.Errorf("status = %q (isOK=%v), voglio il feedback positivo del setup", m.statusText(), m.status.isOK)
+	if !toastIs(m, toast.Success) || !strings.Contains(toastText(m), "configurazione completata") {
+		t.Errorf("toast = %q, voglio il feedback positivo del setup", toastText(m))
 	}
 	if kr.sets != 1 || kr.lastUser != "user@gmail.com" {
 		t.Errorf("keyring.Set = %d chiamate (user %q), voglio 1 (user@gmail.com)", kr.sets, kr.lastUser)
@@ -348,8 +349,8 @@ func TestWizardSuccessKeyringFailureSuggestsEnv(t *testing.T) {
 	if f.calls != 1 {
 		t.Errorf("factory chiamate = %d, voglio 1 (il wizard completa comunque)", f.calls)
 	}
-	if !m.status.isErr || !strings.Contains(m.statusText(), "GMAIL_APP_PASSWORD") {
-		t.Errorf("status = %q (isErr=%v), voglio il suggerimento GMAIL_APP_PASSWORD", m.statusText(), m.status.isErr)
+	if !toastIs(m, toast.Error) || !strings.Contains(toastText(m), "GMAIL_APP_PASSWORD") {
+		t.Errorf("toast = %q, voglio il suggerimento GMAIL_APP_PASSWORD", toastText(m))
 	}
 }
 
@@ -365,65 +366,56 @@ func TestWizardSecondCompletedDropped(t *testing.T) {
 	}
 }
 
-// --- StatusOK (polish ereditato dal Piano 3) --------------------------------------
+// --- esiti come toast (Piano 7.3, Task 2) ------------------------------------------
 
-// assertStatusOK verifica che la status bar renda il testo col STYLE StatusOK
-// (feedback positivo) e non col normale StatusBar.
-func assertStatusOK(t *testing.T, m Model, text string) {
+// assertToast verifica che l'esito text sia l'ultimo toast di tipo kind e che la
+// barra di stato non lo conservi più (resta neutra).
+func assertToast(t *testing.T, m Model, kind toast.Kind, text string) {
 	t.Helper()
-	if !m.status.isOK {
-		t.Errorf("status.isOK = false per %q", text)
+	if !toastIs(m, kind) || toastText(m) != text {
+		t.Errorf("toast = %q (kind %v), voglio %q di tipo %v", toastText(m), m.toast.Kinds(), text, kind)
 	}
-	if m.status.isErr {
-		t.Errorf("status.isErr = true per %q (feedback positivo)", text)
-	}
-	okRender := m.styles.StatusOK.Render(text)
-	barRender := m.styles.StatusBar.Render(text)
-	v := m.View().Content
-	if !strings.Contains(v, okRender) {
-		t.Errorf("View non usa lo stile StatusOK per %q", text)
-	}
-	if strings.Contains(v, barRender) {
-		t.Errorf("View rende ancora %q col normale stile StatusBar", text)
+	if m.statusText() == text {
+		t.Errorf("la barra conserva l'esito %q", text)
 	}
 }
 
-// TestOpDoneSuccessUsesStatusOK: i feedback positivi delle mutazioni e
-// dell'invio (opDone senza errore) passano allo stile StatusOK.
-func TestOpDoneSuccessUsesStatusOK(t *testing.T) {
+// TestOpDoneSuccessUsesToast: i feedback positivi delle mutazioni e dell'invio
+// (opDone senza errore) diventano toast di successo.
+func TestOpDoneSuccessUsesToast(t *testing.T) {
 	for _, label := range []string{"inviato", "archiviata", "stella on", "letta", "etichetta Work applicata"} {
 		m := newTestModel(t)
 		mm, _ := step(m, opDone{label: label})
-		assertStatusOK(t, mm, label)
+		assertToast(t, mm, toast.Success, label)
 	}
 }
 
-// TestOpDoneErrorKeepsStatusErr: l'errore resta in stile StatusErr (non OK).
-func TestOpDoneErrorKeepsStatusErr(t *testing.T) {
+// TestOpDoneErrorUsesErrorToast: l'errore di un'op è un toast d'errore.
+func TestOpDoneErrorUsesErrorToast(t *testing.T) {
 	m := newTestModel(t)
 	mm, _ := step(m, opDone{label: "invio", err: errors.New("boom")})
-	if !mm.status.isErr || mm.status.isOK {
-		t.Errorf("status (isErr=%v, isOK=%v), voglio errore", mm.status.isErr, mm.status.isOK)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "boom") {
+		t.Errorf("toast = %q, voglio errore con boom", toastText(mm))
 	}
 }
 
-// TestAttachmentSavedUsesStatusOK: ":save" riuscito → "salvato in …" in OK.
-func TestAttachmentSavedUsesStatusOK(t *testing.T) {
+// TestAttachmentSavedUsesToast: ":save" riuscito → "salvato in …" come toast di successo.
+func TestAttachmentSavedUsesToast(t *testing.T) {
 	m := newTestModel(t)
 	mm, _ := step(m, attachmentSaved{path: "/tmp/allegato.pdf"})
-	assertStatusOK(t, mm, "salvato in /tmp/allegato.pdf")
+	assertToast(t, mm, toast.Success, "salvato in /tmp/allegato.pdf")
 }
 
-// TestOpenedMsgUsesStatusOK: il browser è uscito pulito → "aperto nel browser" in OK.
-func TestOpenedMsgUsesStatusOK(t *testing.T) {
+// TestOpenedMsgUsesToast: il browser è uscito pulito → "aperto nel browser" come toast.
+func TestOpenedMsgUsesToast(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = step(m, msgsLoaded{}) // consuma il load iniziale: niente spinner nel bar
 	mm, _ := step(m, thread.OpenedMsg{})
-	assertStatusOK(t, mm, "aperto nel browser")
+	assertToast(t, mm, toast.Success, "aperto nel browser")
 }
 
-// TestThemeChangedUsesStatusOK: `:theme` riuscito → "tema … applicato" in OK.
-func TestThemeChangedUsesStatusOK(t *testing.T) {
+// TestThemeChangedUsesToast: `:theme` riuscito → "tema … applicato" come toast.
+func TestThemeChangedUsesToast(t *testing.T) {
 	m := newTestModel(t)
 	m, _ = step(m, msgsLoaded{}) // consuma il load iniziale: niente spinner nel bar
 	th, err := theme.Load("dracula")
@@ -431,7 +423,7 @@ func TestThemeChangedUsesStatusOK(t *testing.T) {
 		t.Fatalf("tema dracula: %v", err)
 	}
 	mm, _ := step(m, thread.ThemeChanged{Th: th, St: m.styles})
-	assertStatusOK(t, mm, "tema dracula applicato")
+	assertToast(t, mm, toast.Success, "tema dracula applicato")
 }
 
 // --- help del wizard --------------------------------------------------------------

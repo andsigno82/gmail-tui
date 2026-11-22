@@ -13,6 +13,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // labelCall registra una chiamata ApplyLabel: il Mock è no-op sulle label
@@ -135,7 +136,7 @@ func TestArchiveKeyFromInbox(t *testing.T) {
 	}
 
 	mm2, cmd2 := step(mm, od)
-	if got := mm2.statusText(); got != "archiviata" {
+	if got := toastText(mm2); got != "archiviata" {
 		t.Errorf("status dopo opDone = %q, voglio \"archiviata\"", got)
 	}
 	mm3 := runRefresh(t, mm2, cmd2)
@@ -145,7 +146,7 @@ func TestArchiveKeyFromInbox(t *testing.T) {
 	if body := mm3.body(); strings.Contains(body, "uno") {
 		t.Errorf("body inbox dopo refresh = %q, \"uno\" non deve comparire più", body)
 	}
-	if got := mm3.statusText(); got != "archiviata" {
+	if got := toastText(mm3); got != "archiviata" {
 		t.Errorf("status dopo refresh silenzioso = %q, voglio \"archiviata\" (il refresh non tocca lo status)", got)
 	}
 }
@@ -281,7 +282,7 @@ func TestLabelEnterAppliesLabel(t *testing.T) {
 		t.Errorf("ApplyLabel ids = %v, voglio il ref selezionato %v", call.ids, opsRefs(t)[0].ID)
 	}
 	mm2, cmd2 := step(mm, od)
-	if got := mm2.statusText(); got != "etichetta Work applicata" {
+	if got := toastText(mm2); got != "etichetta Work applicata" {
 		t.Errorf("status dopo opDone = %q, voglio \"etichetta Work applicata\"", got)
 	}
 	runRefresh(t, mm2, cmd2)
@@ -430,9 +431,9 @@ func TestOpsFromThreadView(t *testing.T) {
 
 // --- errori e concorrenza ----------------------------------------------------
 
-// TestOpErrorShowsStatusErr: un'op fallita finisce in status bar in stile
-// StatusErr ("label: errore"), chiude l'op e NON emette refresh.
-func TestOpErrorShowsStatusErr(t *testing.T) {
+// TestOpErrorShowsErrorToast: un'op fallita finisce in un toast d'errore
+// ("label: errore"), chiude l'op e NON emette refresh.
+func TestOpErrorShowsErrorToast(t *testing.T) {
 	mock := &mail.Mock{Msgs: mockMsgs(t), Err: errors.New("rete giù")}
 	m := opsModel(t, mock)
 
@@ -445,10 +446,10 @@ func TestOpErrorShowsStatusErr(t *testing.T) {
 	if cmd2 != nil {
 		t.Errorf("cmd dopo op fallita = %v, voglio nil (niente refresh)", cmd2)
 	}
-	if !mm2.status.isErr {
-		t.Error("status.isErr = false, voglio true per un'op fallita")
+	if !toastIs(mm2, toast.Error) {
+		t.Error("toast non di errore, voglio true per un'op fallita")
 	}
-	if got := mm2.statusText(); !strings.Contains(got, "stella on") || !strings.Contains(got, "rete giù") {
+	if got := toastText(mm2); !strings.Contains(got, "stella on") || !strings.Contains(got, "rete giù") {
 		t.Errorf("status = %q, voglio \"stella on: rete giù\"", got)
 	}
 	if mm2.pending != 0 {
@@ -550,12 +551,14 @@ func TestRowMailboxDecidesArchiveAndLabel(t *testing.T) {
 
 	before := len(mock.Msgs)
 	m, cmd = step(m, pressKey("a"))
-	m = applyAll(t, m, cmd)
+	if msgs := dropExpired(runCmd(cmd)); len(msgs) != 0 {
+		t.Errorf("a su riga di Work da INBOX: cmd = %v, voglio nessuna op", msgs)
+	}
 	if len(mock.Msgs) != before {
 		t.Errorf("a su riga di Work da INBOX: messaggi %d -> %d, voglio nessuna Archive", before, len(mock.Msgs))
 	}
-	if want := "archivia è disponibile solo in Posta in arrivo"; m.statusText() != want {
-		t.Errorf("status = %q, voglio %q", m.statusText(), want)
+	if want := "archivia è disponibile solo in Posta in arrivo"; toastText(m) != want {
+		t.Errorf("status = %q, voglio %q", toastText(m), want)
 	}
 
 	m, _ = step(m, pressKey("l"))
@@ -565,8 +568,8 @@ func TestRowMailboxDecidesArchiveAndLabel(t *testing.T) {
 	if len(rec.labels) != 0 {
 		t.Errorf("label Work su riga di Work: ApplyLabel %d volte, voglio 0 (COPY nella stessa mailbox)", len(rec.labels))
 	}
-	if !m.status.isErr || !strings.Contains(m.statusText(), "cartella corrente") {
-		t.Errorf("status = %q (err=%v), voglio errore sulla cartella corrente", m.statusText(), m.status.isErr)
+	if !toastIs(m, toast.Error) || !strings.Contains(toastText(m), "cartella corrente") {
+		t.Errorf("status = %q (errore=%v), voglio errore sulla cartella corrente", toastText(m), toastIs(m, toast.Error))
 	}
 
 	m, _ = step(m, pressKey("l"))

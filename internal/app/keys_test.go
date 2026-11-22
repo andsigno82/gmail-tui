@@ -374,8 +374,8 @@ func TestCtrlCQuitsFromAnywhere(t *testing.T) {
 
 // --- banner demo --------------------------------------------------------------
 
-// TestDemoBanner: SetDemoBanner imposta lo status iniziale "demo mode — …"
-// reso con lo stile DemoBanner; sopravvive al load di Init (non-silent) ed è
+// TestDemoBanner: SetDemoBanner imposta lo stato iniziale "demo mode — …"
+// reso nella barra neutra (Piano 7.3: non più colorata); sopravvive al load di Init (non-silent) ed è
 // sostituito dal primo evento vero.
 func TestDemoBanner(t *testing.T) {
 	m := newTestModel(t)
@@ -389,13 +389,13 @@ func TestDemoBanner(t *testing.T) {
 
 	// Il load di Init NON cancella il banner: dopo il risultato (pending=0,
 	// niente spinner davanti) la barra è ESATTAMENTE il banner in stile
-	// DemoBanner — senza help aggiunto (il banner è da solo, ben visibile).
+	// StatusBar, col solo help di vista accanto (Piano 7.3: nessun colore).
 	mm, _ := step(m, msgsLoaded{refs: testRefs(t)})
 	if got := mm.statusText(); got != demoBannerText {
 		t.Errorf("status dopo il load = %q, voglio il banner intatto", got)
 	}
-	if got := mm.statusBar(); got != mm.styles.DemoBanner.Render(demoBannerText) {
-		t.Errorf("status bar = %q, voglio lo stile DemoBanner (%q)", got, mm.styles.DemoBanner.Render(demoBannerText))
+	if got := mm.statusBar(); got != mm.styles.StatusBar.Render(mm.joinHelp(demoBannerText)) {
+		t.Errorf("status bar = %q, voglio lo stile StatusBar col help (%q)", got, mm.styles.StatusBar.Render(mm.joinHelp(demoBannerText)))
 	}
 	// Un SECONDO load esplicito (ricerca con query vuota) torna ad azzerare:
 	// il flag di avvio si consuma al primo load.
@@ -405,8 +405,8 @@ func TestDemoBanner(t *testing.T) {
 	}
 	// Il primo evento vero lo sostituisce.
 	mm, _ = step(mm, opDone{label: "stella on"})
-	if mm.statusText() != "stella on" {
-		t.Errorf("status dopo un'op = %q, voglio \"stella on\"", mm.statusText())
+	if toastText(mm) != "stella on" {
+		t.Errorf("status dopo un'op = %q, voglio \"stella on\"", toastText(mm))
 	}
 }
 

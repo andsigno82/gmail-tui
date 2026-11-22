@@ -20,6 +20,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // labelPrompt è il prompt del mini-input delle label (render nella status
@@ -81,8 +82,8 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 		// rimuoverebbe solo la label; in Inviati non ha senso. Piano 7, fix
 		// code-review 1: la mailbox è quella della RIGA (opBox), non della cartella
 		// mostrata. Nessuna op, status informativo (anche con lista vuota).
-		m.status = statusMsg{text: "archivia è disponibile solo in Posta in arrivo"}
-		return m, nil
+		cmd := m.toast.Push(toast.Info, "archivia è disponibile solo in Posta in arrivo")
+		return m, cmd
 	}
 	ref, ok := m.currentRef()
 	if !ok {
@@ -155,8 +156,8 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 		// messaggio. Piano 7, fix code-review 1: il confronto è con la mailbox
 		// della riga (opBox), non con la cartella mostrata. Rifiuto con status
 		// d'errore, lo store non è chiamato.
-		m.status = statusMsg{text: fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name), isErr: true}
-		return m, nil
+		cmd := m.toast.Push(toast.Error, fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name))
+		return m, cmd
 	}
 	ref, ok := m.currentRef()
 	if !ok {
@@ -212,8 +213,8 @@ func (m Model) rowRole() string {
 // (Piano 7.1, Task 5: guarda la riga, non la cartella mostrata).
 func (m Model) askTrash() (Model, tea.Cmd) {
 	if m.rowRole() == "trash" {
-		m.status = statusMsg{text: "già nel cestino"}
-		return m, nil
+		cmd := m.toast.Push(toast.Info, "già nel cestino")
+		return m, cmd
 	}
 	ref, ok := m.currentRef()
 	if !ok {

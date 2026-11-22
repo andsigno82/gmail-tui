@@ -20,6 +20,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
 
@@ -63,6 +64,8 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 	m.wiz = wizard.Model{}
 	m.factory = nil
 	m.view = viewInbox
+	// Esito del setup come toast (Piano 7.3, Task 2): nessun testo di barra.
+	var notice tea.Cmd
 
 	if ev.Skipped {
 		// Demo mode col seed (Piano 4, Task 5): store e sender sono UN solo
@@ -86,28 +89,18 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 			// Config non salvata (percorso non scrivibile): la sessione
 			// funziona ma al prossimo avvio non ritroverà l'indirizzo. Errore
 			// visibile, non fatale.
-			m.startup = true
-			m.status = statusMsg{
-				text:  fmt.Sprintf("configurazione completata — config NON salvata: %v", ev.ConfigErr),
-				isErr: true,
-			}
+			notice = m.toast.Push(toast.Error, fmt.Sprintf("configurazione completata — config NON salvata: %v", ev.ConfigErr))
 		case ev.KeyringErr != nil:
 			// Keychain che fallisce (o assente): la password non sopravvive al
 			// processo — il piano chiede lo status che indica la env var.
-			m.startup = true
-			m.status = statusMsg{
-				text:  fmt.Sprintf("configurazione completata — password NON salvata nel keychain (%v) — imposta GMAIL_APP_PASSWORD per il prossimo avvio", ev.KeyringErr),
-				isErr: true,
-			}
+			notice = m.toast.Push(toast.Error, fmt.Sprintf("configurazione completata — password NON salvata nel keychain (%v) — imposta GMAIL_APP_PASSWORD per il prossimo avvio", ev.KeyringErr))
 		default:
-			// Tutto liscio: feedback positivo in stile StatusOK, che sopravvive
-			// al primo load (startup).
-			m.startup = true
-			m.status = statusMsg{text: "configurazione completata — connesso come " + ev.Address, isOK: true}
+			// Tutto liscio: feedback positivo come toast di successo.
+			notice = m.toast.Push(toast.Success, "configurazione completata — connesso come "+ev.Address)
 		}
 	}
 	m.pending++ // il load della sessione parte ora: spinner finché msgsLoaded
-	return m, m.beginSession()
+	return m, tea.Batch(notice, m.beginSession())
 }
 
 // savedSettings legge la config salvata (m.cfgPath). Config assente o non

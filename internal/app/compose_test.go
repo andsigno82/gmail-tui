@@ -21,6 +21,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/ui/composer"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // Conformance (Piano 4, Task 4): il Mock è anche Sender — in demo mode store e
@@ -325,9 +326,9 @@ func TestComposeLoadedDroppedWhenViewChanged(t *testing.T) {
 	}
 }
 
-// TestComposeLoadedErrorShowsStatusErr: fetch fallito → status d'errore,
+// TestComposeLoadedErrorShowsErrorToast: fetch fallito → status d'errore,
 // nessun composer.
-func TestComposeLoadedErrorShowsStatusErr(t *testing.T) {
+func TestComposeLoadedErrorShowsErrorToast(t *testing.T) {
 	m, _ := composerModel(t)
 	mm, _ := step(m, teaSize())
 	mm, _ = step(mm, msgsLoaded{refs: testRefs(t)})
@@ -339,16 +340,16 @@ func TestComposeLoadedErrorShowsStatusErr(t *testing.T) {
 	if mm.currentView() != viewInbox {
 		t.Errorf("vista = %v, voglio inbox", mm.currentView())
 	}
-	if !mm.status.isErr || !strings.Contains(mm.statusText(), "risposta") || !strings.Contains(mm.statusText(), "boom") {
-		t.Errorf("status = %q (isErr=%v), voglio l'errore di risposta", mm.statusText(), mm.status.isErr)
+	if !toastIs(mm, toast.Error) || !strings.Contains(toastText(mm), "risposta") || !strings.Contains(toastText(mm), "boom") {
+		t.Errorf("status = %q (errore=%v), voglio l'errore di risposta", toastText(mm), toastIs(mm, toast.Error))
 	}
 	// Il forward mostra la sua label.
 	mm2, _ := step(m, teaSize())
 	mm2, _ = step(mm2, msgsLoaded{refs: testRefs(t)})
 	mm2, _ = step(mm2, pressKey("f"))
 	mm2, _ = step(mm2, composeLoaded{ref: testRefs(t)[0], err: errBoom(), forward: true})
-	if !strings.Contains(mm2.statusText(), "inoltro") {
-		t.Errorf("status = %q, voglio la label inoltro", mm2.statusText())
+	if !strings.Contains(toastText(mm2), "inoltro") {
+		t.Errorf("status = %q, voglio la label inoltro", toastText(mm2))
 	}
 }
 
@@ -499,8 +500,8 @@ func TestComposerCancelWithBodyAsksDiscard(t *testing.T) {
 	// esc di nuovo → conferma → s scarta e torna al thread.
 	mm, _ = step(mm, pressKey("esc"))
 	mm, cmd = step(mm, pressKey("s"))
-	if cmd != nil {
-		t.Errorf("s: cmd = %v, voglio nil", cmd)
+	if msgs := dropExpired(runCmd(cmd)); len(msgs) != 0 {
+		t.Errorf("s: cmd = %v, voglio nessuna op (solo il toast)", msgs)
 	}
 	if mm.currentView() != viewThread {
 		t.Errorf("vista dopo lo scarto = %v, voglio thread (provenienza)", mm.currentView())
@@ -508,8 +509,8 @@ func TestComposerCancelWithBodyAsksDiscard(t *testing.T) {
 	if mm.discardOpen {
 		t.Error("discardOpen resta true dopo lo scarto")
 	}
-	if mm.statusText() != "bozza scartata" {
-		t.Errorf("status = %q, voglio %q", mm.statusText(), "bozza scartata")
+	if toastText(mm) != "bozza scartata" {
+		t.Errorf("status = %q, voglio %q", toastText(mm), "bozza scartata")
 	}
 }
 
@@ -829,18 +830,18 @@ func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
 	if mm.draft.Subject != "" || len(mm.draft.To) != 0 || mm.draft.BodyText != "" {
 		t.Errorf("draft = %+v, voglio azzerato dopo l'invio", mm.draft)
 	}
-	if mm.statusText() != "inviato" {
-		t.Errorf("status = %q, voglio %q", mm.statusText(), "inviato")
+	if toastText(mm) != "inviato" {
+		t.Errorf("status = %q, voglio %q", toastText(mm), "inviato")
 	}
 	if !mm.refreshing {
 		t.Error("dopo l'invio deve partire il refresh silenzioso della lista")
 	}
 }
 
-// TestSendErrorStaysInComposerWithStatusErr: errore del sender → StatusErr col
+// TestSendErrorStaysInComposerWithErrorToast: errore del sender → StatusErr col
 // dettaglio; il composer resta aperto con la bozza intatta (riprovabile con
 // ctrl+s — la conferma si riapre).
-func TestSendErrorStaysInComposerWithStatusErr(t *testing.T) {
+func TestSendErrorStaysInComposerWithErrorToast(t *testing.T) {
 	rec := &senderRecorder{err: errBoom()}
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
@@ -858,11 +859,11 @@ func TestSendErrorStaysInComposerWithStatusErr(t *testing.T) {
 	if cmd2 != nil {
 		t.Errorf("opDone errore: cmd = %v, voglio nil (nessun refresh)", cmd2)
 	}
-	if !mm.status.isErr {
-		t.Errorf("status isErr = false, voglio errore per %q", mm.statusText())
+	if !toastIs(mm, toast.Error) {
+		t.Errorf("toast non di errore, voglio errore per %q", toastText(mm))
 	}
-	if !strings.Contains(mm.statusText(), "invio") || !strings.Contains(mm.statusText(), "boom") {
-		t.Errorf("status = %q, voglio il dettaglio del sender", mm.statusText())
+	if !strings.Contains(toastText(mm), "invio") || !strings.Contains(toastText(mm), "boom") {
+		t.Errorf("status = %q, voglio il dettaglio del sender", toastText(mm))
 	}
 	if mm.currentView() != viewComposer {
 		t.Errorf("vista dopo l'errore = %v, voglio composer (bozza preservata)", mm.currentView())

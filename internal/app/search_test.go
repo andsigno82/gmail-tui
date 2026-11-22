@@ -12,6 +12,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // recorder è uno store wrapper che registra le chiamate ListMessages/Search:
@@ -336,8 +337,8 @@ func TestSearchEscCancelsWithoutSearch(t *testing.T) {
 
 // --- errori ------------------------------------------------------------------
 
-// TestSearchErrorShowsStatus: una ricerca fallita finisce in status bar
-// (isErr) con la query, chiude l'op in flight e NON tocca la lista.
+// TestSearchErrorShowsStatus: una ricerca fallita finisce in un toast d'errore
+// (errore) con la query, chiude l'op in flight e NON tocca la lista.
 func TestSearchErrorShowsStatus(t *testing.T) {
 	rec := &recorder{MailStore: &mail.Mock{Msgs: searchFixture()}, err: errors.New("rete giù")}
 	th, err := theme.Load("default")
@@ -365,10 +366,10 @@ func TestSearchErrorShowsStatus(t *testing.T) {
 	if cmd2 != nil {
 		t.Errorf("cmd dopo errore ricerca = %v, voglio nil", cmd2)
 	}
-	if !mm.status.isErr {
-		t.Error("status.isErr = false, voglio true per un errore di ricerca")
+	if !toastIs(mm, toast.Error) {
+		t.Error("toast non di errore, voglio true per un errore di ricerca")
 	}
-	if got := mm.statusText(); !strings.Contains(got, "ricerca") || !strings.Contains(got, "rete giù") {
+	if got := toastText(mm); !strings.Contains(got, "ricerca") || !strings.Contains(got, "rete giù") {
 		t.Errorf("status = %q, voglio \"ricerca … rete giù\"", got)
 	}
 	if mm.pending != 0 {

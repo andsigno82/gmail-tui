@@ -21,8 +21,7 @@ type Styles struct {
 	ListDate        lipgloss.Style // metadati riga: data relativa, mittente
 	ListSelected    lipgloss.Style // riga sotto il cursore
 	SearchInput     lipgloss.Style // prompt/cursore della ricerca
-	StatusOK        lipgloss.Style // status bar: feedback positivo
-	StatusErr       lipgloss.Style // status bar: feedback errore
+	StatusErr       lipgloss.Style // barra colorata: conferme modali (invio, scarta, cestino)
 	StatusBar       lipgloss.Style // status bar: stato normale
 	HelpView        lipgloss.Style // barra help contestuale / overlay
 	ThreadHeader    lipgloss.Style // intestazione del thread
@@ -30,7 +29,6 @@ type Styles struct {
 	Quoted          lipgloss.Style // righe citate attenuate
 	Border          lipgloss.Style // riquadri (viewport, overlay)
 	Spinner         lipgloss.Style // spinner durante il caricamento
-	DemoBanner      lipgloss.Style // banner "demo mode" senza credenziali
 	Divider         lipgloss.Style // separatore lista/anteprima a due colonne (Piano 7.2, Task 4)
 	DividerFocus    lipgloss.Style // separatore con il focus sull'anteprima (slot primary)
 	ToastInfo       lipgloss.Style // toast informativo: bordo accent (Piano 7.3, Task 1)
@@ -49,7 +47,6 @@ func New(t theme.Theme) Styles {
 		ListDate:        lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
 		ListSelected:    lipgloss.NewStyle().Foreground(onColor(t.Selection, t.Fg, t.Bg)).Background(adaptive(t.Selection)).Bold(true),
 		SearchInput:     lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
-		StatusOK:        lipgloss.NewStyle().Foreground(onColor(t.Success, t.Fg, t.Bg)).Background(adaptive(t.Success)).Padding(0, 1),
 		StatusErr:       lipgloss.NewStyle().Foreground(onColor(t.Error, t.Fg, t.Bg)).Background(adaptive(t.Error)).Bold(true).Padding(0, 1),
 		StatusBar:       lipgloss.NewStyle().Foreground(onColor(t.Primary, t.Fg, t.Bg)).Background(adaptive(t.Primary)).Padding(0, 1),
 		HelpView:        lipgloss.NewStyle().Foreground(adaptive(t.Help)),
@@ -58,7 +55,6 @@ func New(t theme.Theme) Styles {
 		Quoted:          lipgloss.NewStyle().Foreground(adaptive(t.Quoted)).Italic(true),
 		Border:          lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(adaptive(t.Border)),
 		Spinner:         lipgloss.NewStyle().Foreground(adaptive(t.Accent)).Bold(true),
-		DemoBanner:      lipgloss.NewStyle().Foreground(onColor(t.Warning, t.Fg, t.Bg)).Background(adaptive(t.Warning)).Bold(true).Padding(0, 1),
 		Divider:         lipgloss.NewStyle().Foreground(adaptive(t.Border)),
 		DividerFocus:    lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
 		ToastInfo:       toastStyle(t, t.Accent),

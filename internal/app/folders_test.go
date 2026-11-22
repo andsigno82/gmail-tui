@@ -10,6 +10,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // folderMock è lo store dei test di cartella: INBOX con 60 messaggi, una
@@ -99,8 +100,8 @@ func TestFolderPickerListError(t *testing.T) {
 	m := folderModel(t, rec)
 	m, _ = step(m, pressKey("m"))
 	m, _ = step(m, mailboxesLoaded{err: errors.New("boom")})
-	if m.folderOpen || !m.status.isErr || !strings.Contains(m.statusText(), "boom") {
-		t.Errorf("errore cartelle: open=%v status=%q", m.folderOpen, m.statusText())
+	if m.folderOpen || !toastIs(m, toast.Error) || !strings.Contains(toastText(m), "boom") {
+		t.Errorf("errore cartelle: open=%v status=%q", m.folderOpen, toastText(m))
 	}
 }
 
@@ -374,15 +375,15 @@ func TestArchiveRefusedOutsideInbox(t *testing.T) {
 			before := len(mock.Msgs)
 			pending := m.pending
 			m, cmd := step(m, pressKey("a"))
-			if cmd != nil || m.pending != pending {
+			if len(dropExpired(runCmd(cmd))) != 0 || m.pending != pending {
 				t.Error("a fuori dalla posta in arrivo: op lanciata, voglio nessuna op")
 			}
 			if len(mock.Msgs) != before {
 				t.Errorf("messaggi nel Mock = %d, voglio %d (nessuna mutazione)", len(mock.Msgs), before)
 			}
 			want := "archivia è disponibile solo in Posta in arrivo"
-			if m.statusText() != want || m.status.isErr {
-				t.Errorf("status = %q (err=%v), voglio %q informativo", m.statusText(), m.status.isErr, want)
+			if toastText(m) != want || toastIs(m, toast.Error) {
+				t.Errorf("status = %q (errore=%v), voglio %q informativo", toastText(m), toastIs(m, toast.Error), want)
 			}
 		})
 	}
@@ -423,8 +424,8 @@ func TestLabelSameFolderRefused(t *testing.T) {
 			if len(rec.labels) != 0 {
 				t.Errorf("ApplyLabel chiamata %d volte, voglio 0", len(rec.labels))
 			}
-			if !m.status.isErr || !strings.Contains(m.statusText(), "cartella corrente") {
-				t.Errorf("status = %q (err=%v), voglio errore sulla cartella corrente", m.statusText(), m.status.isErr)
+			if !toastIs(m, toast.Error) || !strings.Contains(toastText(m), "cartella corrente") {
+				t.Errorf("status = %q (errore=%v), voglio errore sulla cartella corrente", toastText(m), toastIs(m, toast.Error))
 			}
 		})
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
+	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // inTrash conta i messaggi del Mock nella mailbox del cestino.
@@ -80,8 +81,8 @@ func TestTrashConfirmMovesMessage(t *testing.T) {
 	if hasInbox(mock, 2) || inTrash(mock) != 1 {
 		t.Errorf("dopo s: UID 2 in INBOX=%v, messaggi nel cestino=%d; voglio UID 2 spostato", hasInbox(mock, 2), inTrash(mock))
 	}
-	if !strings.Contains(m.statusText(), "spostata nel cestino") || m.status.isErr {
-		t.Errorf("status = %q, voglio il feedback di successo", m.statusText())
+	if !strings.Contains(toastText(m), "spostata nel cestino") || toastIs(m, toast.Error) {
+		t.Errorf("status = %q, voglio il feedback di successo", toastText(m))
 	}
 	if len(m.refs) != 2 {
 		t.Errorf("refs dopo il refresh = %d, voglio 2", len(m.refs))
@@ -134,8 +135,8 @@ func TestTrashErrorShowsStatusAndKeepsList(t *testing.T) {
 	m, _ = step(m, pressKey("#"))
 	m, cmd := step(m, pressKey("s"))
 	m = settle(t, m, cmd, 4)
-	if !m.status.isErr || !strings.Contains(m.statusText(), "cestino non trovato") {
-		t.Errorf("status = %q (err=%v), voglio errore cestino non trovato", m.statusText(), m.status.isErr)
+	if !toastIs(m, toast.Error) || !strings.Contains(toastText(m), "cestino non trovato") {
+		t.Errorf("status = %q (errore=%v), voglio errore cestino non trovato", toastText(m), toastIs(m, toast.Error))
 	}
 	if !hasInbox(mock, 1) || len(m.refs) != 3 {
 		t.Errorf("errore: UID 1 in INBOX=%v, refs=%d; voglio intatto", hasInbox(mock, 1), len(m.refs))
@@ -150,11 +151,11 @@ func TestTrashInTrashFolderIsRefused(t *testing.T) {
 	m, cmd := pickFolder(t, openPicker(t, m), 2) // Cestino
 	m = applyAll(t, m, cmd)
 	m, cmd = step(m, pressKey("#"))
-	if m.trashOpen || cmd != nil {
+	if m.trashOpen || len(dropExpired(runCmd(cmd))) != 0 {
 		t.Error("# nel cestino ha aperto la conferma")
 	}
-	if m.statusText() != "già nel cestino" {
-		t.Errorf("status = %q, voglio \"già nel cestino\"", m.statusText())
+	if toastText(m) != "già nel cestino" {
+		t.Errorf("status = %q, voglio \"già nel cestino\"", toastText(m))
 	}
 }
 
@@ -212,7 +213,7 @@ func TestTrashRowFromInboxInTrashFolderOpensConfirmation(t *testing.T) {
 	m.inbox.SetRefs(m.refs)
 
 	m, cmd := step(m, pressKey("#"))
-	if m.statusText() == "già nel cestino" {
+	if toastText(m) == "già nel cestino" {
 		t.Fatal("riga di INBOX dalla vista Cestino: dichiarata già nel cestino")
 	}
 	if !m.trashOpen || cmd != nil {
@@ -233,7 +234,7 @@ func TestTrashRowFromTrashInOtherFolderOpensConfirmation(t *testing.T) {
 	m.inbox.SetRefs(m.refs)
 
 	m, cmd := step(m, pressKey("#"))
-	if !m.trashOpen || cmd != nil || m.statusText() == "già nel cestino" {
-		t.Fatalf("# su riga del cestino da Inviati: open=%v cmd=%v status=%q, voglio conferma", m.trashOpen, cmd != nil, m.statusText())
+	if !m.trashOpen || cmd != nil || toastText(m) == "già nel cestino" {
+		t.Fatalf("# su riga del cestino da Inviati: open=%v cmd=%v status=%q, voglio conferma", m.trashOpen, cmd != nil, toastText(m))
 	}
 }
