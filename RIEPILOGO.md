@@ -195,6 +195,26 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - `/code-review`: 2 conflitti tra regole decisi da Andrea, commenti e codice
   morto ripuliti
 
+### Piano 8 — Estensioni Gmail (conversazioni, ricerca X-GM-RAW, label)
+- Copia in-tree di go-imap v2.0.0-beta.9 in `third_party/go-imap` con patch
+  X-GM-MSGID/THRID/LABELS, SEARCH X-GM-RAW, STORE X-GM-LABELS (PATCHES.md)
+- Lista a una riga per conversazione, thread stile Gmail (letti compressi,
+  corpi caricati su richiesta), ricerca `/` con sintassi Gmail in Tutti i
+  messaggi, label colorate (WCAG)
+- Azioni a/#/l sulla conversazione nella cartella corrente, v su tutta la
+  conversazione; guard: mai archivia/cestino su Tutti i messaggi
+- Cache schema 3 (copie per GmailID); review indipendente con fix (ID in due
+  namespace, flag stantii, tetto di scansione dichiarato)
+
+### Piano 14 — Server MCP in sola lettura
+- `gmail-tui mcp` (stdio, go-sdk ufficiale v1.8.0): list_folders,
+  list_recent, search_messages (X-GM-RAW paginata), read_message, read_thread
+- Mai invio, bozze o modifiche (D14); lettura con BODY.PEEK; contenuto delle
+  email in marcatori con nonce, caratteri invisibili rimossi, password mai
+  esposta; riconnessione solo su errori di rete; limiti di dimensione
+  dichiarati
+- Toolchain go1.27.4 (GO-2026-6859 diventata raggiungibile con l'SDK)
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
