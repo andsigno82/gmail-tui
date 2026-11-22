@@ -89,7 +89,7 @@ Scelte tecniche del piano (da confermare solo se contestate):
 - `TestBulkStarRule` e `TestBulkReadRule`: le due regole D10-V1 nei due sensi.
 - `TestBulkOpStaleResultDropped`: risultato con `listGen` vecchio non tocca la lista.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(app): a/#/s/v su tutta la selezione (Piano 10, Task 3)`.
+- [x] RED riportato, implementazione, gate, commit `feat(app): a/#/s/v su tutta la selezione (Piano 10, Task 3)`.
 
 ## Task 4: contratto e Mock per annulla e label
 

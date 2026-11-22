@@ -104,6 +104,10 @@ type opDone struct {
 	draftKept bool            // ripresa con allegati non scaricati: la bozza originale resta in Bozze (fix review)
 	retry     *pendingSend    // Piano 9, Task 9: invio fallito dopo la finestra → il composer si riapre con la bozza
 	gone      []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
+	// gen/checkGen (Piano 10, Task 3): listGen di partenza di un'op sulla selezione.
+	// Se la lista è cambiata nel frattempo l'esito è stante: niente gone né refresh.
+	gen      int
+	checkGen bool
 	// localID/localRead: MarkRead riuscito su questo messaggio; lo stato di lettura
 	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
 	localID   msg.MessageID

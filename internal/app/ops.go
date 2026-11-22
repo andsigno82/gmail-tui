@@ -94,6 +94,10 @@ func (m Model) opRef() (msg.MessageRef, bool) {
 }
 
 func (m Model) runOp(k string) (Model, tea.Cmd) {
+	if m.view == viewInbox && len(m.sel) > 0 && k != "l" {
+		// Piano 10, Task 3: con righe marcate a/s/v agiscono sulla selezione (l: Task 7).
+		return m.bulkOp(k)
+	}
 	if k == "a" && !strings.EqualFold(m.opBox(), "INBOX") {
 		// Piano 7, fix review 3: l'archivio è solo della posta in arrivo. Nel
 		// cestino l'expunge sarebbe una eliminazione definitiva; in una label
@@ -219,14 +223,7 @@ func (m Model) cancelLabel() (Model, tea.Cmd) {
 // posta in arrivo; altrove restituisce "" (ignoto): una riga cercata con label:
 // da un'altra cartella non ha ruolo noto e il backend decide.
 func (m Model) rowRole() string {
-	box := m.opBox()
-	if strings.EqualFold(box, m.folder.Name) {
-		return m.folder.Role
-	}
-	if strings.EqualFold(box, "INBOX") {
-		return "inbox"
-	}
-	return ""
+	return m.roleOfBox(m.opBox())
 }
 
 // askTrash apre la conferma dello spostamento nel cestino (`#`, Piano 7, Task
@@ -235,6 +232,10 @@ func (m Model) rowRole() string {
 // mailbox del cestino della riga non si apre nulla: il messaggio è già lì
 // (Piano 7.1, Task 5: guarda la riga, non la cartella mostrata).
 func (m Model) askTrash() (Model, tea.Cmd) {
+	if m.view == viewInbox && len(m.sel) > 0 {
+		// Piano 10, Task 3: con righe marcate la conferma riguarda la selezione.
+		return m.askBulkTrash()
+	}
 	if m.rowRole() == "trash" {
 		cmd := m.toast.Push(toast.Info, "già nel cestino")
 		return m, cmd
@@ -243,6 +244,7 @@ func (m Model) askTrash() (Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	m.trashSel = nil
 	m.trashRef = row
 	m.trashOpen = true
 	return m, nil
@@ -257,6 +259,13 @@ func (m Model) confirmTrash() (Model, tea.Cmd) {
 		m.view = viewInbox
 	}
 	m.pending++
+	if len(m.trashSel) > 0 {
+		// Piano 10, Task 3: conferma sulla selezione; la selezione si azzera (D10-S3).
+		cmd := bulkTrash(m.store, m.trashSel, m.listGen)
+		m.trashSel = nil
+		m.setSel(nil)
+		return m, tea.Batch(cmd, m.spinner.Tick)
+	}
 	return m, tea.Batch(trashCmd(m.store, m.trashRef), m.spinner.Tick)
 }
 

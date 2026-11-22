@@ -155,6 +155,7 @@ type Model struct {
 	folderList    list.Model             // elenco del selettore cartelle (bubbles/list, folders.go)
 	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
 	trashRef      msg.MessageRef         // messaggio in conferma: letto all'apertura, non al sì
+	trashSel      []msg.MessageRef       // conversazioni selezionate in conferma cestino (Piano 10, Task 3); vuoto = trashRef
 	sel           map[msg.MessageID]bool // righe selezionate nella lista, per ID della conversazione (Piano 10, Task 2)
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
@@ -543,6 +544,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opDone:
 		m.doneOp()
+		if ev.checkGen && ev.gen != m.listGen {
+			// Piano 10, Task 3: esito di un'op sulla selezione di una lista superata (cambio
+			// cartella/ricerca in volo): il toast resta, la lista corrente non si tocca.
+			ev.gone, ev.refresh, ev.deep = nil, false, false
+		}
 		if ev.err == nil && len(ev.observed) > 0 {
 			m.feedBook(true, ev.observed...) // destinatari dell'invio riuscito: incremento (D9-F)
 		}
@@ -1683,7 +1689,12 @@ func (m Model) statusBar() string {
 	}
 	if m.trashOpen {
 		// Conferma cestino (Piano 7, Task 5, D4): stile StatusErr come il discard.
-		return m.renderBar(m.styles.StatusErr, "spostare nel cestino? s conferma · esc annulla")
+		text := "spostare nel cestino? s conferma · esc annulla"
+		if n := len(m.trashSel); n > 0 {
+			// Piano 10, Task 3: la conferma sulla selezione dice quante conversazioni.
+			text = fmt.Sprintf("spostare %d nel cestino? s conferma · esc annulla", n)
+		}
+		return m.renderBar(m.styles.StatusErr, text)
 	}
 	if m.discardOpen {
 		// Conferma discard del composer (Piano 4, Task 3): occupa la barra
