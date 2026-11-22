@@ -274,7 +274,8 @@ func (s *Store) connected() (*imapclient.Client, error) {
 	c := s.client
 	s.mu.Unlock()
 	if c == nil {
-		return nil, fmt.Errorf("imap store non connesso: chiamare Connect prima di questa operazione")
+		// Piano 14, Wave 4: sentinel riconoscibile con errors.Is (mail.ErrNotConnected).
+		return nil, fmt.Errorf("%w: chiamare Connect prima di questa operazione", mail.ErrNotConnected)
 	}
 	return c, nil
 }

@@ -23,7 +23,7 @@ func TestReaderHasOnlyReadMethods(t *testing.T) {
 		got = append(got, methodType.Method(i).Name)
 	}
 	sort.Strings(got)
-	want := []string{"Connect", "FetchMessage", "ListMailboxes", "ListMessages", "Search"}
+	want := []string{"Connect", "FetchMessage", "ListConversations", "ListMailboxes", "ListMessages", "ThreadMessages"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("metodi di Reader = %v, attesi %v", got, want)
 	}

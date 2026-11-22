@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- **MCP server, read-only** — `gmail-tui mcp` serves `list_folders`, `list_recent`, `search_messages` and `read_message` over stdio for AI agents. No tool sends, drafts, archives, labels, deletes or marks messages; email content is wrapped in per-call nonce markers and flagged as untrusted; the password is never returned.
+- **MCP server, read-only** — `gmail-tui mcp` serves `list_folders`, `list_recent`, `search_messages` (Gmail query syntax, one row per conversation), `read_message` and `read_thread` over stdio for AI agents. Gmail IDs and user labels are returned; lists are paged with `has_more`/`next_offset`. No tool sends, drafts, archives, labels, deletes or marks messages; email content is wrapped in per-call nonce markers and flagged as untrusted; the password is never returned.
 - **Gmail conversations** — on Gmail accounts (`X-GM-EXT-1`) the list shows one row per conversation: participants, message count, unread state and user labels as colored chips. The thread view shows the whole conversation in date order: read messages collapsed, the latest and unread ones expanded. `j`/`k` choose a message, `Enter` or a click expands or collapses it.
 - **Gmail search** — `/` passes the query verbatim to Gmail (`X-GM-RAW`): `older_than:`, `in:`, `-label:` and the rest of the Gmail syntax work. Without Gmail the plain matcher is used.
 - **Gmail labels** — per-message labels (`X-GM-LABELS`) shown as colored chips in the list and in the thread.

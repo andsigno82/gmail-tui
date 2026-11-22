@@ -50,7 +50,7 @@ func TestToolsListExactlyReadOnlyTools(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	want := []string{"list_folders", "list_recent", "read_message", "search_messages"}
+	want := []string{"list_folders", "list_recent", "read_message", "read_thread", "search_messages"} // Wave 4: + read_thread
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("tool registrati = %v, attesi %v", names, want)
 	}

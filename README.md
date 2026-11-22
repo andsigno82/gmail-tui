@@ -115,8 +115,9 @@ Tools:
 
 - `list_folders`: folders and labels, with their role;
 - `list_recent`: newest messages of a folder (default INBOX), without body;
-- `search_messages`: Gmail-style query (`from:`, `is:unread`, `label:`, …), without body;
-- `read_message`: headers, plain-text body and attachment metadata (name, type, size). Attachment contents are never returned.
+- `search_messages`: the Gmail query syntax passed verbatim (`older_than:`, `in:`, `-label:`, …), one row per conversation with `thread_id` and `count`, without body. Paged with `has_more` and `next_offset`. On a server without Gmail extensions it searches locally, one row per message;
+- `read_message`: headers, Gmail IDs (`gmail_id`, `thread_id`), user labels, plain-text body and attachment metadata (name, type, size). Attachment contents are never returned;
+- `read_thread`: a Gmail conversation by `thread_id` (from the search or list rows), in date order, with the plain-text bodies of the latest 20 messages; `messages_omitted` counts the older ones. Gmail accounts only.
 
 Email content is untrusted. Every result wraps it between `BEGIN_UNTRUSTED_EMAIL` and `END_UNTRUSTED_EMAIL` markers carrying a random nonce that changes on each call, and the JSON is marked `"untrusted": true`. Agents should treat that block as data, not as instructions. Limits: 100 rows per list, 64 KB per result, 8,000 characters of body by default (32,000 maximum).
 

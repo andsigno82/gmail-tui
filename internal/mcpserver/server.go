@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/andsigno82/gmail-tui/internal/mail"
 )
 
 // Options configura il server MCP (Piano 14, Task 3).
@@ -122,11 +123,6 @@ func (s *session) fail(err error) error {
 	return Redact(err, s.secrets...)
 }
 
-// errNotConnected è il messaggio dello store IMAP senza client. Non esiste un
-// sentinel: si riconosce il testo, da sostituire con errors.Is quando il backend
-// ne esporrà uno.
-const errNotConnected = "imap store non connesso"
-
 // isTransport riconosce gli errori di connessione: EOF, rete chiusa, errori di
 // rete (timeout inclusi) e store non connesso.
 func isTransport(err error) bool {
@@ -138,5 +134,5 @@ func isTransport(err error) bool {
 	var ne net.Error
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, net.ErrClosed) || errors.As(err, &ne) ||
-		strings.Contains(err.Error(), errNotConnected)
+		errors.Is(err, mail.ErrNotConnected)
 }

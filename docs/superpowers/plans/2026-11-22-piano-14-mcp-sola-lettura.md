@@ -172,11 +172,11 @@ Nel README: la password resta nel portachiavi (`gmail-tui login`) o in `GMAIL_AP
 
 **Files:** `internal/mcpserver/reader.go` (metodo di conversazione aggiunto a `Reader`), `internal/mcpserver/tools.go`, test.
 
-- [ ] `search_messages` passa la query intera come `X-GM-RAW` (operatori `older_than:`, `in:`, `-label:`) invece del parsing locale.
-- [ ] Nuovo tool `read_thread` (conversazione da `X-GM-THRID`, comprese le risposte in Inviati); limiti di M5 per numero di messaggi e per corpo.
-- [ ] Label dei messaggi nei risultati di lista (dati non fidati, dentro il marcatore).
-- [ ] Verifica che `Reader` resti senza metodi di scrittura dopo le aggiunte (Task 6 rieseguito).
-- [ ] Commit `feat(mcpserver): Gmail search syntax and read_thread after Piano 8`
+- [x] `search_messages` passa la query intera come `X-GM-RAW` (operatori `older_than:`, `in:`, `-label:`) invece del parsing locale; paginata lato store per conversazione (`ListConversations`), validata (no caratteri di controllo, max 1024 caratteri). Senza X-GM-EXT-1 resta il parsing locale.
+- [x] Nuovo tool `read_thread` (`ThreadMessages`, da `X-GM-THRID`, comprese le risposte in Inviati): i 20 messaggi più recenti in ordine cronologico, corpo di 8 000 caratteri per messaggio, `messages_omitted` per gli altri. Corpi letti con BODY.PEEK: nessun messaggio segnato come letto.
+- [x] Label dei messaggi e `gmail_id`/`thread_id` (decimali) nei risultati di lista, in `read_message` e in `read_thread`, dentro il marcatore.
+- [x] Verifica che `Reader` resti senza metodi di scrittura dopo le aggiunte: `ConversationMembers` non è nel `Reader`; il test del method set e la suite di sicurezza passano.
+- [x] Commit della Wave 4 (vedi `git log` su `feat/piano-14`): `feat(mcpserver): Gmail search syntax and read_thread after Piano 8`. Smoke su account reale: di Andrea (sezione MCP in `docs/smoke-checklist.md`).
 
 ### Task 10: gate finali
 
@@ -223,8 +223,8 @@ Deviazioni rispetto alla FASE A, motivate:
 - **Task 6:** la suite di sicurezza passa sul codice attuale. Non è un rosso: verifica invarianti. Lo stdout è controllato staticamente (nessun `fmt.Print`/`os.Stdout` nel package), non con un processo figlio. Il test end-to-end con processo reale resta a carico dello smoke di Andrea (Task 8).
 - **Task 5:** il test di `serveMCP` usa il trasporto in memoria, non stdio. Il trasporto stdio è quello dell'SDK, usato da `runMCP`.
 - **Task 7:** README (sezione "MCP server (read-only)" con i comandi `claude mcp add` verificati con `claude mcp add --help`), CHANGELOG, SECURITY, layout di AGENTS.
-- **Limite noto (review, punto 3):** la ricerca senza folder su All Mail scarica le intestazioni di tutti i risultati, perché `Search` non è paginata. Si risolve nella Wave 4 con la ricerca paginata del Piano 8.
-- **Errori di trasporto (fix review):** azzerano la connessione solo gli errori di trasporto (EOF, rete chiusa, `net.Error`, "non connesso"). Il "non connesso" dello store non ha un sentinel: si riconosce il testo, da sostituire quando il backend ne esporrà uno.
+- **Limite noto (review, punto 3):** la ricerca senza folder su All Mail scarica le intestazioni di tutti i risultati, perché `Search` non è paginata. Risolto in Wave 4: la ricerca usa `ListConversations`, paginata dallo store.
+- **Errori di trasporto (fix review):** azzerano la connessione solo gli errori di trasporto (EOF, rete chiusa, `net.Error`, "non connesso"). Il "non connesso" è il sentinel `mail.ErrNotConnected` (Wave 4), riconosciuto con `errors.Is`.
 - **Paginazione (fix review):** con troncamento per dimensione `list_recent` e `search_messages` restituiscono `returned`, `truncated`, `has_more` e `next_offset`. `has_more` è vero se ci sono altre righe: per la ricerca in modo esatto, per `list_recent` con l'euristica "pagina piena = possibile seguito" (il backend non dice il totale).
 - **Dipendenze:** `go-sdk` v1.8.0 porta con sé `golang.org/x/oauth2`, `golang-jwt/jwt/v5` e `segmentio/asm` (indiretti). `govulncheck ./...` segnala una vulnerabilità dello stdlib, `GO-2026-6859` (`net/http`, corretta in go1.27.4), con tracce già presenti su `main` (`composer`, `cache`, `cmd/send`). Non è introdotta da questo piano; il go.mod pinna `go1.27.3`. Alzare il toolchain è una decisione di Andrea.
 

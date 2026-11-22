@@ -81,7 +81,7 @@ func TestTransportErrorsResetSession(t *testing.T) {
 		fmt.Errorf("lettura: %w", io.ErrUnexpectedEOF),
 		net.ErrClosed,
 		&net.OpError{Op: "read", Err: errors.New("reset")},
-		errors.New("imap store non connesso: chiamare Connect prima di questa operazione"),
+		fmt.Errorf("lettura: %w", mail.ErrNotConnected),
 	}
 	for _, e := range cases {
 		cr := &countingReader{Reader: &mail.Mock{}}

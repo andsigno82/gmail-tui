@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -30,6 +31,12 @@ const (
 	maxFieldRunes  = 256
 	defaultBodyLen = 8000
 	maxBodyLen     = 32000
+	// maxQueryRunes limita la query di search_messages (Piano 14, Wave 4).
+	maxQueryRunes = 1024
+	// maxThreadMessages limita i messaggi di read_thread: i più recenti (Wave 4).
+	maxThreadMessages = 20
+	// maxLabels limita le label utente di un messaggio o di una conversazione.
+	maxLabels = 20
 )
 
 // preamble spiega all'agente come trattare il blocco (Piano 14, Task 4).
@@ -47,9 +54,9 @@ type recentIn struct {
 }
 
 type searchIn struct {
-	Query  string `json:"query" jsonschema:"ricerca in stile Gmail, es. from:x is:unread label:Work"`
-	Folder string `json:"folder,omitempty" jsonschema:"cartella o label in cui cercare; vuoto = tutti i messaggi (cartella con ruolo all), o INBOX se il server non la espone"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"risultati da restituire: default 20, massimo 100"`
+	Query  string `json:"query" jsonschema:"ricerca in sintassi Gmail, es. from:x is:unread older_than:7d label:Work"`
+	Folder string `json:"folder,omitempty" jsonschema:"cartella o label in cui cercare; vuoto = tutti i messaggi (All Mail)"`
+	Limit  int    `json:"limit,omitempty" jsonschema:"conversazioni da restituire: default 20, massimo 100"`
 	Offset int    `json:"offset,omitempty" jsonschema:"salto iniziale per la paginazione"`
 }
 
@@ -58,7 +65,11 @@ type readIn struct {
 	MaxChars int    `json:"max_chars,omitempty" jsonschema:"caratteri massimi del corpo: default 8000, massimo 32000"`
 }
 
-// registerTools registra i quattro tool di sola lettura (Piano 14, Task 3).
+type threadIn struct {
+	ThreadID string `json:"thread_id" jsonschema:"identificativo del thread: numero decimale, dalla colonna thread_id di search_messages o list_recent"`
+}
+
+// registerTools registra i tool di sola lettura (Piano 14, Task 3 e Wave 4).
 func registerTools(srv *mcp.Server, s *session) {
 	mcp.AddTool(srv, &mcp.Tool{
 		Name:        "list_folders",
@@ -67,23 +78,33 @@ func registerTools(srv *mcp.Server, s *session) {
 	}, s.listFolders)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_recent",
-		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo. Se has_more è true, " +
+		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo. Ogni riga ha " +
+			"gmail_id, thread_id (decimali, vuoti fuori da Gmail) e labels. Se has_more è true, " +
 			"usa next_offset come offset della pagina successiva." + descUntrusted,
 		Annotations: readOnly,
 	}, s.listRecent)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "search_messages",
-		Description: "Cerca messaggi con una query in stile Gmail, senza corpo. Senza folder cerca in tutti i " +
-			"messaggi (cartella con ruolo all, come Gmail web); il risultato dichiara la cartella usata. " +
-			"Se has_more è true, usa next_offset come offset della pagina successiva." + descUntrusted,
+		Description: "Cerca con la sintassi di Gmail (verbatim, come Gmail web) su tutti i messaggi, una riga per " +
+			"conversazione: id del messaggio più recente, thread_id, count, labels. Senza folder cerca in All Mail. " +
+			"Su un server senza estensioni Gmail cerca localmente, una riga per messaggio. Se has_more è true, " +
+			"usa next_offset come offset della pagina successiva. scan_limited = true: la scansione è stata " +
+			"interrotta al tetto, la lista è limitata." + descUntrusted,
 		Annotations: readOnly,
 	}, s.search)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "read_message",
-		Description: "Legge un messaggio: intestazioni, corpo in testo e metadati degli allegati. " +
-			"Non segna il messaggio come letto." + descUntrusted,
+		Description: "Legge un messaggio: intestazioni, gmail_id, thread_id, labels, corpo in testo e metadati degli " +
+			"allegati. Non segna il messaggio come letto." + descUntrusted,
 		Annotations: readOnly,
 	}, s.readMessage)
+	mcp.AddTool(srv, &mcp.Tool{
+		Name: "read_thread",
+		Description: "Legge una conversazione Gmail (thread_id) in ordine cronologico, con il corpo in testo di ogni " +
+			"messaggio; sono restituiti i " + strconv.Itoa(maxThreadMessages) + " più recenti (messages_omitted " +
+			"dichiara gli altri). Non segna i messaggi come letti. Solo su server Gmail." + descUntrusted,
+		Annotations: readOnly,
+	}, s.readThread)
 }
 
 // textResult costruisce un risultato con un solo blocco di testo.
@@ -137,7 +158,25 @@ func field(s string) string {
 	return out
 }
 
-// takeFields aggiunge al budget i campi (destinatari) finché ci stanno; il
+// idStr rende un ID Gmail a 64 bit come decimale; 0 (fuori da Gmail) è stringa vuota.
+func idStr(v uint64) string {
+	if v == 0 {
+		return ""
+	}
+	return strconv.FormatUint(v, 10)
+}
+
+// labelList limita e sanifica le label utente (Piano 14, Wave 4).
+func labelList(xs []string) []string {
+	n := min(len(xs), maxLabels)
+	out := make([]string, 0, n)
+	for _, x := range xs[:n] {
+		out = append(out, field(x))
+	}
+	return out
+}
+
+// takeFields aggiunge al budget i campi (destinatari, label) finché ci stanno; il
 // resto è contato in omitted.
 func takeFields(xs []string, b *budget) (out []string, omitted int) {
 	out = make([]string, 0, len(xs))
@@ -165,6 +204,35 @@ func takeAttachments(atts []msg.Attachment, b *budget) (out []map[string]any, om
 	return out, 0
 }
 
+// messageFields spende nel budget i metadati di m e restituisce la mappa senza
+// corpo; true se qualche elemento è stato omesso.
+func messageFields(m *msg.Message, b *budget) (map[string]any, bool) {
+	idF, fromF, subjF, dateF := field(string(m.Ref.ID)), field(m.Ref.From), field(m.Ref.Subject), fmtDate(m.Ref.Date)
+	gmailID, threadID := idStr(m.Ref.GmailID), idStr(m.Ref.ThreadID)
+	for _, v := range []string{idF, fromF, subjF, dateF, gmailID, threadID} {
+		b.spend(jsonLen(v))
+	}
+	labels, labOmit := takeFields(m.Ref.Labels, b)
+	to, toOmit := takeFields(m.To, b)
+	cc, ccOmit := takeFields(m.Cc, b)
+	atts, attOmit := takeAttachments(m.Attachments, b)
+	item := map[string]any{
+		"id":                  idF,
+		"gmail_id":            gmailID,
+		"thread_id":           threadID,
+		"from":                fromF,
+		"to":                  to,
+		"cc":                  cc,
+		"subject":             subjF,
+		"date":                dateF,
+		"labels":              labels,
+		"attachments":         atts,
+		"attachments_omitted": attOmit,
+		"recipients_omitted":  toOmit + ccOmit,
+	}
+	return item, labOmit+toOmit+ccOmit+attOmit > 0
+}
+
 func fmtDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -185,34 +253,85 @@ func checkFolder(name string) error {
 	return nil
 }
 
-// slicePage applica offset e limit a un risultato non paginato dallo store.
-func slicePage(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
-	if pg.Offset >= len(refs) {
-		return nil
+// checkQuery valida la query di ricerca (Piano 14, Wave 4): nessun carattere di
+// controllo (stessa ragione di checkFolder) e lunghezza massima maxQueryRunes.
+func checkQuery(q string) error {
+	if utf8.RuneCountInString(q) > maxQueryRunes {
+		return fmt.Errorf("query troppo lunga: massimo %d caratteri", maxQueryRunes)
 	}
-	return refs[pg.Offset:min(pg.Offset+pg.Limit, len(refs))]
+	for _, r := range q {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("query non valida: caratteri di controllo non ammessi")
+		}
+	}
+	return nil
 }
 
-// listResponse converte le righe e dichiara la cartella; se superano il limite
-// ne toglie in coda e lo dichiara con truncated.
-func listResponse(refs []msg.MessageRef, folder string, offset int, hasMore bool) (*mcp.CallToolResult, any, error) {
-	rows := make([]map[string]any, 0, len(refs))
-	for _, r := range refs {
-		rows = append(rows, map[string]any{
-			"id":      field(string(r.ID)),
-			"from":    field(r.From),
-			"subject": field(r.Subject),
-			"date":    fmtDate(r.Date),
-			"unread":  r.Unread,
-			"starred": r.Starred,
-		})
+// parseThreadID accetta solo un decimale maggiore di 0 (Piano 14, Wave 4).
+func parseThreadID(s string) (uint64, error) {
+	id, err := strconv.ParseUint(s, 10, 64)
+	if err != nil || id == 0 {
+		return 0, fmt.Errorf("thread_id non valido: serve un numero decimale maggiore di 0")
 	}
+	return id, nil
+}
+
+// gmailer è l'interfaccia opzionale dello store che dice se il server annuncia
+// X-GM-EXT-1 (imap.Store.GmailExt): fuori da MailStore, come nel Piano 8.
+type gmailer interface{ GmailExt() bool }
+
+// gmailMode dice se il Reader è uno store in modalità Gmail.
+func gmailMode(r Reader) bool {
+	g, ok := r.(gmailer)
+	return ok && g.GmailExt()
+}
+
+// msgRow è la riga di lista di un messaggio (Piano 14, Wave 4: ID e label).
+func msgRow(r msg.MessageRef) map[string]any {
+	return map[string]any{
+		"id":        field(string(r.ID)),
+		"gmail_id":  idStr(r.GmailID),
+		"thread_id": idStr(r.ThreadID),
+		"from":      field(r.From),
+		"subject":   field(r.Subject),
+		"date":      fmtDate(r.Date),
+		"unread":    r.Unread,
+		"starred":   r.Starred,
+		"labels":    labelList(r.Labels),
+	}
+}
+
+// convRow è la riga di una conversazione: il messaggio più recente più conteggio e stato.
+func convRow(c mail.Conversation) map[string]any {
+	r := c.Latest
+	tid := c.ThreadID
+	if tid == 0 {
+		tid = r.ThreadID
+	}
+	return map[string]any{
+		"id":        field(string(r.ID)),
+		"gmail_id":  idStr(r.GmailID),
+		"thread_id": idStr(tid),
+		"count":     c.Count,
+		"from":      field(r.From),
+		"subject":   field(r.Subject),
+		"date":      fmtDate(r.Date),
+		"unread":    c.Unread,
+		"labels":    labelList(c.Labels),
+	}
+}
+
+// listResponse converte le righe in un risultato. Se superano il limite di
+// dimensione ne toglie in coda e lo dichiara con truncated. has_more: ci sono
+// altre righe oltre questa pagina; next_offset è calcolato sulle righe restituite.
+func listResponse(rows []map[string]any, folder string, offset int, hasMore bool, extra map[string]any) (*mcp.CallToolResult, any, error) {
 	truncated := false
 	for {
-		// has_more: ci sono altre righe oltre questa pagina (per taglio di dimensione o
-		// per il limite del backend). next_offset è calcolato sulle righe restituite.
 		more := hasMore || truncated
 		data := map[string]any{"folder": field(folder), "items": rows, "returned": len(rows), "truncated": truncated, "has_more": more}
+		for k, v := range extra {
+			data[k] = v
+		}
 		if more {
 			data["next_offset"] = offset + len(rows)
 		}
@@ -247,11 +366,16 @@ func (s *session) listRecent(ctx context.Context, _ *mcp.CallToolRequest, in rec
 	if err != nil {
 		return nil, nil, s.fail(err)
 	}
-	return listResponse(refs, folder, pg.Offset, len(refs) == pg.Limit) // euristica: pagina piena = possibile seguito
+	rows := make([]map[string]any, 0, len(refs))
+	for _, r := range refs {
+		rows = append(rows, msgRow(r))
+	}
+	// euristica: pagina piena = possibile seguito (il backend non dà il totale)
+	return listResponse(rows, folder, pg.Offset, len(refs) == pg.Limit, nil)
 }
 
-// searchFolder sceglie la cartella di una ricerca senza folder: la mailbox con
-// ruolo "all" (come Gmail web), altrimenti INBOX (fix review 2).
+// searchFolder sceglie la cartella di una ricerca locale (server non Gmail) senza
+// folder: la mailbox con ruolo "all", altrimenti INBOX (fix review 2).
 func (s *session) searchFolder(ctx context.Context) (string, error) {
 	boxes, err := s.r.ListMailboxes(ctx)
 	if err != nil {
@@ -265,35 +389,58 @@ func (s *session) searchFolder(ctx context.Context) (string, error) {
 	return "INBOX", nil
 }
 
+// search: in modalità Gmail la query va verbatim allo store (X-GM-RAW, paginata
+// dallo store per conversazione, D8-4); altrimenti parsing locale come prima.
 func (s *session) search(ctx context.Context, _ *mcp.CallToolRequest, in searchIn) (*mcp.CallToolResult, any, error) {
 	pg, err := normalizePage(in.Offset, in.Limit)
 	if err != nil {
 		return nil, nil, err
 	}
-	q := msg.ParseQuery(in.Query)
-	if in.Folder != "" {
-		q.Label = in.Folder
+	if err := checkQuery(in.Query); err != nil {
+		return nil, nil, err
 	}
-	if err := checkFolder(q.Label); err != nil {
+	if err := checkFolder(in.Folder); err != nil {
 		return nil, nil, err
 	}
 	if err := s.ensure(ctx); err != nil {
 		return nil, nil, s.fail(err)
 	}
-	if q.Label == "" {
-		folder, err := s.searchFolder(ctx)
-		if err != nil {
-			return nil, nil, s.fail(err)
+	var q msg.Query
+	if gmailMode(s.r) {
+		q = msg.Query{Raw: in.Query, Label: in.Folder}
+	} else {
+		q = msg.ParseQuery(in.Query)
+		if in.Folder != "" {
+			q.Label = in.Folder
 		}
-		q.Label = folder
+		if q.Label == "" {
+			folder, err := s.searchFolder(ctx)
+			if err != nil {
+				return nil, nil, s.fail(err)
+			}
+			q.Label = folder
+		}
 	}
-	refs, err := s.r.Search(ctx, q)
-	if err != nil {
+	if err := checkFolder(q.Label); err != nil {
+		return nil, nil, err
+	}
+	convs, err := s.r.ListConversations(ctx, q, pg)
+	// ErrScanLimit: righe valide ma lista limitata dal tetto di scansione (Piano 8).
+	limited := errors.Is(err, mail.ErrScanLimit)
+	if err != nil && !limited {
 		return nil, nil, s.fail(err)
 	}
-	// Search non è paginata: offset e limit si applicano al risultato.
-	page := slicePage(refs, pg)
-	return listResponse(page, q.Label, pg.Offset, pg.Offset+len(page) < len(refs))
+	rows := make([]map[string]any, 0, len(convs))
+	for _, c := range convs {
+		rows = append(rows, convRow(c))
+	}
+	var extra map[string]any
+	if limited {
+		extra = map[string]any{"scan_limited": true}
+	}
+	// Senza righe con scansione limitata non c'è progresso: has_more resta falso.
+	hasMore := len(convs) == pg.Limit || (limited && len(convs) > 0)
+	return listResponse(rows, q.Label, pg.Offset, hasMore, extra)
 }
 
 // bodyLimit applica il default e il tetto di max_chars (M5).
@@ -327,26 +474,60 @@ func (s *session) readMessage(ctx context.Context, _ *mcp.CallToolRequest, in re
 	}
 	// Budget (fix review 4): prima i metadati, poi il corpo con ciò che resta.
 	b := newBudget()
-	idF, fromF, subjF, dateF := field(string(m.Ref.ID)), field(m.Ref.From), field(m.Ref.Subject), fmtDate(m.Ref.Date)
-	for _, v := range []string{idF, fromF, subjF, dateF} {
-		b.spend(jsonLen(v))
-	}
-	to, toOmit := takeFields(m.To, b)
-	cc, ccOmit := takeFields(m.Cc, b)
-	atts, attOmit := takeAttachments(m.Attachments, b)
+	item, omitted := messageFields(m, b)
 	body, bodyTrunc := truncateJSON(Sanitize(m.BodyText), maxChars, b.remaining())
+	item["body"] = body
+	item["body_truncated"] = bodyTrunc
+	item["truncated"] = bodyTrunc || omitted
+	return respond(item)
+}
+
+// readThread legge la conversazione: i maxThreadMessages più recenti, in ordine
+// cronologico, con il corpo di ciascuno. Il budget è diviso equamente fra i
+// messaggi rimasti (Piano 14, Wave 4). Il fetch dei corpi usa BODY.PEEK nel
+// backend: nessun messaggio viene segnato come letto.
+func (s *session) readThread(ctx context.Context, _ *mcp.CallToolRequest, in threadIn) (*mcp.CallToolResult, any, error) {
+	tid, err := parseThreadID(in.ThreadID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := s.ensure(ctx); err != nil {
+		return nil, nil, s.fail(err)
+	}
+	refs, err := s.r.ThreadMessages(ctx, tid)
+	if err != nil {
+		return nil, nil, s.fail(err)
+	}
+	omitted := 0
+	if len(refs) > maxThreadMessages {
+		omitted = len(refs) - maxThreadMessages
+		refs = refs[omitted:]
+	}
+	b := newBudget()
+	b.spend(jsonLen(idStr(tid)))
+	truncated := omitted > 0
+	msgs := make([]map[string]any, 0, len(refs))
+	for i, ref := range refs {
+		m, err := s.r.FetchMessage(ctx, ref.ID)
+		if err != nil {
+			return nil, nil, s.fail(err)
+		}
+		item, omit := messageFields(m, b)
+		share := b.remaining() / (len(refs) - i)
+		body, bodyTrunc := truncateJSON(Sanitize(m.BodyText), defaultBodyLen, share)
+		b.spend(jsonLen(body))
+		item["body"] = body
+		item["body_truncated"] = bodyTrunc
+		item["truncated"] = bodyTrunc || omit
+		if bodyTrunc || omit {
+			truncated = true
+		}
+		msgs = append(msgs, item)
+	}
 	return respond(map[string]any{
-		"id":                  idF,
-		"from":                fromF,
-		"to":                  to,
-		"cc":                  cc,
-		"subject":             subjF,
-		"date":                dateF,
-		"body":                body,
-		"body_truncated":      bodyTrunc,
-		"attachments":         atts,
-		"attachments_omitted": attOmit,
-		"recipients_omitted":  toOmit + ccOmit,
-		"truncated":           bodyTrunc || toOmit+ccOmit+attOmit > 0,
+		"thread_id":        idStr(tid),
+		"messages":         msgs,
+		"messages_omitted": omitted,
+		"truncated":        truncated,
 	})
 }

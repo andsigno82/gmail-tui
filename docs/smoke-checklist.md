@@ -136,6 +136,16 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] Spam and Trash messages are absent from a conversation opened from the Inbox, and present when it is opened from Trash.
 - [ ] Do not paste real addresses, subjects or bodies into the repo: redact any transcript before using it as a fixture (plan Task 13, point 5).
 
+## MCP server (Piano 14) — real account only
+
+- [ ] `claude mcp add gmail-tui -- /path/to/gmail-tui mcp`, then in Claude Code `list_folders` shows the Gmail folders and labels with their roles.
+- [ ] `search_messages` with `older_than:30d` returns the same conversations as Gmail web for the same query: one row each, with `thread_id` and `count`. When `has_more` is true, `next_offset` pages through the results without gaps or repeats.
+- [ ] `read_thread` with a `thread_id` from a search result returns the messages in date order with their bodies, and they stay unread in Gmail web.
+- [ ] `read_message` shows `gmail_id`, `thread_id` and the user labels as Gmail shows them.
+- [ ] A query with a newline or an over-long text is refused by the tool; no request reaches Gmail.
+- [ ] The App Password does not appear in the client logs nor in any tool result.
+- [ ] Do not paste real addresses, subjects or bodies into the repo: redact any transcript first.
+
 ## Notifications (Piano 7.3)
 
 - [ ] `v` on a message: a toast "letta"/"non letta" appears top right and disappears after about 3 s; the status bar keeps its neutral color.

@@ -22,7 +22,8 @@ type Reader interface {
 	Connect(ctx context.Context) error
 	ListMailboxes(ctx context.Context) ([]mail.Mailbox, error)
 	ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error)
-	Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error)
+	ListConversations(ctx context.Context, q msg.Query, pg mail.Page) ([]mail.Conversation, error)
+	ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error)
 	FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Message, error)
 }
 
