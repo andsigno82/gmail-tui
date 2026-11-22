@@ -145,18 +145,21 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 		view:    viewInbox,
 		ctx:     ctx,
 		cancel:  cancel,
-		// Il load iniziale emesso sempre da Init è già in flight: pending
-		// parte da 1 così la status bar mostra lo spinner finché msgsLoaded
-		// non arriva. Le op successive incrementeranno al dispatch (Task 6/7).
+		// Il Connect d'avvio emesso da Init è già in flight (bugfix
+		// 2026-11-22): pending parte da 1 così la status bar mostra lo
+		// spinner finché connResult non arriva — il load vero incrementa
+		// di nuovo al dispatch. Le op successive idem (Task 6/7).
 		pending: 1,
 	}
 }
 
-// Init emette il load iniziale della lista (Query vuota, prima pagina da 50),
-// avvia lo spinner e apre il feed Watch (Task 8): al watchStarted la radice
-// arma il loop waitForChange che guida il refresh automatico. In modalità
-// wizard (Piano 4, Task 5) NESSUNA delle due cose parte: store/sender sono
-// ancora il placeholder e la sessione vera nasce al completamento del wizard.
+// Init emette il Connect d'avvio (bugfix 2026-11-22: il contratto MailStore
+// lo richiede prima di qualunque lettura): al connResult riuscito partono il
+// load iniziale della lista (Query vuota, prima pagina da 50) e il feed Watch
+// (Task 8) — al watchStarted la radice arma il loop waitForChange che guida
+// il refresh automatico. In modalità wizard (Piano 4, Task 5) NIENTE parte:
+// store/sender sono ancora il placeholder e la sessione vera nasce al
+// completamento del wizard.
 func (m Model) Init() tea.Cmd {
 	if m.wizardActive {
 		return m.wiz.Init()
@@ -548,13 +551,6 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// (keymap centrale in keys.go, Task 9).
 			return m, m.quitCmd()
 		}
-		if m.connectFailed && ev.String() == "R" {
-			// Bugfix 2026-11-22: Connect d'avvio fallito → R riprova la
-			// sequenza completa (connect → load → watch). Prima del routing
-			// normale: a connessione assente le altre azioni fallirebbero.
-			m.pending++ // il connect è un'op: spinner finché connResult
-			return m, m.beginSession()
-		}
 		if m.wizardActive {
 			// Wizard first-run (Piano 4, Task 5): TUTTI i tasti vanno al
 			// wizard — enter avanza, esc torna al passo precedente, `s` salta
@@ -671,6 +667,15 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il routing usa la keymap centrale (Task 9): stesse chiavi e stesso
 		// ordine del vecchio switch su ev.String() (a/s/v/l → q/esc → …).
 		switch {
+		case m.connectFailed && key.Matches(ev, keys.Connect):
+			// Bugfix 2026-11-22: Connect d'avvio fallito → R riprova la
+			// sequenza completa (connect → load → watch). Nel routing
+			// normale: se un input è attivo (ricerca, composer, prompt) R è
+			// testo del campo, non un comando. Il flag si spegne SUBITO:
+			// un secondo R durante il retry non lancia Connect concorrenti.
+			m.pending++ // il connect è un'op: spinner finché connResult
+			m.connectFailed = false
+			return m, m.beginSession()
 		case key.Matches(ev, keys.Reply, keys.Forward):
 			// r/f (Piano 4, Task 3): nell'inbox fetch-then-compose (cache-
 			// first via store.FetchMessage), nel thread composer immediato

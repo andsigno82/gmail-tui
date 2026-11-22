@@ -122,8 +122,9 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 	default: // inbox
 		if m.connectFailed {
 			// Connect d'avvio fallito (bugfix 2026-11-22): la sola azione
-			// utile è riprovare; le letture fallirebbero comunque.
-			return []key.Binding{keys.Connect, keys.ForceQuit}
+			// utile è riprovare; le letture fallirebbero comunque. Quit è
+			// pubblicizzato perché funziona: l'uscita pulita resta possibile.
+			return []key.Binding{keys.Connect, keys.Quit, keys.ForceQuit}
 		}
 		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Help}
 	}

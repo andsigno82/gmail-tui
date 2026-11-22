@@ -76,22 +76,6 @@ func seedOne(m *mail.Mock) {
 	}})
 }
 
-// batchMsgs esegue tutti i cmd di un BatchMsg e restituisce i messaggi.
-func batchMsgs(t *testing.T, res tea.Msg) []tea.Msg {
-	t.Helper()
-	batch, ok := res.(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("atteso tea.BatchMsg, avuto %T", res)
-	}
-	var out []tea.Msg
-	for _, c := range batch {
-		if msg := c(); msg != nil {
-			out = append(out, msg)
-		}
-	}
-	return out
-}
-
 // Il percorso atteso: Init → connectCmd → connResult(ok) → loadRefs →
 // msgsLoaded SENZA errore, con lo store effettivamente connesso.
 func TestInitConnectsStoreBeforeFirstLoad(t *testing.T) {
@@ -104,9 +88,8 @@ func TestInitConnectsStoreBeforeFirstLoad(t *testing.T) {
 	}
 	m := New(store, &mail.Mock{}, th)
 
-	res := m.Init()() // Init → batch {connectCmd, tick}
 	var connRes tea.Msg
-	for _, msg := range batchMsgs(t, res) {
+	for _, msg := range runCmd(m.Init()) { // Init → batch {connectCmd, tick}
 		if cr, ok := msg.(connResult); ok {
 			connRes = cr
 		}
@@ -121,7 +104,7 @@ func TestInitConnectsStoreBeforeFirstLoad(t *testing.T) {
 	}
 	var loadedErr error
 	var refs int
-	for _, msg := range batchMsgs(t, c2()) {
+	for _, msg := range runCmd(c2) {
 		if ml, ok := msg.(msgsLoaded); ok {
 			loadedErr, refs = ml.err, len(ml.refs)
 		}
@@ -149,9 +132,8 @@ func TestConnectFailureShowsStatusAndRRetries(t *testing.T) {
 	}
 	m := New(store, &mail.Mock{}, th)
 
-	res := m.Init()()
 	var connRes tea.Msg
-	for _, msg := range batchMsgs(t, res) {
+	for _, msg := range runCmd(m.Init()) {
 		if cr, ok := msg.(connResult); ok {
 			connRes = cr
 		}
@@ -172,13 +154,21 @@ func TestConnectFailureShowsStatusAndRRetries(t *testing.T) {
 	}
 
 	// Retry con R: Connect stavolta riesce → load → msgsLoaded pulito.
+	// Il flag si spegne al dispatch e pending risale (spinner): un secondo
+	// R durante il retry non lancia Connect concorrenti.
 	var c3 tea.Cmd
-	_, c3 = step(m, pressKey("R"))
+	m, c3 = step(m, pressKey("R"))
 	if c3 == nil {
 		t.Fatal("R non rilancia la sequenza di connessione")
 	}
+	if m.connectFailed {
+		t.Fatal("connectFailed deve spegnersi al dispatch del retry")
+	}
+	if m.pending != 1 {
+		t.Fatalf("pending dopo R = %d, voglio 1 (connect in flight)", m.pending)
+	}
 	var connRes2 tea.Msg
-	for _, msg := range batchMsgs(t, c3()) {
+	for _, msg := range runCmd(c3) {
 		if cr, ok := msg.(connResult); ok {
 			connRes2 = cr
 		}
@@ -192,7 +182,7 @@ func TestConnectFailureShowsStatusAndRRetries(t *testing.T) {
 		t.Fatal("dopo il retry riuscito atteso il batch di load/watch")
 	}
 	var loadedErr error
-	for _, msg := range batchMsgs(t, c4()) {
+	for _, msg := range runCmd(c4) {
 		if ml, ok := msg.(msgsLoaded); ok {
 			loadedErr = ml.err
 		}
