@@ -117,7 +117,7 @@ func TestPackageNeverWritesToStdout(t *testing.T) {
 	}
 }
 
-// Piano 14, Task 6 (regola 1 di AGENTS.md): il server non importa go-imap.
+// Piano 14, Task 6 (regola 1 di AGENTS.md): il server non importa la libreria IMAP.
 func TestPackageDoesNotReferenceGoIMAP(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -131,7 +131,7 @@ func TestPackageDoesNotReferenceGoIMAP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(b), "go-imap") || strings.Contains(string(b), "internal/mail/imap") {
+		if strings.Contains(string(b), "go-"+"imap") || strings.Contains(string(b), "internal/mail/imap") {
 			t.Errorf("%s referenzia IMAP: il server parla solo con MailStore", f)
 		}
 	}
