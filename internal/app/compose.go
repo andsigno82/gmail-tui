@@ -267,7 +267,10 @@ func deliverSend(sender Sender, st mail.MailStore, p *pendingSend) opDone {
 	}
 	removeTmp(p.tmp) // inviato: gli allegati scaricati non servono più
 	res := opDone{label: "inviato", refresh: true, send: true, observed: addresses(p.out.To, p.out.Cc, p.out.Bcc)}
-	if p.draftID != "" {
+	if p.draftID != "" && p.keep {
+		// Ripresa con allegati non scaricati: l'originale è l'unica copia dell'allegato.
+		res.draftKept = true
+	} else if p.draftID != "" {
 		dctx, dcancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
 		defer dcancel()
 		res.draftErr = st.DeleteDraft(dctx, []msg.MessageID{p.draftID})

@@ -543,6 +543,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
 		toastCmd := m.toast.Push(toast.Success, ev.label)
+		if ev.draftKept {
+			keptCmd := m.toast.Push(toast.Info, "bozza originale conservata in Bozze: allegati non scaricati alla ripresa")
+			toastCmd = tea.Batch(toastCmd, keptCmd)
+		}
 		if ev.draftErr != nil {
 			// Piano 9, Task 7 (D9-E): l'invio è riuscito; fallisce solo la rimozione da Bozze.
 			errCmd := m.toast.Push(toast.Error, "bozza non rimossa da Bozze: "+ev.draftErr.Error())

@@ -177,3 +177,24 @@ func TestRecipientNamesSurviveResume(t *testing.T) {
 		t.Errorf("destinatario ripreso = %q (nome %q, indirizzo %q), voglio Anna Rossi <anna@x.dev>", to[0], a.Name, a.Address)
 	}
 }
+
+// TestSendAfterFailedDownloadKeepsOriginal: la bozza ripresa senza allegati (download
+// fallito) non si toglie da Bozze all'invio riuscito: l'allegato esiste solo lì,
+// e un toast lo dice.
+func TestSendAfterFailedDownloadKeepsOriginal(t *testing.T) {
+	m, mk, ref := attachedDraftMock(t, false)
+	mm := resumeFlow(t, m, ref)
+	mm = sendRequested(t, mm)
+	mm, _ = step(mm, pressKey("s"))
+	mm, done := flushUndo(t, mm)
+	mm, _ = step(mm, done)
+	if !done.draftKept {
+		t.Error("opDone senza draftKept: la bozza originale verrebbe rimossa")
+	}
+	if got := inDrafts(mk); len(got) != 1 || got[0] != ref.ID {
+		t.Errorf("bozze in Bozze = %v, voglio l'originale (%s) ancora presente", got, ref.ID)
+	}
+	if !strings.Contains(toastText(mm), "conservata") {
+		t.Errorf("toast = %q, voglio l'avviso della bozza originale conservata", toastText(mm))
+	}
+}
