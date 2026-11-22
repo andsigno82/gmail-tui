@@ -14,7 +14,14 @@ La copia resta identica a upstream salvo i file elencati nella tabella delle pat
 | 2 | `imapclient/fetch.go` | scrittura degli item `X-GM-*` in `writeFetchItems`; campi `GmailMsgID`/`GmailThreadID`/`GmailLabels` in `FetchMessageBuffer`; `populateItemData`; case `X-GM-MSGID`/`X-GM-THRID`/`X-GM-LABELS` in `handleFetch`; il `default` che era errore ora scarta il valore (`skipMsgAttValue`) |
 | 2 | `imapclient/gmail.go` (nuovo) | tipi `FetchItemDataGmail*`, parser (`readGmailID` uint64, `readGmailLabels`), decoder modified UTF-7 (RFC 3501 §5.1.3, scritto a mano: `cention-sany/utf7` implementa lo UTF-7 con "+", non quello IMAP con "&") |
 
-Test della patch: `imapclient/gmail_test.go` (server scriptato su `net.Pipe`, non il memserver).
+| 3 | `search.go` | campo `SearchCriteria.Gmail *SearchCriteriaGmail` (`Raw`, `MsgID`, `ThreadID`, `Labels`) e il tipo; `And()` NON unisce questo campo |
+| 3 | `imapclient/search.go` | encoding di `X-GM-RAW` (quotato, con escape), `X-GM-MSGID`, `X-GM-THRID`, `X-GM-LABELS` in `writeSearchKey`; `CHARSET UTF-8` se il testo Gmail non è ASCII |
+| 4 | `store.go` | tipo `StoreGmailLabels` (`Op`, `Silent`, `Labels`) |
+| 4 | `imapclient/gmail.go` | metodo `Client.StoreGmailLabels`: `STORE set [+|-]X-GM-LABELS[.SILENT] ("l1" "l2")`; `Store` upstream invariato |
+
+Test della patch: `imapclient/gmail_test.go` (Task 2), `imapclient/gmail_search_test.go` (Task 3), `imapclient/gmail_store_test.go` (Task 4). Tutti usano un server scriptato su `net.Pipe`, non il memserver, che non conosce X-GM-*.
+
+Deviazione dal `go.mod` upstream: nessuna (la copia usa il `go.mod` di beta.9). La modified UTF-7 è decodificata da `imapclient/gmail.go` senza dipendenze esterne.
 
 Deviazioni dall'upstream oltre alle patch: nessuna. Il `go.mod` della copia è quello upstream (`go 1.18`).
 

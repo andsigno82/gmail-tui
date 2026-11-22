@@ -20,3 +20,12 @@ type StoreFlags struct {
 	Silent bool
 	Flags  []Flag
 }
+
+// StoreGmailLabels modifica le label Gmail X-GM-EXT-1 (Piano 8, Task 4, patch
+// Gmail). Op: StoreFlagsSet sostituisce, StoreFlagsAdd aggiunge (+),
+// StoreFlagsDel rimuove (-). Silent come in StoreFlags.
+type StoreGmailLabels struct {
+	Op     StoreFlagsOp
+	Silent bool
+	Labels []string
+}

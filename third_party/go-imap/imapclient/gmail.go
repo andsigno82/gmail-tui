@@ -12,6 +12,7 @@ import (
 	"unicode"
 	"unicode/utf16"
 
+	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/internal/imapwire"
 )
 
@@ -133,6 +134,36 @@ func decodeModifiedUTF7(s string) (string, error) {
 		i += end + 2
 	}
 	return out.String(), nil
+}
+
+// StoreGmailLabels invia STORE con X-GM-LABELS (Piano 8, Task 4, patch Gmail).
+// Come Store: senza Silent il server risponde con i FETCH aggiornati.
+func (c *Client) StoreGmailLabels(numSet imap.NumSet, store *imap.StoreGmailLabels) *FetchCommand {
+	cmd := &FetchCommand{
+		numSet: numSet,
+		msgs:   make(chan *FetchMessageData, 128),
+	}
+	enc := c.beginCommand(uidCmdName("STORE", imapwire.NumSetKind(numSet)), cmd)
+	enc.SP().NumSet(numSet).SP()
+	switch store.Op {
+	case imap.StoreFlagsSet:
+		// nessun prefisso: sostituisce le label
+	case imap.StoreFlagsAdd:
+		enc.Special('+')
+	case imap.StoreFlagsDel:
+		enc.Special('-')
+	default:
+		panic(fmt.Errorf("imapclient: unknown store flags op: %v", store.Op))
+	}
+	enc.Atom("X-GM-LABELS")
+	if store.Silent {
+		enc.Atom(".SILENT")
+	}
+	enc.SP().List(len(store.Labels), func(i int) {
+		enc.String(store.Labels[i])
+	})
+	enc.end()
+	return cmd
 }
 
 func isDigitChar(ch byte) bool {
