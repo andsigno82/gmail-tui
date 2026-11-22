@@ -33,6 +33,7 @@ func Parse(id MessageID, raw io.Reader) (*Message, error) {
 	m.Ref.From = displayAddr(env, "From")
 	m.To = addrList(env, "To")
 	m.Cc = addrList(env, "Cc")
+	m.Bcc = addrList(env, "Bcc") // Piano 9, Task 4: solo nelle bozze
 	if d, err := mail.ParseDate(env.GetHeader("Date")); err == nil {
 		m.Ref.Date = d
 	}
