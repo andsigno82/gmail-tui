@@ -62,8 +62,10 @@ func readGmailLabels(dec *imapwire.Decoder) ([]string, error) {
 	}
 	var labels []string
 	err := dec.ExpectList(func() error {
+		// Ogni etichetta: quoted, literal {n} (consumato per intero, altrimenti la
+		// lettura si desincronizza: Piano 8, review punto 5) o atomo come \Inbox.
 		var s string
-		if dec.Quoted(&s) {
+		if dec.Quoted(&s) || dec.Literal(&s) {
 			labels = append(labels, decodeGmailLabel(s))
 			return nil
 		}

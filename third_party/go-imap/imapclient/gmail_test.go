@@ -159,3 +159,29 @@ func TestFetchUnknownAttributeIsSkipped(t *testing.T) {
 		t.Fatalf("connessione non più utilizzabile: %v", err)
 	}
 }
+
+// Piano 8, review (punto 5): ogni etichetta di X-GM-LABELS è un astring, quindi può
+// essere quotata (con spazi), atomo o literal {n}. Il literal non deve desincronizzare
+// la lettura della lista.
+func TestFetchGmailLabelsQuotedAndLiteral(t *testing.T) {
+	client, _ := newScriptedClient(t, func(string) []string {
+		return []string{
+			`* 1 FETCH (X-GM-LABELS ({10}`,
+			`Work Label))`,
+			`* 2 FETCH (X-GM-LABELS ("Ufficio Vendite" Archivio))`,
+		}
+	})
+	msgs, err := client.Fetch(imap.SeqSetNum(1, 2), &imap.FetchOptions{GmailLabels: true}).Collect()
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("len(msgs) = %d, want 2", len(msgs))
+	}
+	if want := []string{"Work Label"}; !reflect.DeepEqual(msgs[0].GmailLabels, want) {
+		t.Errorf("literal: GmailLabels = %q, want %q", msgs[0].GmailLabels, want)
+	}
+	if want := []string{"Ufficio Vendite", "Archivio"}; !reflect.DeepEqual(msgs[1].GmailLabels, want) {
+		t.Errorf("quoted con spazi: GmailLabels = %q, want %q", msgs[1].GmailLabels, want)
+	}
+}
