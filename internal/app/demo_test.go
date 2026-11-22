@@ -16,12 +16,13 @@ func TestDemoStoreRealisticSeed(t *testing.T) {
 	if mk == nil {
 		t.Fatal("DemoStore = nil")
 	}
-	if n := len(mk.Msgs); n < 5 || n > 6 {
-		t.Fatalf("messaggi seed = %d, voglio 5-6", n)
+	inbox := inboxMsgs(mk)
+	if n := len(inbox); n < 5 || n > 6 {
+		t.Fatalf("messaggi seed in posta in arrivo = %d, voglio 5-6", n)
 	}
 	var unread, starred int
 	var subjects []string
-	for _, mm := range mk.Msgs {
+	for _, mm := range inbox {
 		if mm.Ref.Unread {
 			unread++
 		}
@@ -36,8 +37,8 @@ func TestDemoStoreRealisticSeed(t *testing.T) {
 			t.Errorf("seed %q: corpo vuoto", mm.Ref.Subject)
 		}
 	}
-	if unread == 0 || unread == len(mk.Msgs) {
-		t.Errorf("unread = %d su %d: voglio un mix", unread, len(mk.Msgs))
+	if unread == 0 || unread == len(inbox) {
+		t.Errorf("unread = %d su %d: voglio un mix", unread, len(inbox))
 	}
 	if starred == 0 {
 		t.Error("nessun messaggio starred nel seed")
@@ -89,12 +90,53 @@ func TestDemoStoreListable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMessages: %v", err)
 	}
-	if len(refs) != len(mk.Msgs) {
-		t.Fatalf("refs = %d, voglio %d", len(refs), len(mk.Msgs))
+	if want := len(inboxMsgs(mk)); len(refs) != want {
+		t.Fatalf("refs = %d, voglio %d (posta in arrivo)", len(refs), want)
 	}
 	for i := 1; i < len(refs); i++ {
 		if refs[i].Date.After(refs[i-1].Date) {
 			t.Errorf("ordine data non desc a posizione %d", i)
+		}
+	}
+}
+
+// inboxMsgs restituisce i messaggi del seed nella posta in arrivo (INBOX).
+func inboxMsgs(mk *mail.Mock) []*msg.Message {
+	var out []*msg.Message
+	for _, mm := range mk.Msgs {
+		if box, _, err := mm.Ref.ID.Split(); err == nil && box == "INBOX" {
+			out = append(out, mm)
+		}
+	}
+	return out
+}
+
+// TestDemoStoreFolders (Piano 7, fix review 8): il seed ha una cartella Inviati
+// (ruolo sent) e una label Work, entrambe con messaggi, così `m` in demo mostra
+// la navigazione fra cartelle e label.
+func TestDemoStoreFolders(t *testing.T) {
+	mk := DemoStore()
+	boxes, err := mk.ListMailboxes(t.Context())
+	if err != nil {
+		t.Fatalf("ListMailboxes: %v", err)
+	}
+	roles := map[string]string{}
+	for _, b := range boxes {
+		roles[b.Name] = b.Role
+	}
+	if roles["[Gmail]/Inviati"] != "sent" {
+		t.Errorf("cartelle = %+v, voglio [Gmail]/Inviati con ruolo sent", boxes)
+	}
+	if _, ok := roles["Work"]; !ok {
+		t.Errorf("cartelle = %+v, voglio la label Work", boxes)
+	}
+	for _, box := range []string{"[Gmail]/Inviati", "Work"} {
+		refs, err := mk.ListMessages(t.Context(), msg.Query{Label: box}, mail.Page{Limit: 50})
+		if err != nil {
+			t.Fatalf("ListMessages %s: %v", box, err)
+		}
+		if len(refs) < 2 {
+			t.Errorf("%s: %d messaggi, voglio almeno 2", box, len(refs))
 		}
 	}
 }

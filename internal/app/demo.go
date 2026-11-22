@@ -1,6 +1,7 @@
 // Demo seed (Piano 4, Task 5): app.DemoStore() è la factory della modalità
-// demo — un Mock con 5-6 messaggi realistici (mix unread/starred, un allegato
-// fittizio con Raw popolato così `:save` funziona). Usata dal wizard-skip e
+// demo — un Mock con 5-6 messaggi realistici in posta in arrivo (mix
+// unread/starred, un allegato fittizio con Raw popolato così `:save` funziona)
+// e qualche messaggio in Inviati e nella label Work (Piano 7, fix review 8). Usata dal wizard-skip e
 // dal path demo senza password del main: chi clona il repo vede l'app viva
 // (lista, lettura, ricerca, stella, invio registrato in Mock.Sent).
 package app
@@ -90,6 +91,58 @@ func DemoStore() *mail.Mock {
 			BodyText: "Per me venerdì va bene, confermo il posto delle scorse volte.\n\nIl 17 nov 2026, tu@example.com ha scritto:\n> Ci vediamo venerdì per il solito pranzo?",
 		},
 	}
+	// Piano 7, fix review 8: cartelle e label del seed. Inviati (ruolo sent) e
+	// la label Work hanno messaggi propri, così `m` in demo mostra la
+	// navigazione fra cartelle; il cestino resta quello Gmail di default.
+	mk.Mailboxes = []mail.Mailbox{
+		{Name: "INBOX", Role: "inbox"},
+		{Name: "[Gmail]/Inviati", Role: "sent"},
+		{Name: "[Gmail]/Trash", Role: "trash"},
+		{Name: "Work"},
+	}
+	mk.Msgs = append(mk.Msgs,
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("[Gmail]/Inviati", 1),
+				From:    "tu@example.com",
+				Subject: "Re: design review",
+				Date:    now.Add(-90 * time.Minute),
+			},
+			To:       []string{"anna@example.dev"},
+			BodyText: "Ciao Anna,\n\nperfetto, sistemo il padding dell'header a 3 colonne e ricarico la bozza.\n\nA dopo!",
+		},
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("[Gmail]/Inviati", 2),
+				From:    "tu@example.com",
+				Subject: "Fwd: report spese Q4",
+				Date:    now.Add(-25 * time.Hour),
+			},
+			To:       []string{"contabilita@example.dev"},
+			BodyText: "Ciao,\n\nti giro il report del trimestre per la riunione di venerdì.\n\nGrazie",
+		},
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("Work", 1),
+				From:    "sprint@example.dev",
+				Subject: "Sprint 47: obiettivi",
+				Date:    now.Add(-7 * time.Hour),
+				Unread:  true,
+			},
+			To:       []string{"tu@example.com"},
+			BodyText: "Team,\n\nper lo sprint 47 i tre obiettivi sono: vista thread, ricerca e cestino.\n\nSprint review giovedì alle 15.",
+		},
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("Work", 2),
+				From:    "luca@example.dev",
+				Subject: "Re: sprint 47: obiettivi",
+				Date:    now.Add(-3 * time.Hour),
+			},
+			To:       []string{"tu@example.com"},
+			BodyText: "Per me va bene. Ho già aperto il ticket per la ricerca.\n\nLuca",
+		},
+	)
 	// Allegato fittizio con contenuto: `:save 1` sul messaggio 3 scrive un
 	// PDF (intestazione minima, non un file vero) — sufficiente alla demo.
 	mk.Raw[msg.NewID("INBOX", 3)] = map[int][]byte{

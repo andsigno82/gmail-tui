@@ -214,8 +214,8 @@ func TestWizardSkipSeedsDemoStore(t *testing.T) {
 		}
 		cmds = next
 	}
-	if len(m.refs) != len(mk.Msgs) {
-		t.Errorf("refs dopo il load = %d, voglio %d", len(m.refs), len(mk.Msgs))
+	if want := len(inboxMsgs(mk)); len(m.refs) != want {
+		t.Errorf("refs dopo il load = %d, voglio %d (posta in arrivo del seed)", len(m.refs), want)
 	}
 }
 
