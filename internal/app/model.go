@@ -90,6 +90,7 @@ type Model struct {
 	book       *contacts.Book
 	addrCmd    []string
 	addrWarned bool
+	suggestSeq int // ultima query del composer: il debounce del comando esterno (review G)
 	clock      func() time.Time
 
 	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
@@ -861,6 +862,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	case composer.SuggestQueryMsg:
 		// Piano 9, Task 12 (D9-H): suggerimenti per il frammento del campo A/Cc/Ccn.
 		cmd := m.suggestQuery(ev)
+		return m, cmd
+
+	case suggestDueMsg:
+		// Piano 9, review G: debounce scaduto → comando esterno per l'ultima query.
+		cmd := m.dueLookup(ev)
 		return m, cmd
 
 	case suggestionsLoaded:

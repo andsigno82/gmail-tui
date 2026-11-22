@@ -26,7 +26,17 @@ const (
 	suggestLimit = 5
 	// addressLookupTimeout è il budget del comando esterno dei contatti (D9-G).
 	addressLookupTimeout = 2 * time.Second
+	// lookupDebounce ritarda il comando esterno rispetto all'ultimo tasto (Piano 9, review G).
+	lookupDebounce = 150 * time.Millisecond
 )
+
+// suggestDueMsg è lo scadere del debounce di una query: il comando esterno parte
+// solo se seq è ancora l'ultimo (Piano 9, review G).
+type suggestDueMsg struct {
+	seq   int
+	field composer.Field
+	query string
+}
 
 // suggestionsLoaded è l'esito del comando esterno per una query del composer.
 type suggestionsLoaded struct {
@@ -75,14 +85,28 @@ func mergeSuggestions(local, ext []composer.Suggestion) []composer.Suggestion {
 	return out
 }
 
-// suggestQuery risponde a una richiesta del composer: locali subito, esterno
-// in cmd (se configurato). Restituisce la cmd del comando esterno, se c'è.
+// suggestQuery risponde a una richiesta del composer: locali subito; il comando
+// esterno (se configurato) parte dopo il debounce, con il tick della query.
 func (m *Model) suggestQuery(q composer.SuggestQueryMsg) tea.Cmd {
 	m.composer.SetSuggestions(q.Field, q.Query, localSuggestions(m.book, q.Query))
 	if len(m.addrCmd) == 0 {
 		return nil
 	}
+	m.suggestSeq++
+	seq := m.suggestSeq
+	return tea.Tick(lookupDebounce, func(time.Time) tea.Msg {
+		return suggestDueMsg{seq: seq, field: q.Field, query: q.Query}
+	})
+}
+
+// dueLookup avvia il comando esterno per l'ultima query (Piano 9, review G): un
+// tick stantio (seq superato da un tasto successivo) non fa nulla.
+func (m *Model) dueLookup(ev suggestDueMsg) tea.Cmd {
+	if ev.seq != m.suggestSeq {
+		return nil
+	}
 	argv := append([]string(nil), m.addrCmd...)
+	q := composer.SuggestQueryMsg{Field: ev.field, Query: ev.query}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), addressLookupTimeout)
 		defer cancel()

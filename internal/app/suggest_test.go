@@ -108,3 +108,33 @@ func TestSentMessageBumpsRecipients(t *testing.T) {
 		t.Errorf("Cc inviato non nella rubrica: %+v", got)
 	}
 }
+
+// TestExternalLookupIsDebounced (Piano 9, review G): il comando esterno non parte
+// a ogni tasto. Il tick di una query superata non fa nulla; solo l'ultima lancia
+// il comando. La rubrica locale resta immediata.
+func TestExternalLookupIsDebounced(t *testing.T) {
+	m, _ := composerModel(t)
+	mm, _ := step(m, teaSize())
+	mm.SetAddressBook(nil, []string{"/bin/sh"})
+	mm = draftComposer(mm, composer.ComposerConfig{})
+	mm, c1 := step(mm, composer.SuggestQueryMsg{Field: composer.FieldTo, Query: "a"})
+	mm, c2 := step(mm, composer.SuggestQueryMsg{Field: composer.FieldTo, Query: "an"})
+	if c1 == nil || c2 == nil {
+		t.Fatal("comando del debounce assente")
+	}
+	stale := c1()
+	if _, ok := stale.(suggestDueMsg); !ok {
+		t.Fatalf("primo tick = %T, voglio suggestDueMsg", stale)
+	}
+	mm, cmd := step(mm, stale)
+	if cmd != nil {
+		t.Error("tick stantio ha avviato il comando esterno")
+	}
+	mm, cmd = step(mm, c2())
+	if cmd == nil {
+		t.Fatal("ultimo tick: nessun comando esterno")
+	}
+	if _, ok := cmd().(suggestionsLoaded); !ok {
+		t.Error("ultimo tick: il comando non torna suggestionsLoaded")
+	}
+}
