@@ -43,16 +43,42 @@ func newSearchInput(st styles.Styles) textinput.Model {
 	return ti
 }
 
+// gmailAware è l'interfaccia opzionale con cui lo store dichiara la modalità
+// Gmail (Piano 8, Task 11). Il Mock non la implementa: è un server non Gmail.
+type gmailAware interface {
+	GmailExt() bool
+}
+
+// searchQuery costruisce la Query di una ricerca digitata (Piano 8, Task 11):
+// con Gmail la stringa passa intera a Query.Raw (X-GM-RAW), senza riscriverla;
+// senza Gmail resta il parsing ParseQuery di prima.
+func searchQuery(st mail.MailStore, raw string) msg.Query {
+	if g, ok := st.(gmailAware); ok && g.GmailExt() {
+		return msg.Query{Raw: raw}
+	}
+	return msg.ParseQuery(raw)
+}
+
+// scopeQuery applica l'ambito della cartella corrente a una ricerca (Piano 8,
+// Task 11, D8-4): una query Raw non ha cartella, cerca in Tutti i messaggi come
+// Gmail web (in:/label: dentro la stringa li ha già il server); le altre restano
+// nella cartella salvo label: esplicita.
+func scopeQuery(q msg.Query, box string) msg.Query {
+	if q.Raw != "" {
+		return q
+	}
+	return inFolder(q, box)
+}
+
 // submitQuery traduce la query digitata nella Cmd giusta nella cartella box
 // (Piano 7, Task 4): stringa vuota (o solo spazi) → re-list completo (come il
-// load di Init), altrimenti Search col Query parsato da ParseQuery, limitata
-// alla cartella salvo label: esplicita.
+// load di Init), altrimenti Search con la Query di searchQuery.
 func submitQuery(st mail.MailStore, raw string, box string, gen int) tea.Cmd {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return loadRefs(st, box, gen)
 	}
-	return searchCmd(st, msg.ParseQuery(raw), raw, box, gen)
+	return searchCmd(st, searchQuery(st, raw), raw, box, gen)
 }
 
 // searchCmd esegue la ricerca fuori dal loop UI. Il risultato è msgsLoaded
@@ -61,7 +87,7 @@ func submitQuery(st mail.MailStore, raw string, box string, gen int) tea.Cmd {
 // badge anche al re-list, che viaggia senza query).
 func searchCmd(st mail.MailStore, q msg.Query, raw string, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		convs, err := st.ListConversations(context.Background(), inFolder(q, box), mail.Page{Limit: searchLimit})
+		convs, err := st.ListConversations(context.Background(), scopeQuery(q, box), mail.Page{Limit: searchLimit})
 		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, mailbox: box, gen: gen}
 	}
 }

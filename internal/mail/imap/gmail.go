@@ -16,3 +16,8 @@ func (s *Store) gmailOn() bool {
 	defer s.mu.Unlock()
 	return s.gmail
 }
+
+// GmailExt dice se lo Store opera in modalità Gmail (X-GM-EXT-1 annunciata al
+// login). È un'interfaccia opzionale, fuori da mail.MailStore: la UI la legge
+// per scegliere la sintassi di `/` (Piano 8, Task 11).
+func (s *Store) GmailExt() bool { return s.gmailOn() }

@@ -118,6 +118,8 @@ type Model struct {
 	pendingRef    msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
 	query         msg.Query        // query corrente della lista (refresh dopo op, Task 7)
 	queryRaw      string           // stringa digitata della query corrente ("" = inbox)
+	prevQueryRaw  string           // query precedente, ripristinata se la ricerca fallisce (Piano 8, Task 11)
+	prevQuery     msg.Query
 	status        statusMsg        // ultimo messaggio di status (effimero)
 	startup       bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
 	pending       int              // op store in flight (>0: spinner attivo)
@@ -295,6 +297,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if ev.query != "" {
 				text = fmt.Sprintf("ricerca %q: %v", ev.query, ev.err)
 			}
+			if ev.query != "" {
+				// Piano 8, Task 11: la ricerca fallita non resta come stato corrente;
+				// la lista precedente torna con la sua query (paginazione e refresh).
+				m.queryRaw, m.query = m.prevQueryRaw, m.prevQuery
+			}
 			cmd := m.toast.Push(toast.Error, text)
 			return m, cmd
 		}
@@ -339,7 +346,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if !ev.silent {
 			if ev.query != "" {
 				// Badge dei risultati di ricerca: conteggio + query digitata.
-				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q", len(ev.refs), ev.query)}
+				// Piano 8, Task 11: la ricerca Gmail dichiara il suo ambito (Tutti i messaggi).
+				scope := ""
+				if m.query.Raw != "" {
+					scope = " in Tutti i messaggi"
+				}
+				m.status = statusMsg{text: fmt.Sprintf("%d risultati per %q%s", len(ev.refs), ev.query, scope)}
 			} else if m.startup {
 				// Status d'avvio (banner demo o warning tema, Task 9): il
 				// load di Init NON lo cancella — resta finché un evento vero
@@ -1217,10 +1229,13 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 	m.view = viewInbox
 	m.search.Blur()
 	m.search.Reset()
+	// La query precedente si ricorda: se la ricerca fallisce, lo stato torna lì
+	// (Piano 8, Task 11: la lista precedente resta con la sua query).
+	m.prevQueryRaw, m.prevQuery = m.queryRaw, m.query
 	m.queryRaw = raw
 	m.query = msg.Query{}
 	if raw != "" {
-		m.query = msg.ParseQuery(raw)
+		m.query = searchQuery(m.store, raw)
 	}
 	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
 	m.listGen++ // nuova generazione: i risultati della lista precedente sono stanti (fix review 2)

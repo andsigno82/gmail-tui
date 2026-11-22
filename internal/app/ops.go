@@ -384,7 +384,7 @@ func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box stri
 		if raw == "" {
 			convs, err = st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Limit: limit})
 		} else {
-			convs, err = st.ListConversations(context.Background(), inFolder(q, box), mail.Page{Limit: searchLimit})
+			convs, err = st.ListConversations(context.Background(), scopeQuery(q, box), mail.Page{Limit: searchLimit})
 			limit = 0
 		}
 		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, silent: true, limit: limit, mailbox: box, gen: gen}
