@@ -216,8 +216,10 @@ func TestWizardSkipSeedsDemoStore(t *testing.T) {
 		}
 		cmds = next
 	}
-	if want := len(inboxMsgs(mk)); len(m.refs) != want {
-		t.Errorf("refs dopo il load = %d, voglio %d (posta in arrivo del seed)", len(m.refs), want)
+	// Piano 8, Task 9: una riga per conversazione. Nel seed la posta in arrivo ha
+	// 7 messaggi in 6 conversazioni (Piano 8, Task 12): le righe sono le conversazioni.
+	if want := inboxConversations(mk); len(m.refs) != want {
+		t.Errorf("refs dopo il load = %d, voglio %d (conversazioni della posta in arrivo del seed)", len(m.refs), want)
 	}
 }
 
@@ -474,4 +476,19 @@ func TestWizardHelpBindings(t *testing.T) {
 	if full := m.fullHelpFor(false, viewWizard); len(full) == 0 {
 		t.Error("fullHelp viewWizard vuota")
 	}
+}
+
+// inboxConversations conta le conversazioni della posta in arrivo del seed: un
+// messaggio senza thread (ThreadID 0) è una conversazione a sé.
+func inboxConversations(mk *mail.Mock) int {
+	threads := map[uint64]bool{}
+	n := 0
+	for _, mm := range inboxMsgs(mk) {
+		if mm.Ref.ThreadID == 0 {
+			n++
+			continue
+		}
+		threads[mm.Ref.ThreadID] = true
+	}
+	return n + len(threads)
 }
