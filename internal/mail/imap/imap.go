@@ -41,6 +41,10 @@ type Store struct {
 	client *imapclient.Client
 	wakes  chan watchWake // canale del Watch attivo, nil se nessuno
 
+	// gmail: il server annuncia X-GM-EXT-1 (Piano 8, Task 6). Scritto in Connect
+	// e Close sotto mu; letto con gmailOn().
+	gmail bool
+
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
 	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox
@@ -230,6 +234,7 @@ func (s *Store) Connect(ctx context.Context) error {
 		return fmt.Errorf("imap login %s: %w", s.opts.Username, err)
 	}
 	s.gate.reset() // riese dopo Close: il gate torna operativo
+	s.gmail = c.Caps().Has(capGmailExt1) // Piano 8, Task 6
 	s.client = c
 	return nil
 }
@@ -251,6 +256,7 @@ func (s *Store) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.gate.close()
+	s.gmail = false // Piano 8, Task 6
 	if s.client == nil {
 		return nil
 	}
