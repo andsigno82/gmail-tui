@@ -16,7 +16,7 @@ Unacceptable behavior includes: sexualized language or imagery, trolling, insult
 
 Project maintainers are responsible for clarifying and enforcing the standards of acceptable behavior and will take fair, appropriate corrective action in response to any behavior they deem inappropriate, threatening, offensive, or harmful — including removing comments, editing or removing issues/PRs, and temporarily or permanently banning contributors.
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team privately: email **USER@example.com** (placeholder — replace with a real address after the first push) with "[conduct]" in the subject, or contact the maintainers directly through GitHub (private message on their profile — not a public issue). All complaints will be reviewed and investigated promptly and fairly. The project team is obligated to respect the privacy and security of the reporter.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project team privately: contact the maintainers directly through GitHub (private message on the [andsigno82 profile](https://github.com/andsigno82) — not a public issue). All complaints will be reviewed and investigated promptly and fairly. The project team is obligated to respect the privacy and security of the reporter.
 
 ## Scope
 

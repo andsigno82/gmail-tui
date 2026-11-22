@@ -15,7 +15,7 @@ Security fixes are applied to the latest release line only.
 
 Preferred: report privately via **GitHub Security Advisories** — on this repository's *Security* tab, use *Report a vulnerability*. This keeps the report confidential and lets us discuss and fix it before disclosure.
 
-If that is not possible, email **USER@example.com** (placeholder — replace with a real address after the first push) with "[security]" in the subject.
+If that is not possible, contact the maintainer directly through GitHub (private message on the [andsigno82 profile](https://github.com/andsigno82) — not a public issue).
 
 Please include: the version or commit you tested, steps to reproduce or a proof of concept, the affected component (TUI, IMAP/SMTP backend, wizard/keychain, CLI, config), and your assessment of the impact.
 
