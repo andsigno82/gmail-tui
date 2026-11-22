@@ -70,3 +70,26 @@ func TestUIDSearchGmailNonASCIIAddsCharset(t *testing.T) {
 		t.Errorf("wire = %q: con Raw non ASCII serve CHARSET UTF-8", got)
 	}
 }
+
+// Piano 8, review (punto 7): un OR di criteri X-GM-THRID (come threadCriteria del
+// backend) deve arrivare sul wire come OR di due chiavi di ricerca, ciascuna con il
+// suo X-GM-THRID, senza perdere il secondo thread.
+func TestUIDSearchGmailOrOfThreads(t *testing.T) {
+	client, cmds := newScriptedClient(t, func(string) []string {
+		return []string{"* SEARCH"}
+	})
+	_, err := client.UIDSearch(&imap.SearchCriteria{
+		Or: [][2]imap.SearchCriteria{{
+			{Gmail: &imap.SearchCriteriaGmail{ThreadID: 7}},
+			{Gmail: &imap.SearchCriteriaGmail{ThreadID: 9}},
+		}},
+	}, nil).Wait()
+	if err != nil {
+		t.Fatalf("UIDSearch: %v", err)
+	}
+	// RFC 3501 §6.4.4: ogni operando di OR è una search-key, anche tra parentesi.
+	want := `UID SEARCH OR (X-GM-THRID 7) (X-GM-THRID 9)`
+	if got := wireRest(<-cmds); got != want {
+		t.Errorf("wire = %q, want %q", got, want)
+	}
+}

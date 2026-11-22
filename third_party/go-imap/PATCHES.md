@@ -16,7 +16,7 @@ La copia resta identica a upstream salvo i file elencati nella tabella delle pat
 
 | 3 | `search.go` | campo `SearchCriteria.Gmail *SearchCriteriaGmail` (`Raw`, `MsgID`, `ThreadID`, `Labels`) e il tipo; `And()` NON unisce questo campo |
 | 3 | `imapclient/search.go` | encoding di `X-GM-RAW` (quotato, con escape), `X-GM-MSGID`, `X-GM-THRID`, `X-GM-LABELS` in `writeSearchKey`; `CHARSET UTF-8` se il testo Gmail non è ASCII |
-| 4 | `store.go` | tipo `StoreGmailLabels` (`Op`, `Silent`, `Labels`) |
+| 4 | `store.go` | tipo `StoreGmailLabels` (`Op`, `Silent`, `Labels`). **Non ancora usato dal backend: destinato alla rimozione delle label del Piano 10** (D8-1 lo prevede; non rimuoverlo prima) |
 | 4 | `imapclient/gmail.go` | metodo `Client.StoreGmailLabels`: `STORE set [+|-]X-GM-LABELS[.SILENT] ("l1" "l2")`; `Store` upstream invariato |
 
 Test della patch: `imapclient/gmail_test.go` (Task 2), `imapclient/gmail_search_test.go` (Task 3), `imapclient/gmail_store_test.go` (Task 4). Tutti usano un server scriptato su `net.Pipe`, non il memserver, che non conosce X-GM-*.
