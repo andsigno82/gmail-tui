@@ -164,6 +164,16 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   ordine di valutazione nelle return
 - Decisioni D1-D7 confermate da Andrea; conversazioni Gmail → Piano 8
 
+### Piano 7.1 — Rifiniture (branch `feat/piano-7-1`, sopra `feat/piano-7`)
+- Destinatari normalizzati (`msg.NormalizeRecipients`): punycode per domini
+  IDN, dominio con punto obbligatorio, local part ASCII; nomi con virgola
+  accettati da CLI e composer (`mail.ParseAddressList`)
+- Bug corretto: `RCPT TO` riceveva l'indirizzo con nome visualizzato
+- `doctor` controlla online MOVE/UIDPLUS/SPECIAL-USE/LIST-EXTENDED (verificato
+  su Gmail reale: tutte presenti) e riconosce la password nel keychain
+- `#` decide sulla mailbox della riga
+- `/code-review`: 5 rilievi sul parsing dei destinatari, tutti corretti
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**

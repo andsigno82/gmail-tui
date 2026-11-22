@@ -31,7 +31,7 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error)
 
 **Test:** `Mario Rossi <m@x.it>` → `"Mario Rossi" <m@x.it>`; `x@café.it` → `<x@xn--caf-dma.it>`; `a@b` → errore (dominio senza punto); `josé@x.it` → errore (local part non ASCII); casi esistenti di `TestValidateRecipients` aggiornati a D7.1.
 
-- [ ] RED → impl → GREEN → Commit `feat(msg): normalize recipients (punycode IDN, dotted domain)`
+- [x] RED → impl → GREEN → Commit `feat(msg): normalize recipients (punycode IDN, dotted domain)`
 
 ### Task 2: RCPT con l'indirizzo nudo
 
@@ -42,7 +42,7 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error)
 
 **Test:** server go-smtp in-process: destinatario con nome visualizzato → il backend riceve `m@x.it`; lo stesso indirizzo in To e Bcc con forme diverse → un solo RCPT.
 
-- [ ] RED → impl → GREEN → Commit `fix(smtp): RCPT uses the bare address of display-name recipients`
+- [x] RED → impl → GREEN → Commit `fix(smtp): RCPT uses the bare address of display-name recipients`
 
 ### Task 3: CLI `send` e composer usano la normalizzazione
 
@@ -53,7 +53,7 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error)
 
 **Test:** CLI con `--to '"Rossi, Mario" <m@x.it>'` → un destinatario; CLI con IDN → Outgoing in punycode; composer con IDN → conferma mostra l'indirizzo normalizzato.
 
-- [ ] RED → impl → GREEN → Commit `feat(cmd,app): send and composer normalize recipients`
+- [x] RED → impl → GREEN → Commit `feat(cmd,app): send and composer normalize recipients`
 
 ### Task 4: `doctor` controlla le capability Gmail
 
@@ -65,7 +65,7 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error)
 
 **Test:** `Doctor` con probe finto (tutte presenti / una mancante / errore / nil); probe reale contro memserver con capability configurate (helper esistente `startTestServerCaps`).
 
-- [ ] RED → impl → GREEN → Commit `feat(doctor): check Gmail IMAP capabilities used by trash and folders`
+- [x] RED → impl → GREEN → Commit `feat(doctor): check Gmail IMAP capabilities used by trash and folders`
 
 ### Task 5: `#` decide sulla mailbox della riga
 
@@ -75,13 +75,13 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error)
 
 **Test:** riga del cestino in vista Cestino → status, nessuna conferma; riga di INBOX → conferma.
 
-- [ ] RED → impl → GREEN → Commit `fix(app): trash guard uses the row mailbox`
+- [x] RED → impl → GREEN → Commit `fix(app): trash guard uses the row mailbox`
 
 ### Task 6: verifica finale
 
-- [ ] Gate completi + check go-imap + `govulncheck` (x/net diventa diretto)
-- [ ] Review indipendente del diff + `/code-review`
-- [ ] README (Notes: IDN, `doctor` online), CHANGELOG [Unreleased], `docs/smoke-checklist.md` (doctor con credenziali reali)
+- [x] Gate completi + check go-imap + `govulncheck` (x/net diventa diretto)
+- [x] `/code-review` high sul diff del 7.1 (5 rilievi, tutti corretti in a513af3)
+- [x] README (Notes: IDN, `doctor` online), CHANGELOG [Unreleased], `docs/smoke-checklist.md` (doctor con credenziali reali)
 
 ## Escluso, con motivo
 
