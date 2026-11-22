@@ -157,10 +157,13 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.loadingMore = false
 	m.dirty, m.dirtyDeep = false, false
 	m.inbox.Select(0)
-	m.status = statusMsg{text: "cartella " + folderName(box)}
+	// Il nome della cartella è già nel tag della status bar: lo status si
+	// svuota (fix review 6, niente "[Inviati] cartella Inviati").
+	m.status = statusMsg{}
 	m.startup = true
 	m.pending++
-	return m, tea.Batch(loadRefs(m.store, box.Name), m.spinner.Tick)
+	m.listGen++ // nuova generazione: le pagine e i refresh della cartella precedente sono stanti (fix review 2)
+	return m, tea.Batch(loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
 }
 
 // foldersView rende il corpo del selettore: titolo con l'hint dei tasti e la

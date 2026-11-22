@@ -95,6 +95,8 @@ type Model struct {
 	pending       int              // op store in flight (>0: spinner attivo)
 	connectFailed bool             // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
 	refreshing    bool             // re-list silenzioso in flight (coalescing, Task 8)
+	listGen       int              // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
+	refreshGen    int              // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
 	dirty         bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
 	dirtyDeep     bool             // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
 	exhausted     bool             // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
@@ -212,18 +214,25 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.connectFailed = false
 		m.pending++
-		return m, tea.Batch(loadRefs(m.store, m.folder.Name), m.spinner.Tick, startWatch(m.store, m.ctx))
+		m.listGen++
+		return m, tea.Batch(loadRefs(m.store, m.folder.Name, m.listGen), m.spinner.Tick, startWatch(m.store, m.ctx))
 
 	case msgsLoaded:
 		m.doneOp()
-		// Il token del re-list silenzioso si libera a QUALSIASI esito (un
-		// refresh fallito non deve bloccare i successivi); dirty NON viene
-		// consumato: il follow-up partirà alla prima riuscita (self-healing).
-		m.refreshing = false
-		if ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
-			// Stante (Piano 7, Task 4): il risultato è di un'altra cartella o di
-			// un'altra query (cambio cartella/ricerca durante il load): la lista
-			// visibile non va sovrascritta. Il refreshing è già liberato sopra.
+		// Il token del re-list silenzioso si libera SOLO al risultato del
+		// refresh in volo (fix review 5): un load non silenzioso o un risultato
+		// stante non riapre il coalescing di un refresh ancora in corso. Il
+		// risultato di quel refresh libera il token a QUALSIASI esito (un refresh
+		// fallito non deve bloccare i successivi); dirty NON viene consumato: il
+		// follow-up partirà alla prima riuscita (self-healing).
+		if ev.silent && ev.gen == m.refreshGen {
+			m.refreshing = false
+		}
+		if ev.gen != m.listGen || ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
+			// Stante (Piano 7, Task 4, fix review 2): il risultato è di un'altra
+			// generazione di lista (cambio cartella/ricerca/connect durante il
+			// load, anche tornando sulla stessa cartella) o di un'altra cartella
+			// o query: la lista visibile non va sovrascritta.
 			return m, nil
 		}
 		if ev.err != nil {
@@ -394,7 +403,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// alla lista visibile e si scarta (il loadingMore lo libera il
 		// msgsLoaded della lista nuova).
 		m.doneOp()
-		if ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
+		if ev.gen != m.listGen || ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
+			// Stante (fix review 2): pagina di un'altra generazione di lista
+			// (anche tornando sulla stessa cartella con lo stesso nome).
 			return m, nil
 		}
 		m.loadingMore = false
@@ -408,6 +419,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opDone:
 		m.doneOp()
+		if ev.err == nil && len(ev.gone) > 0 {
+			// Piano 7, fix review 1: gli ID usciti dalla cartella (Archive/Trash)
+			// si tolgono dalla coda PRIMA del merge del refresh profondo, che
+			// riaccoda le righe oltre refreshCap dalla lista precedente.
+			m.refs = withoutIDs(m.refs, ev.gone)
+		}
 		if ev.send {
 			// Invio concluso (ok o errore): riabilita un eventuale retry
 			// (ctrl+s dopo un errore riapre la conferma).
@@ -581,11 +598,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view != viewComposer || m.sending || m.discardOpen {
 			return m, nil
 		}
-		// Piano 7, Task 6: un indirizzo malformato non apre la conferma. Il
-		// controllo viene DOPO i guard sopra: una richiesta stante o in volo
-		// resta scartata in silenzio, senza errori in status. Il composer resta
-		// aperto con la bozza intatta.
-		if err := msg.ValidateAddresses(ev.Out); err != nil {
+		// Piano 7, Task 6 + fix review 7: un destinatario malformato o assente
+		// non apre la conferma (ValidateRecipients: formato di A/Cc/Ccn e almeno
+		// un indirizzo). Il controllo viene DOPO i guard sopra: una richiesta
+		// stante o in volo resta scartata in silenzio, senza errori in status. Il
+		// composer resta aperto con la bozza intatta.
+		if err := msg.ValidateRecipients(ev.Out); err != nil {
 			m.status = statusMsg{text: err.Error(), isErr: true}
 			return m, nil
 		}
@@ -985,15 +1003,16 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 		m.query = msg.ParseQuery(raw)
 	}
 	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
-	return m, tea.Batch(submitQuery(m.store, raw, m.folder.Name), m.spinner.Tick)
+	m.listGen++ // nuova generazione: i risultati della lista precedente sono stanti (fix review 2)
+	return m, tea.Batch(submitQuery(m.store, raw, m.folder.Name, m.listGen), m.spinner.Tick)
 }
 
 // loadRefs esegue ListMessages fuori dal loop UI. Il contesto è background
 // finché il wiring del programma non esponga il ctx del programma (Task 7/8).
-func loadRefs(st mail.MailStore, box string) tea.Cmd {
+func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
-		return msgsLoaded{refs: refs, err: err, limit: pageSize, mailbox: box}
+		return msgsLoaded{refs: refs, err: err, limit: pageSize, mailbox: box, gen: gen}
 	}
 }
 
@@ -1008,7 +1027,7 @@ func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
 	}
 	m.loadingMore = true
 	m.pending++
-	return m, tea.Batch(cmd, loadMore(m.store, m.folder.Name, len(m.refs), m.queryRaw), m.spinner.Tick)
+	return m, tea.Batch(cmd, loadMore(m.store, m.folder.Name, len(m.refs), m.queryRaw, m.listGen), m.spinner.Tick)
 }
 
 // fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).
@@ -1164,8 +1183,14 @@ func (m Model) statusBar() string {
 	text := m.status.text
 	if m.folder.Name != "" {
 		// Fuori dalla posta in arrivo la status bar dice in quale cartella si è
-		// (Piano 7, Task 4).
-		text = "[" + folderName(m.folder) + "] " + text
+		// (Piano 7, Task 4). Senza altro testo il tag resta da solo (fix review 6:
+		// il nome non è ripetuto come messaggio).
+		tag := "[" + folderName(m.folder) + "]"
+		if text == "" {
+			text = tag
+		} else {
+			text = tag + " " + text
+		}
 	}
 	if m.pending > 0 {
 		text = m.spinner.View() + " " + text

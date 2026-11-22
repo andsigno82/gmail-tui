@@ -41,7 +41,7 @@ func pagedModel(tb testing.TB, store mail.MailStore) Model {
 	}
 	m := New(store, noopSender{}, th)
 	m, _ = step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	return applyAll(tb, m, loadRefs(store, ""))
+	return applyAll(tb, m, loadRefs(store, "", 0))
 }
 
 // applyAll esegue la cmd e applica al modello i msg di risultato (lo spinner
@@ -339,4 +339,102 @@ func TestDeepRefreshSurvivesCoalescing(t *testing.T) {
 	if got := lastPage(t, rec); got.Limit != 100 {
 		t.Errorf("follow-up dopo ChangeNewMail coalesced: Limit = %d, voglio 100 (profondità piena)", got.Limit)
 	}
+}
+
+// --- fix review Piano 7 (1, 2, 5) ------------------------------------------------
+
+// TestDeepRefreshDoesNotResurrectArchived (Piano 7, fix review 1): con 600 righe
+// caricate il refresh profondo rilista al più refreshCap (500) e la coda oltre
+// quella soglia viene riaccodata dalla lista precedente. Archiviare la riga 550
+// (oltre il tetto) non deve riportarla in lista: l'ID archiviato esce dalla coda
+// prima del merge.
+func TestDeepRefreshDoesNotResurrectArchived(t *testing.T) {
+	mock := &mail.Mock{Msgs: pagedMsgs(t, 600)}
+	m := pagedModel(t, mock)
+	for i := 0; !m.exhausted; i++ {
+		if i > 20 {
+			t.Fatal("la paginazione non esaurisce la lista")
+		}
+		var cmd tea.Cmd
+		m, cmd = step(m, pressKey("G"))
+		m = applyAll(t, m, cmd)
+	}
+	if len(m.refs) != 600 {
+		t.Fatalf("setup: refs = %d, voglio 600", len(m.refs))
+	}
+	target := msg.NewID("INBOX", 550)
+	m.inbox.Select(549)
+	m, cmd := step(m, pressKey("a"))
+	m = settle(t, m, cmd, 4)
+	for _, r := range m.refs {
+		if r.ID == target {
+			t.Fatal("riga archiviata (550, oltre il tetto del refresh) riapparsa in lista dopo il refresh profondo")
+		}
+	}
+	if len(m.refs) != 599 {
+		t.Errorf("refs dopo l'archivio = %d, voglio 599", len(m.refs))
+	}
+}
+
+// TestStaleMorePageAfterFolderRoundTrip (Piano 7, fix review 2): una pagina in
+// volo della posta in arrivo non si accoda dopo un giro m→Inviati→INBOX: stesso
+// nome cartella e stessa query, ma la lista è cambiata. Il contatore di
+// generazione della lista scarta il risultato stante.
+func TestStaleMorePageAfterFolderRoundTrip(t *testing.T) {
+	rec := &recorder{MailStore: folderMock(t)}
+	m := folderModel(t, rec)
+	m, stale := step(m, pressKey("G")) // pagina 2 richiesta, non ancora eseguita
+	if !m.loadingMore {
+		t.Fatal("pagina successiva non richiesta")
+	}
+	m = openPicker(t, m)
+	m, c := pickFolder(t, m, 1) // Inviati
+	m = applyAll(t, m, c)
+	m = openPicker(t, m)
+	m, c = pickFolder(t, m, 0) // ritorno in posta in arrivo
+	m = applyAll(t, m, c)
+	before := len(m.refs)
+	m = applyAll(t, m, stale) // la pagina della lista precedente arriva ora
+	if len(m.refs) != before {
+		t.Errorf("refs = %d dopo la pagina stante, voglio %d (pagina scartata)", len(m.refs), before)
+	}
+}
+
+// TestRefreshTokenFreedOnlyByItsOwnResult (Piano 7, fix review 5): un load non
+// silenzioso (cambio cartella) non libera il re-list in volo: il coalescing
+// resta attivo finché non arriva il risultato del refresh stesso.
+func TestRefreshTokenFreedOnlyByItsOwnResult(t *testing.T) {
+	rec := &recorder{MailStore: folderMock(t)}
+	m := folderModel(t, rec)
+	refreshCmd := m.requestRefresh(false)
+	if refreshCmd == nil || !m.refreshing {
+		t.Fatal("refresh non partito")
+	}
+	refreshRes := msgsOf(t, refreshCmd)
+	m = openPicker(t, m)
+	var c tea.Cmd
+	m, c = pickFolder(t, m, 1) // Inviati: load non silenzioso mentre il refresh è in volo
+	m, _ = step(m, msgsOf(t, c))
+	if !m.refreshing {
+		t.Fatal("un load non silenzioso ha liberato il token del refresh in volo")
+	}
+	if extra := m.requestRefresh(false); extra != nil {
+		t.Error("refresh concorrente: il coalescing è rotto")
+	}
+	m, _ = step(m, refreshRes) // risultato stante del refresh in volo
+	if m.refreshing {
+		t.Error("il risultato del refresh in volo non ha liberato il token")
+	}
+}
+
+// msgsOf esegue la cmd e restituisce il msgsLoaded prodotto (fallisce se assente).
+func msgsOf(tb testing.TB, c tea.Cmd) msgsLoaded {
+	tb.Helper()
+	for _, ms := range runCmd(c) {
+		if l, ok := ms.(msgsLoaded); ok {
+			return l
+		}
+	}
+	tb.Fatal("nessun msgsLoaded nei messaggi prodotti dalla cmd")
+	return msgsLoaded{}
 }

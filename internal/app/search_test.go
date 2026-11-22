@@ -275,7 +275,7 @@ func TestSearchEmptyQueryRelistsAll(t *testing.T) {
 func TestSubmitQueryWhitespaceOnlyRelists(t *testing.T) {
 	rec := &recorder{MailStore: &mail.Mock{}}
 	for _, raw := range []string{"", "   "} {
-		out := runCmd(submitQuery(rec, raw, "")) // Piano 7, Task 4: cartella di default = INBOX
+		out := runCmd(submitQuery(rec, raw, "", 0)) // Piano 7, Task 4: cartella di default = INBOX
 		if len(out) != 1 {
 			t.Fatalf("submitQuery(%q): msg = %d, voglio 1", raw, len(out))
 		}
@@ -291,7 +291,7 @@ func TestSubmitQueryWhitespaceOnlyRelists(t *testing.T) {
 		t.Errorf("chiamate: lists=%d search=%d, voglio lists=2 search=0", len(rec.lists), len(rec.search))
 	}
 
-	out := runCmd(submitQuery(rec, "from:bob is:unread", ""))
+	out := runCmd(submitQuery(rec, "from:bob is:unread", "", 0))
 	loaded := out[0].(msgsLoaded)
 	if loaded.query != "from:bob is:unread" {
 		t.Errorf("query riportata = %q, voglio la stringa digitata", loaded.query)

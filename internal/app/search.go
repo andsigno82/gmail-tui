@@ -47,22 +47,22 @@ func newSearchInput(st styles.Styles) textinput.Model {
 // (Piano 7, Task 4): stringa vuota (o solo spazi) → re-list completo (come il
 // load di Init), altrimenti Search col Query parsato da ParseQuery, limitata
 // alla cartella salvo label: esplicita.
-func submitQuery(st mail.MailStore, raw string, box string) tea.Cmd {
+func submitQuery(st mail.MailStore, raw string, box string, gen int) tea.Cmd {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return loadRefs(st, box)
+		return loadRefs(st, box, gen)
 	}
-	return searchCmd(st, msg.ParseQuery(raw), raw, box)
+	return searchCmd(st, msg.ParseQuery(raw), raw, box, gen)
 }
 
 // searchCmd esegue la ricerca fuori dal loop UI. Il risultato è msgsLoaded
 // con la stringa digitata: la radice la usa per il badge
 // "N risultati per …" in status bar (una ricerca non deve sostituire il
 // badge anche al re-list, che viaggia senza query).
-func searchCmd(st mail.MailStore, q msg.Query, raw string, box string) tea.Cmd {
+func searchCmd(st mail.MailStore, q msg.Query, raw string, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		refs, err := st.Search(context.Background(), inFolder(q, box))
-		return msgsLoaded{refs: refs, err: err, query: raw, mailbox: box}
+		return msgsLoaded{refs: refs, err: err, query: raw, mailbox: box, gen: gen}
 	}
 }
 

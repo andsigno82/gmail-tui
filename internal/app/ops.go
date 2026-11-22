@@ -68,6 +68,14 @@ func (m Model) currentRef() (msg.MessageRef, bool) {
 // Senza ref corrente (lista vuota, thread in caricamento) le op sono un
 // no-op silenzioso.
 func (m Model) runOp(k string) (Model, tea.Cmd) {
+	if k == "a" && !m.inInbox() {
+		// Piano 7, fix review 3: l'archivio è solo della posta in arrivo. Nel
+		// cestino l'expunge sarebbe una eliminazione definitiva; in una label
+		// rimuoverebbe solo la label; in Inviati non ha senso. Nessuna op, status
+		// informativo (anche con lista vuota: il rifiuto non dipende dal ref).
+		m.status = statusMsg{text: "archivia è disponibile solo in Posta in arrivo"}
+		return m, nil
+	}
 	ref, ok := m.currentRef()
 	if !ok {
 		return m, nil
@@ -125,12 +133,34 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
+	if m.isCurrentFolder(name) {
+		// Piano 7, fix review 4: la COPY nella stessa mailbox duplicherebbe il
+		// messaggio. Rifiuto con status d'errore, lo store non è chiamato.
+		m.status = statusMsg{text: fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name), isErr: true}
+		return m, nil
+	}
 	ref, ok := m.currentRef()
 	if !ok {
 		return m, nil
 	}
 	m.pending++
 	return m, tea.Batch(applyLabel(m.store, ref.ID, name, true), m.spinner.Tick)
+}
+
+// isCurrentFolder dice se il nome IMAP dato è la cartella mostrata (la posta in
+// arrivo è il nome "INBOX"). Piano 7, fix review 4.
+func (m Model) isCurrentFolder(name string) bool {
+	cur := m.folder.Name
+	if cur == "" {
+		cur = "INBOX"
+	}
+	return strings.EqualFold(name, cur)
+}
+
+// inInbox dice se la lista mostra la posta in arrivo (zero value di folder, o
+// la cartella con ruolo inbox). Piano 7, fix review 3.
+func (m Model) inInbox() bool {
+	return m.folder.Name == "" || m.folder.Role == "inbox"
 }
 
 // cancelLabel chiude il prompt senza operare (esc).
@@ -176,7 +206,7 @@ func (m Model) confirmTrash() (Model, tea.Cmd) {
 func trashCmd(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	return func() tea.Msg {
 		err := st.Trash(context.Background(), []msg.MessageID{id})
-		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true}
+		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: []msg.MessageID{id}}
 	}
 }
 
@@ -212,7 +242,7 @@ func star(st mail.MailStore, id msg.MessageID, on bool) tea.Cmd {
 func archive(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	return func() tea.Msg {
 		err := st.Archive(context.Background(), []msg.MessageID{id})
-		return opDone{label: "archiviata", err: err, refresh: true, deep: true}
+		return opDone{label: "archiviata", err: err, refresh: true, deep: true, gone: []msg.MessageID{id}}
 	}
 }
 
@@ -280,9 +310,10 @@ func (m *Model) requestRefresh(deep bool) tea.Cmd {
 	deep = deep || m.dirtyDeep
 	m.dirtyDeep = false
 	m.refreshing = true
+	m.refreshGen = m.listGen // il token si libera solo al risultato di questa generazione (fix review 5)
 	m.pending++
 	limit := refreshLimit(len(m.refs), deep)
-	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw, limit, m.folder.Name), m.spinner.Tick)
+	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw, limit, m.folder.Name, m.listGen), m.spinner.Tick)
 }
 
 // refreshLimit è il Limit del re-list silenzioso (Piano 7, Task 3, D5): la sola
@@ -300,7 +331,7 @@ func refreshLimit(loaded int, deep bool) int {
 // status. Riusa il pattern del load: query vuota → ListMessages (limit righe
 // dalla prima pagina, come Init), query di ricerca → Search con la query
 // corrente nella cartella (non paginata: limit 0).
-func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box string) tea.Cmd {
+func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		var refs []msg.MessageRef
 		var err error
@@ -310,18 +341,35 @@ func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box stri
 			refs, err = st.Search(context.Background(), inFolder(q, box))
 			limit = 0
 		}
-		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit, mailbox: box}
+		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit, mailbox: box, gen: gen}
 	}
 }
 
 // loadMore esegue ListMessages per la pagina successiva fuori dal loop UI
 // (Piano 7, Task 3): l'offset è il numero di righe già caricate. Il risultato
 // porta la query di origine per lo scarto dei risultati stanti.
-func loadMore(st mail.MailStore, box string, offset int, raw string) tea.Cmd {
+func loadMore(st mail.MailStore, box string, offset int, raw string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Offset: offset, Limit: pageSize})
-		return moreLoaded{refs: refs, err: err, query: raw, mailbox: box}
+		return moreLoaded{refs: refs, err: err, query: raw, mailbox: box, gen: gen}
 	}
+}
+
+// withoutIDs toglie da refs gli ID dati, ordine preservato. Piano 7, fix review 1:
+// le op che fanno uscire un messaggio dalla cartella (Archive/Trash) lo tolgono
+// dalla coda prima del merge del refresh profondo.
+func withoutIDs(refs []msg.MessageRef, ids []msg.MessageID) []msg.MessageRef {
+	drop := make(map[msg.MessageID]bool, len(ids))
+	for _, id := range ids {
+		drop[id] = true
+	}
+	out := make([]msg.MessageRef, 0, len(refs))
+	for _, r := range refs {
+		if !drop[r.ID] {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // appendUnique concatena i ref di more a base saltando gli ID già presenti

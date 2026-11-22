@@ -90,3 +90,43 @@ func TestSendValidationRunsAfterGuards(t *testing.T) {
 		t.Errorf("invio in volo: status = %q, voglio invariato", mm.statusText())
 	}
 }
+
+// TestSendWithoutRecipientsIsBlocked (Piano 7, fix review 7): una bozza senza
+// destinatari non apre la conferma: errore "nessun destinatario" in status, il
+// composer resta aperto con la bozza intatta e il sender non è chiamato.
+func TestSendWithoutRecipientsIsBlocked(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{Subject: "Fwd: prima", Body: "corpo"}))
+	if mm.confirmSend {
+		t.Error("bozza senza destinatari: conferma aperta")
+	}
+	if !mm.status.isErr || mm.statusText() != "nessun destinatario" {
+		t.Errorf("status = %q (err=%v), voglio errore \"nessun destinatario\"", mm.statusText(), mm.status.isErr)
+	}
+	if mm.currentView() != viewComposer {
+		t.Errorf("vista = %v, voglio composer (bozza preservata)", mm.currentView())
+	}
+	if d := mm.composer.Draft(); d.Subject != "Fwd: prima" {
+		t.Errorf("bozza dopo il rifiuto = %+v, voglio i campi intatti", d)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("sender chiamato %d volte, voglio 0", len(rec.calls))
+	}
+}
+
+// TestSendCcOnlyKeepsConfirmation (Piano 7, fix review 7): un destinatario
+// solo in Cc è un destinatario: la conferma si apre e mostra l'indirizzo.
+func TestSendCcOnlyKeepsConfirmation(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{Cc: "bob@y.dev", Subject: "s", Body: "c"}))
+	if !mm.confirmSend || mm.status.isErr {
+		t.Fatalf("solo Cc: confirm=%v status=%q (err=%v)", mm.confirmSend, mm.statusText(), mm.status.isErr)
+	}
+	if bar := plainBar(mm); !strings.Contains(bar, "Invio a bob@y.dev") {
+		t.Errorf("conferma = %q, voglio l'indirizzo in Cc", bar)
+	}
+}

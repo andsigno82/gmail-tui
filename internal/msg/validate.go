@@ -23,10 +23,9 @@ func ValidateRecipients(o Outgoing) error {
 }
 
 // ValidateAddresses controlla solo il formato degli indirizzi di To/Cc/Bcc
-// (Piano 7, Task 6): le liste vuote passano. Il composer lo usa prima della
-// conferma d'invio: una bozza senza destinatari resta invio-able (il
-// placeholder "(nessun destinatario)" della conferma); la presenza di almeno
-// un destinatario è di ValidateRecipients, usata da `send`.
+// (Piano 7, Task 6): le liste vuote passano. È il primo controllo di
+// ValidateRecipients, che il composer (prima della conferma d'invio, fix review
+// 7) e `send` chiamano; la presenza di almeno un destinatario sta solo lì.
 func ValidateAddresses(o Outgoing) error {
 	for _, f := range recipientFields(o) {
 		for _, a := range f.addrs {

@@ -637,7 +637,8 @@ func TestSendRequestedOpensConfirmation(t *testing.T) {
 
 // TestSendConfirmationShowsToSubjectAttachments: il testo della conferma porta
 // i destinatari decodificati da Out.To (join virgole), l'oggetto e il numero
-// di allegati (plurale italiano); senza destinatari il placeholder è esplicito.
+// di allegati (plurale italiano); i destinatari sono To, Cc e Bcc (Piano 7, fix
+// review 7: una bozza solo in Cc non è più "nessun destinatario").
 func TestSendConfirmationShowsToSubjectAttachments(t *testing.T) {
 	cases := []struct {
 		name string
@@ -657,10 +658,10 @@ func TestSendConfirmationShowsToSubjectAttachments(t *testing.T) {
 			not:  "allegati",
 		},
 		{
-			name: "nessun destinatario (inoltro da riempire)",
-			cfg:  composer.ComposerConfig{Subject: "Fwd: prima", Body: "c"},
-			want: []string{"Invio a (nessun destinatario)", "Fwd: prima"},
-			not:  "allegat",
+			name: "solo Cc (destinatario valido)",
+			cfg:  composer.ComposerConfig{Cc: "bob@y.dev", Subject: "Fwd: prima", Body: "c"},
+			want: []string{"Invio a bob@y.dev", "Fwd: prima"},
+			not:  "nessun destinatario",
 		},
 	}
 	for _, tc := range cases {

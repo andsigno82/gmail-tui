@@ -230,12 +230,20 @@ func (m *Model) discardDraft() {
 
 // sendConfirmText compone il testo della conferma pre-invio (status bar, stile
 // StatusErr): "Invio a <to> — <oggetto> — <n> allegati — s conferma · esc
-// annulla". I destinatari sono decodificati da Out.To (join virgole); i
-// segmenti vuoti (nessun destinatario — placeholder esplicito, oggetto vuoto,
-// nessun allegato) sono omessi. Con un solo allegato il conteggio è al
-// singolare ("1 allegato").
+// annulla". I destinatari sono A, Cc e Ccn in quest'ordine (join virgole, voci
+// vuote omesse: Piano 7, fix review 7, una bozza solo in Cc è valida); i
+// segmenti vuoti (oggetto vuoto, nessun allegato) sono omessi. Con un solo
+// allegato il conteggio è al singolare ("1 allegato").
 func sendConfirmText(out msg.Outgoing) string {
-	to := strings.Join(out.To, ", ")
+	var rcpt []string
+	for _, group := range [][]string{out.To, out.Cc, out.Bcc} {
+		for _, a := range group {
+			if strings.TrimSpace(a) != "" {
+				rcpt = append(rcpt, strings.TrimSpace(a))
+			}
+		}
+	}
+	to := strings.Join(rcpt, ", ")
 	if to == "" {
 		to = "(nessun destinatario)"
 	}

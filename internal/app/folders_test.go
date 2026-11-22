@@ -132,8 +132,8 @@ func TestChooseFolderListsItsMessages(t *testing.T) {
 	if got := m.inbox.SelectedIndex(); got != 0 {
 		t.Errorf("cursore dopo il cambio cartella = %d, voglio 0", got)
 	}
-	if !strings.Contains(m.statusText(), "Inviati") {
-		t.Errorf("status = %q, voglio il nome della cartella", m.statusText())
+	if !strings.Contains(plainBar(m), "[Inviati]") {
+		t.Errorf("status bar = %q, voglio il tag della cartella", plainBar(m))
 	}
 }
 
@@ -203,14 +203,14 @@ func TestSearchInFolderInheritsLabel(t *testing.T) {
 	m, cmd := pickFolder(t, openPicker(t, m), 1)
 	m = applyAll(t, m, cmd)
 
-	out := runCmd(submitQuery(rec, "bob", m.folder.Name))
+	out := runCmd(submitQuery(rec, "bob", m.folder.Name, 0))
 	if len(out) != 1 {
 		t.Fatalf("submitQuery: %d msg, voglio 1", len(out))
 	}
 	if got := rec.search[len(rec.search)-1].Label; got != "[Gmail]/Sent" {
 		t.Errorf("ricerca senza label: Label = %q, voglio la cartella corrente", got)
 	}
-	runCmd(submitQuery(rec, "label:Work bob", m.folder.Name))
+	runCmd(submitQuery(rec, "label:Work bob", m.folder.Name, 0))
 	if got := rec.search[len(rec.search)-1].Label; got != "Work" {
 		t.Errorf("ricerca con label: Label = %q, voglio Work", got)
 	}
@@ -340,5 +340,104 @@ func TestFolderShortHelpWhilePicking(t *testing.T) {
 	descs := bindingDescs(m.shortHelpFor(false, viewInbox))
 	if !descs["annulla"] {
 		t.Errorf("help del selettore senza annulla: %v", descs)
+	}
+}
+
+// TestArchiveRefusedOutsideInbox (Piano 7, fix review 3): `a` è attivo solo in
+// Posta in arrivo. Nel cestino l'expunge sarebbe una eliminazione definitiva, in
+// una label rimuoverebbe solo la label, in Inviati non ha senso: nessuna op,
+// nessuna chiamata allo store, status informativo in italiano.
+func TestArchiveRefusedOutsideInbox(t *testing.T) {
+	cases := []struct {
+		name string
+		box  string
+		pick int
+	}{
+		{"Inviati", "[Gmail]/Sent", 1},
+		{"Cestino", "[Gmail]/Trash", 2},
+		{"label Work", "Work", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := folderMock(t)
+			mock.Msgs = append(mock.Msgs, &msg.Message{Ref: msg.MessageRef{
+				ID: msg.NewID("[Gmail]/Trash", 1), From: "x@x.dev", Subject: "cestinata",
+				Date: time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC),
+			}})
+			rec := &recorder{MailStore: mock}
+			m := openPicker(t, folderModel(t, rec))
+			m, c := pickFolder(t, m, tc.pick)
+			m = applyAll(t, m, c)
+			if m.folder.Name != tc.box {
+				t.Fatalf("setup: cartella = %q, voglio %q", m.folder.Name, tc.box)
+			}
+			before := len(mock.Msgs)
+			pending := m.pending
+			m, cmd := step(m, pressKey("a"))
+			if cmd != nil || m.pending != pending {
+				t.Error("a fuori dalla posta in arrivo: op lanciata, voglio nessuna op")
+			}
+			if len(mock.Msgs) != before {
+				t.Errorf("messaggi nel Mock = %d, voglio %d (nessuna mutazione)", len(mock.Msgs), before)
+			}
+			want := "archivia è disponibile solo in Posta in arrivo"
+			if m.statusText() != want || m.status.isErr {
+				t.Errorf("status = %q (err=%v), voglio %q informativo", m.statusText(), m.status.isErr, want)
+			}
+		})
+	}
+}
+
+// TestLabelSameFolderRefused (Piano 7, fix review 4): applicare una label uguale
+// alla cartella corrente farebbe una COPY nella stessa mailbox (duplicato): si
+// rifiuta con status d'errore senza chiamare lo store.
+func TestLabelSameFolderRefused(t *testing.T) {
+	cases := []struct {
+		name  string
+		pick  int
+		label string
+	}{
+		{"Work in Work", 3, "Work"},
+		{"Inviati in Inviati", 1, "[Gmail]/Sent"},
+		{"INBOX in Posta in arrivo", 0, "INBOX"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := folderMock(t)
+			mock.Msgs = append(mock.Msgs, &msg.Message{Ref: msg.MessageRef{
+				ID: msg.NewID("Work", 1), From: "x@x.dev", Subject: "in label",
+				Date: time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC),
+			}}) // `l` richiede un messaggio sotto il cursore: la label Work ne ha uno
+			rec := &recorder{MailStore: mock}
+			m := openPicker(t, folderModel(t, rec))
+			m, c := pickFolder(t, m, tc.pick)
+			m = applyAll(t, m, c)
+			m, _ = step(m, pressKey("l"))
+			for _, r := range tc.label {
+				m, _ = step(m, pressKey(string(r)))
+			}
+			m, cmd := step(m, pressKey("enter"))
+			if cmd != nil {
+				t.Error("label uguale alla cartella corrente: op lanciata, voglio nessuna op")
+			}
+			if len(rec.labels) != 0 {
+				t.Errorf("ApplyLabel chiamata %d volte, voglio 0", len(rec.labels))
+			}
+			if !m.status.isErr || !strings.Contains(m.statusText(), "cartella corrente") {
+				t.Errorf("status = %q (err=%v), voglio errore sulla cartella corrente", m.statusText(), m.status.isErr)
+			}
+		})
+	}
+}
+
+// TestFolderStatusNotDuplicated (Piano 7, fix review 6): dopo il cambio cartella
+// il nome compare una sola volta in status bar (tag "[Inviati]").
+func TestFolderStatusNotDuplicated(t *testing.T) {
+	rec := &recorder{MailStore: folderMock(t)}
+	m := openPicker(t, folderModel(t, rec))
+	m, c := pickFolder(t, m, 1)
+	m = applyAll(t, m, c)
+	if n := strings.Count(plainBar(m), "Inviati"); n != 1 {
+		t.Errorf("\"Inviati\" compare %d volte in status bar (%q), voglio 1", n, plainBar(m))
 	}
 }

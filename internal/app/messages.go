@@ -30,6 +30,7 @@ type msgsLoaded struct {
 	silent  bool
 	limit   int
 	mailbox string // cartella richiesta ("" = INBOX): risultato stante se non corrisponde (Piano 7, Task 4)
+	gen     int    // generazione della lista al momento della richiesta: stante se non più la corrente (Piano 7, fix review 2)
 }
 
 // moreLoaded è il risultato di una pagina successiva (scroll in fondo, Piano 7,
@@ -40,6 +41,7 @@ type moreLoaded struct {
 	err     error
 	query   string
 	mailbox string // cartella della richiesta (Piano 7, Task 4)
+	gen     int    // generazione della lista della richiesta (Piano 7, fix review 2)
 }
 
 // msgLoaded è il risultato di FetchMessage. requested è l'ID richiesto dalla
@@ -68,6 +70,7 @@ type opDone struct {
 	deep          bool // refresh a profondità piena (D5, Piano 7 Task 3): solo Archive/Trash
 	closeComposer bool
 	send          bool
+	gone          []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
 }
 
 // changeEvt è un evento push del feed Watch.
