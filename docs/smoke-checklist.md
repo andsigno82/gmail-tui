@@ -103,9 +103,11 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `l` with the current folder name (`INBOX` in the inbox) shows "etichetta INBOX non applicata: è la cartella corrente"; no label is applied.
 - [ ] Malformed address: in the composer, To = `anna@@example` and `Ctrl+S` shows "A: indirizzo non valido" and no confirmation; empty To shows "nessun destinatario".
 - [ ] `echo body | gmail-tui send --to not-an-address --subject smoke` prints "send: A: indirizzo non valido …" on stderr, exit 1.
-- [ ] Gmail announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED: `openssl s_client -quiet -connect imap.gmail.com:993`, then `a CAPABILITY` lists all four.
+- [ ] Gmail announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED: `gmail-tui doctor` prints `imap: ok (MOVE UIDPLUS SPECIAL-USE LIST-EXTENDED)`.
+- [ ] Display name and IDN: send to `"Rossi, Mario" <your-address>` from the composer and from `gmail-tui send`; the message arrives and the To header shows the name.
 
 ## Doctor
 
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).
-- [ ] Run `gmail-tui doctor` with `GMAIL_APP_PASSWORD` unset → the password line says missing and suggests "gmail-tui login", without failing the other checks.
+- [ ] Run `gmail-tui doctor` with `GMAIL_APP_PASSWORD` unset and no keychain entry → the password line says missing and suggests "gmail-tui login", the IMAP check is skipped, the other checks do not fail.
+- [ ] With the password only in the keychain → `password: keychain ok` and the `imap:` line is printed.

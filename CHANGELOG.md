@@ -13,16 +13,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Trash** — `#` moves the message to the Trash after confirmation (`s`); from a thread it returns to the list. Refused on servers without MOVE or UIDPLUS.
 - **Recipient validation** — the composer blocks the send confirmation for a missing or malformed recipient; `gmail-tui send` exits 1 on the same errors.
 - **Demo** — seeded Sent folder and a `Work` label.
+- **`doctor` IMAP check** — with an address and a password (env or keychain), `doctor` connects and checks that the server announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED.
+- **Internationalized domains** — recipient domains are converted to punycode before sending.
 
 ### Changed
 
-- `a` (archive) works only in Posta in arrivo; elsewhere it shows a status message.
-- `l` refuses a label equal to the current folder (it would duplicate the message).
+- `a` (archive) works only on messages in INBOX; elsewhere it shows a status message. The check uses the selected message's mailbox, also for search results from other folders.
+- `l` refuses a label equal to the selected message's mailbox (it would duplicate the message).
+- Recipient domains must contain a dot (`a@b` is rejected, as Gmail does).
+- `gmail-tui send` parses `--to/--cc/--bcc` as RFC 5322 address lists, so display names with commas work.
 - IDLE push watches INBOX only; other folders are refreshed after operations.
 
 ### Fixed
 
 - IDLE reselects INBOX before each round, so push keeps working after operations on other folders.
+- Recipients with a display name (`Mario <m@x.it>`) are sent to SMTP `RCPT TO` as the bare address; before, the server rejected them.
+- `doctor` no longer reports the password as missing when it is in the keychain.
 
 ## [0.1.0] - 2026-11-22
 

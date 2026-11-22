@@ -75,9 +75,9 @@ Select with `theme = "…"` in the config, the `--theme` flag, or `:theme <name>
 | `gmail-tui` | launch the TUI (wizard on first run, demo mode without credentials) |
 | `gmail-tui login` | re-run the setup wizard (rewrites the config — see Notes) |
 | `gmail-tui fetch [--limit N] [--query "…"]` | list matching messages (default limit 20) |
-| `gmail-tui send --to a@b [--cc …] [--bcc …] --subject "…" [--attach f]... < body` | send an email read from stdin |
+| `gmail-tui send --to a@b.com [--cc …] [--bcc …] --subject "…" [--attach f]... < body` | send an email read from stdin |
 | `gmail-tui themes` | list available themes |
-| `gmail-tui doctor` | diagnose config, theme, password and cache |
+| `gmail-tui doctor` | diagnose config, theme, password and cache; with credentials, also checks that the IMAP server announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED |
 | `gmail-tui version` | print the version |
 
 Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system keychain → absent (demo mode).
@@ -86,8 +86,8 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
-- **Archive only in Inbox**: `a` outside Posta in arrivo is refused with a status message.
-- **Recipient validation**: the composer does not open the send confirmation without a recipient or with a malformed address; `gmail-tui send` exits 1 on the same errors.
+- **Archive only in Inbox**: `a` is refused with a status message when the selected message is not in INBOX (also for search results from other folders).
+- **Recipient validation**: the composer does not open the send confirmation without a recipient or with a malformed address; `gmail-tui send` exits 1 on the same errors. The domain must contain a dot; internationalized domains are sent in punycode; non-ASCII local parts (SMTPUTF8) are not supported. Display names are allowed (`"Rossi, Mario" <m@x.it>`).
 - **`gmail-tui login` rewrites the config**: your address is kept, but `name` and `signature` are reset to empty (and theme to `default`). Back up `~/.config/gmail-tui/config.toml` before re-running it.
 - **IMAP/SMTP hosts are fixed to the Gmail preset** (`imap.gmail.com:993`, `smtp.gmail.com:587` STARTTLS) and not configurable in v1.
 - **Markdown bodies are sent as `text/plain`** — the composer is a markdown textarea but generates no HTML part yet (v1.1: markdown → HTML multipart).
