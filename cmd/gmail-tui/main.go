@@ -50,7 +50,7 @@ func main() {
 				fmt.Fprintf(os.Stderr, "config path: %v\n", err)
 				os.Exit(1)
 			}
-			os.Exit(cmd.Doctor(os.Stdout, cfgPath, os.Getenv))
+			os.Exit(cmd.Doctor(os.Stdout, cfgPath, os.Getenv, doctorProbe(cfgPath)))
 		case "fetch":
 			os.Exit(runFetch(os.Args[2:]))
 		case "send":
@@ -66,6 +66,29 @@ func main() {
 	// sconosciuto (es. "foo") arriva qui e il FlagSet lo rigetta come
 	// posizionale inatteso — l'errore resta, il testo nuovo.
 	os.Exit(runTUI(os.Args[1:], false))
+}
+
+// doctorProbe costruisce il probe IMAP di `doctor` (Piano 7.1, Task 4): serve
+// un indirizzo in config e una password (env → keychain, stesso ordine della
+// TUI). Senza uno dei due, nil: il controllo IMAP è saltato. La password non
+// viene mai stampata.
+func doctorProbe(cfgPath string) cmd.CapsProbe {
+	cfg, err := config.Load(cfgPath)
+	if err != nil || cfg.Address == "" {
+		return nil
+	}
+	krStore, _ := keyring.New()
+	pw, _ := resolvePassword(os.Getenv, krStore, cfg.Address)
+	if pw == "" {
+		return nil
+	}
+	return func(ctx context.Context) ([]string, error) {
+		return imap.Capabilities(ctx, imap.Options{
+			Addr:     imapAddr,
+			Username: cfg.Address,
+			Password: pw,
+		})
+	}
 }
 
 // runLogin è il sottocomando `gmail-tui login` (Piano 4, Task 5): il parsing
