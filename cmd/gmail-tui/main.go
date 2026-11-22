@@ -366,6 +366,7 @@ func runSend(args []string) int {
 	subject := fs.String("subject", "", "oggetto")
 	var attach attachList
 	fs.Var(&attach, "attach", "allegato (flag ripetibile)")
+	md := fs.Bool("markdown", false, "corpo in Markdown: invio multipart/alternative con HTML (GFM)")
 	if exitCode := parseFlags(fs, args); exitCode >= 0 {
 		return exitCode
 	}
@@ -377,7 +378,7 @@ func runSend(args []string) int {
 	if !ok {
 		return 1
 	}
-	sargs := cmd.SendArgs{To: *to, Cc: *cc, Bcc: *bcc, Subject: *subject, Attach: attach}
+	sargs := cmd.SendArgs{To: *to, Cc: *cc, Bcc: *bcc, Subject: *subject, Attach: attach, Markdown: *md}
 	return cmd.Send(os.Stdout, sender, cfg, sargs, os.Stdin)
 }
 

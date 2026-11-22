@@ -281,6 +281,14 @@ func TestDraftSignatureRule(t *testing.T) {
 	}
 }
 
+// TestDraftMarkdown (Piano 7.2, Task 5): la bozza del composer è sempre Markdown.
+func TestDraftMarkdown(t *testing.T) {
+	m := newModel(t, ComposerConfig{})
+	if !m.Draft().Markdown {
+		t.Error("Draft().Markdown = false, want true")
+	}
+}
+
 // TestDraftCcOnlyWhenVisible: Cc nascosto NON finisce nella bozza (l'utente
 // non lo vede → non va in invio silenziosamente); mostrato, sì.
 func TestDraftCcOnlyWhenVisible(t *testing.T) {

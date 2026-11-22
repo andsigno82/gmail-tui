@@ -14,6 +14,7 @@ require (
 	github.com/emersion/go-smtp v0.26.0
 	github.com/jhillyerd/enmime v1.3.0
 	github.com/k3a/html2text v1.5.1
+	github.com/yuin/goldmark v1.8.7
 	go.etcd.io/bbolt v1.5.0
 	golang.org/x/net v0.63.0
 )

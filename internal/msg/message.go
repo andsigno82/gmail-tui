@@ -70,4 +70,7 @@ type Outgoing struct {
 	Subject     string
 	BodyText    string
 	Attachments []string
+	// Markdown (Piano 7.2, Task 5): il corpo è markdown; con true il MIME è
+	// multipart/alternative (text/plain sorgente + text/html GFM).
+	Markdown bool
 }

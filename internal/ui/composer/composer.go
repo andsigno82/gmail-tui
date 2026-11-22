@@ -316,6 +316,7 @@ func (m Model) Draft() msg.Outgoing {
 		Subject:     strings.TrimSpace(m.subject.Value()),
 		BodyText:    m.body.Value(),
 		Attachments: append([]string(nil), m.attachments...),
+		Markdown:    true,
 	}
 	if m.ccVisible {
 		out.Cc = msg.ParseRecipientField(m.cc.Value())

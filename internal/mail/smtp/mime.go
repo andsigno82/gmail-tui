@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 // buildMIME costruisce il messaggio MIME completo (header + corpo) per
@@ -33,11 +36,15 @@ import (
 //     righe da 76 caratteri e CRLF.
 //   - File inesistente o illeggibile → errore wrapped col path.
 //
+// Piano 7.2, Task 5: con msg.Outgoing.Markdown il corpo diventa
+// multipart/alternative (vedi corpo); con allegati il multipart/alternative
+// annidato precede le parti allegato dentro il multipart/mixed.
+//
 // Il dot-stuffing SMTP non tocca a buildMIME: se ne occupa il DotWriter
 // del client go-smtp in Send.
 func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
 	// Corpo: normalizza a CRLF (LF→CRLF senza raddoppiare i CRLF esistenti).
-	body := strings.ReplaceAll(strings.ReplaceAll(m.BodyText, "\r\n", "\n"), "\n", "\r\n")
+	body := toCRLF(m.BodyText)
 
 	var buf bytes.Buffer
 	writeHeader := func(key, value string) {
@@ -58,10 +65,16 @@ func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
 	writeHeader("Message-ID", fmt.Sprintf("<%s@%s>", randomHex16(), domainOf(m.From)))
 	writeHeader("MIME-Version", "1.0")
 
+	// Corpo (Piano 7.2, Task 5): text/plain, o multipart/alternative con HTML.
+	ct, data, err := corpo(m, body)
+	if err != nil {
+		return nil, err
+	}
+
 	if len(m.Attachments) == 0 {
-		writeHeader("Content-Type", "text/plain; charset=utf-8")
+		writeHeader("Content-Type", ct)
 		buf.WriteString("\r\n")
-		buf.WriteString(body)
+		buf.Write(data)
 		return buf.Bytes(), nil
 	}
 
@@ -71,12 +84,12 @@ func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
 
 	// Prima parte: il corpo text/plain.
 	h := textproto.MIMEHeader{}
-	h.Set("Content-Type", "text/plain; charset=utf-8")
+	h.Set("Content-Type", ct)
 	p, err := mw.CreatePart(h)
 	if err != nil {
 		return nil, fmt.Errorf("mime: parte testo: %w", err)
 	}
-	if _, err := p.Write([]byte(body)); err != nil {
+	if _, err := p.Write(data); err != nil {
 		return nil, fmt.Errorf("mime: corpo: %w", err)
 	}
 
@@ -95,6 +108,64 @@ func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
 		return nil, fmt.Errorf("mime: chiusura multipart: %w", err)
 	}
 	return buf.Bytes(), nil
+}
+
+// toCRLF normalizza i fine riga a CRLF (LF→CRLF senza raddoppiare i CRLF esistenti).
+func toCRLF(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\n", "\r\n")
+}
+
+// mdRenderer è il convertitore Markdown → HTML (Piano 7.2, Task 5): estensione
+// GFM (tabelle, barrato, autolink, liste di task). NESSUN html.WithUnsafe: l'HTML
+// scritto a mano nel corpo non passa (goldmark lo sostituisce con un commento).
+// html.WithHardWraps: un a capo singolo resta un <br>, così la firma su righe
+// separate non si fonde in un unico paragrafo.
+var mdRenderer = goldmark.New(
+	goldmark.WithExtensions(extension.GFM),
+	goldmark.WithRendererOptions(html.WithHardWraps()),
+)
+
+// corpo costruisce Content-Type e bytes della parte corpo. Senza Markdown è
+// text/plain con il corpo CRLF così com'è (invariato). Con Markdown è
+// multipart/alternative: text/plain = markdown sorgente, text/html = documento
+// minimo con il rendering GFM (meta charset utf-8, nessuno stile o script esterno).
+func corpo(m msg.Outgoing, body string) (string, []byte, error) {
+	const plain = "text/plain; charset=utf-8"
+	if !m.Markdown {
+		return plain, []byte(body), nil
+	}
+	var rendered bytes.Buffer
+	if err := mdRenderer.Convert([]byte(m.BodyText), &rendered); err != nil {
+		return "", nil, fmt.Errorf("mime: markdown: %w", err)
+	}
+	page := toCRLF(htmlPage(rendered.String()))
+
+	var alt bytes.Buffer
+	aw := multipart.NewWriter(&alt)
+	for _, part := range []struct{ contentType, data string }{
+		{plain, body},
+		{"text/html; charset=utf-8", page},
+	} {
+		h := textproto.MIMEHeader{}
+		h.Set("Content-Type", part.contentType)
+		w, err := aw.CreatePart(h)
+		if err != nil {
+			return "", nil, fmt.Errorf("mime: parte %s: %w", part.contentType, err)
+		}
+		if _, err := w.Write([]byte(part.data)); err != nil {
+			return "", nil, fmt.Errorf("mime: parte %s: %w", part.contentType, err)
+		}
+	}
+	if err := aw.Close(); err != nil {
+		return "", nil, fmt.Errorf("mime: chiusura alternative: %w", err)
+	}
+	return "multipart/alternative; boundary=" + aw.Boundary(), alt.Bytes(), nil
+}
+
+// htmlPage incapsula il frammento renderizzato in un documento HTML minimo.
+func htmlPage(fragment string) string {
+	return "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n</head>\n<body>\n" +
+		fragment + "</body>\n</html>\n"
 }
 
 // writeAttachmentPart scrive una parte allegato: Content-Type da

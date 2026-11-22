@@ -23,6 +23,8 @@ type SendArgs struct {
 	To, Cc, Bcc string
 	Subject     string
 	Attach      []string
+	// Markdown (Piano 7.2, Task 5): flag --markdown; false = testo semplice.
+	Markdown bool
 }
 
 // SendTimeout è il budget dell'intera operazione di invio (dial → STARTTLS →
@@ -64,6 +66,7 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		Subject:     args.Subject,
 		BodyText:    string(text),
 		Attachments: args.Attach,
+		Markdown:    args.Markdown,
 	}
 	// Piano 7, Task 2: indirizzi malformati fermati prima del round-trip
 	// SMTP (prima emergevano solo come errore del server a invio avviato).

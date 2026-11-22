@@ -61,6 +61,7 @@ func NormalizeRecipients(o Outgoing) (Outgoing, error) {
 		Subject:     o.Subject,
 		BodyText:    o.BodyText,
 		Attachments: o.Attachments,
+		Markdown:    o.Markdown,
 	}, nil
 }
 

@@ -225,6 +225,22 @@ func TestSendQuotedLocalPart(t *testing.T) {
 	}
 }
 
+// TestSendMarkdownFlag (Piano 7.2, Task 5): --markdown imposta Outgoing.Markdown;
+// senza flag resta false (il MIME non cambia).
+func TestSendMarkdownFlag(t *testing.T) {
+	for _, md := range []bool{false, true} {
+		fs := &fakeSender{}
+		code := Send(&bytes.Buffer{}, fs, config.Config{Address: "me@gmail.com"},
+			SendArgs{To: "a@b.it", Markdown: md}, strings.NewReader("**x**"))
+		if code != 0 {
+			t.Fatalf("Send exit = %d, want 0", code)
+		}
+		if fs.got.Markdown != md {
+			t.Errorf("Markdown = %v, want %v", fs.got.Markdown, md)
+		}
+	}
+}
+
 // TestBareRecipientsReturnsError (Piano 7.1, fix code-review): un indirizzo non
 // parsabile è un errore, non viene scartato in silenzio dal conteggio.
 func TestBareRecipientsReturnsError(t *testing.T) {
