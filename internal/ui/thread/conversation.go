@@ -269,3 +269,12 @@ func (m *Model) ClickRow(y int) (bool, tea.Cmd) {
 	}
 	return false, nil
 }
+
+// Refs elenca le righe dei messaggi della conversazione, in ordine (test e radice).
+func (m Model) Refs() []msg.MessageRef {
+	out := make([]msg.MessageRef, 0, len(m.conv))
+	for _, e := range m.conv {
+		out = append(out, e.ref)
+	}
+	return out
+}

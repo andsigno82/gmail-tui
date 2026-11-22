@@ -79,6 +79,20 @@ func (m Model) currentRef() (msg.MessageRef, bool) {
 // accettato in v1, il refresh che segue l'opDone corregge la copia in lista.
 // Senza ref corrente (lista vuota, thread in caricamento) le op sono un
 // no-op silenzioso.
+// opRef è la riga su cui agiscono le azioni sulla CONVERSAZIONE (a, #, l) (Piano 8,
+// review punto 4, regola del coordinatore): come dalla lista, sono la riga aperta,
+// indipendentemente dal messaggio selezionato nel thread. Nella lista con due colonne
+// è la riga sotto il cursore (l'anteprima). Altrove è currentRef.
+func (m Model) opRef() (msg.MessageRef, bool) {
+	if m.view == viewThread {
+		return m.rowRef, m.rowRef.ID != ""
+	}
+	if m.view == viewInbox && m.previewVisible() {
+		return m.prevRef, true
+	}
+	return m.currentRef()
+}
+
 func (m Model) runOp(k string) (Model, tea.Cmd) {
 	if k == "a" && !strings.EqualFold(m.opBox(), "INBOX") {
 		// Piano 7, fix review 3: l'archivio è solo della posta in arrivo. Nel
@@ -89,14 +103,19 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 		cmd := m.toast.Push(toast.Info, "archivia è disponibile solo in Posta in arrivo")
 		return m, cmd
 	}
+	if k == "a" { // archivia: niente conferma (undo non in v1, feedback chiaro)
+		row, ok := m.opRef()
+		if !ok {
+			return m, nil
+		}
+		m.pending++
+		return m, tea.Batch(archive(m.store, row), m.spinner.Tick)
+	}
 	ref, ok := m.currentRef()
 	if !ok {
 		return m, nil
 	}
 	switch k {
-	case "a": // archivia: niente conferma (undo non in v1, feedback chiaro)
-		m.pending++
-		return m, tea.Batch(archive(m.store, ref), m.spinner.Tick)
 	case "s": // stella: toggle
 		on := !ref.Starred
 		updated := ref
@@ -163,12 +182,12 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 		cmd := m.toast.Push(toast.Error, fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name))
 		return m, cmd
 	}
-	ref, ok := m.currentRef()
+	row, ok := m.opRef()
 	if !ok {
 		return m, nil
 	}
 	m.pending++
-	return m, tea.Batch(applyLabel(m.store, ref, name, true), m.spinner.Tick)
+	return m, tea.Batch(applyLabel(m.store, row, name, true), m.spinner.Tick)
 }
 
 // opBox è la mailbox IMAP su cui agisce un'op: quella della RIGA operata (l'ID
@@ -177,7 +196,7 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 // ref (lista vuota, thread in caricamento) ricade sulla cartella mostrata: lo
 // zero value di folder è la posta in arrivo ("INBOX").
 func (m Model) opBox() string {
-	if ref, ok := m.currentRef(); ok {
+	if ref, ok := m.opRef(); ok {
 		if box, _, err := ref.ID.Split(); err == nil {
 			return box
 		}
@@ -220,11 +239,11 @@ func (m Model) askTrash() (Model, tea.Cmd) {
 		cmd := m.toast.Push(toast.Info, "già nel cestino")
 		return m, cmd
 	}
-	ref, ok := m.currentRef()
+	row, ok := m.opRef()
 	if !ok {
 		return m, nil
 	}
-	m.trashRef = ref
+	m.trashRef = row
 	m.trashOpen = true
 	return m, nil
 }

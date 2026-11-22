@@ -58,6 +58,7 @@ type Model struct {
 	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
 	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
 	threadGen int             // generazione del thread: scarta i corpi arrivati per un thread superato (Piano 8, Task 13)
+	rowRef    msg.MessageRef  // riga aperta nel thread: base delle azioni sulla conversazione a, #, l (Piano 8, review punto 4)
 	composer  composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
 	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
@@ -561,6 +562,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingRef = ev.Ref
 		m.view = viewThread
 		m.pending++ // fetch in flight
+		m.rowRef = ev.Ref
 		return m, tea.Batch(fetchMsg(m.store, ev.Ref, m.folder), m.spinner.Tick)
 
 	case thread.BackMsg:

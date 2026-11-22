@@ -236,3 +236,105 @@ func TestListaLimitataNonEsauritaEBarraLoDice(t *testing.T) {
 		t.Errorf("status = %q, voglio l'avviso di lista limitata", m.statusText())
 	}
 }
+
+// allMailBox è la cartella Tutti i messaggi di Gmail (namespace diverso da INBOX).
+const allMailBox = "[Gmail]/All Mail"
+
+// gmailFixture: la conversazione di convViewFixture con gli ID Gmail (1000+uid).
+func gmailFixture(t *testing.T) *mail.Mock {
+	t.Helper()
+	store := convViewFixture(t)
+	for _, mm := range store.Msgs {
+		_, uid, _ := mm.Ref.ID.Split()
+		mm.Ref.GmailID = 1000 + uint64(uid)
+	}
+	return store
+}
+
+// gmailNS simula Gmail con due namespace (Piano 8, review punto 2 e 4): ThreadMessages
+// restituisce gli ID di Tutti i messaggi (stesso uid, stesso GmailID); FetchMessage li
+// risolve; Archive registra gli ID ricevuti.
+type gmailNS struct {
+	*mail.Mock
+	archived [][]msg.MessageID
+}
+
+func (g *gmailNS) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) {
+	refs, err := g.Mock.ThreadMessages(ctx, threadID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]msg.MessageRef, 0, len(refs))
+	for _, r := range refs {
+		_, uid, _ := r.ID.Split()
+		r.ID = msg.NewID(allMailBox, uid)
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func (g *gmailNS) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Message, error) {
+	box, uid, err := id.Split()
+	if err != nil {
+		return nil, err
+	}
+	if box != allMailBox {
+		return g.Mock.FetchMessage(ctx, id)
+	}
+	for _, mm := range g.Msgs {
+		if _, u, _ := mm.Ref.ID.Split(); u == uid {
+			cp, err := g.Mock.FetchMessage(ctx, mm.Ref.ID)
+			if err != nil {
+				return nil, err
+			}
+			cp.Ref.ID = id
+			return cp, nil
+		}
+	}
+	return nil, fmt.Errorf("messaggio %s non trovato", id)
+}
+
+func (g *gmailNS) Archive(ctx context.Context, ids []msg.MessageID) error {
+	g.archived = append(g.archived, append([]msg.MessageID(nil), ids...))
+	return g.Mock.Archive(ctx, ids)
+}
+
+// Piano 8, review punto 2: la conversazione aperta ha un messaggio per GmailID, anche
+// quando ThreadMessages (Tutti i messaggi) e la riga (INBOX) usano ID diversi.
+func TestConversazioneSenzaDoppioniPerGmailID(t *testing.T) {
+	g := &gmailNS{Mock: gmailFixture(t)}
+	m := pagedModel(t, g)
+	row := m.refs[0]
+	m, cmd := step(m, inbox.SelectedMsg{Ref: row})
+	m = deliverAll(t, m, cmd)
+
+	refs := m.thread.Refs()
+	if len(refs) != 4 {
+		t.Fatalf("messaggi nella conversazione = %d, voglio 4 (un doppione per GmailID)", len(refs))
+	}
+	seen := map[uint64]bool{}
+	for _, r := range refs {
+		if seen[r.GmailID] {
+			t.Errorf("GmailID %d compare due volte: %v", r.GmailID, refs)
+		}
+		seen[r.GmailID] = true
+	}
+}
+
+// Piano 8, review punto 4: archivia dal thread agisce sulla conversazione della RIGA
+// (INBOX), non su quella del messaggio selezionato (qui un messaggio più vecchio).
+func TestArchiviaDalThreadAgiscesLaConversazioneDellaRiga(t *testing.T) {
+	g := &gmailNS{Mock: gmailFixture(t)}
+	m := pagedModel(t, g)
+	row := m.refs[0]
+	m, cmd := step(m, inbox.SelectedMsg{Ref: row})
+	m = deliverAll(t, m, cmd)
+	m, _ = step(m, pressKey("k")) // seleziona il messaggio precedente (Inviati)
+
+	m, cmd = step(m, pressKey("a"))
+	deliverAll(t, m, cmd)
+	idU1, idU2, idU4 := msg.NewID("INBOX", 1), msg.NewID("INBOX", 2), msg.NewID("INBOX", 4)
+	if len(g.archived) != 1 || !sameIDs(g.archived[0], idU1, idU2, idU4) {
+		t.Errorf("archiviati = %v, voglio i membri INBOX della conversazione (1,2,4)", g.archived)
+	}
+}

@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	tea "charm.land/bubbletea/v2"
@@ -33,11 +34,15 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 		return nil, nil, err
 	}
 	bodies := make(map[msg.MessageID]*msg.Message)
-	have := make(map[msg.MessageID]bool, len(threadRefs)+1)
+	// Un messaggio Gmail sta in più mailbox con ID diversi (INBOX e Tutti i messaggi):
+	// la deduplica è per GmailID, non per ID (Piano 8, review punto 2).
+	have := make(map[string]bool, len(threadRefs)+1)
+	haveID := make(map[msg.MessageID]bool, len(threadRefs)+1)
 	all := make([]msg.MessageRef, 0, len(threadRefs)+1)
 	for _, r := range threadRefs {
-		if !have[r.ID] {
-			have[r.ID] = true
+		if !have[copyKey(r)] {
+			have[copyKey(r)] = true
+			haveID[r.ID] = true
 			all = append(all, r)
 		}
 	}
@@ -53,14 +58,18 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 	}
 	extra = append(extra, ref.ID)
 	for _, id := range extra {
-		if have[id] {
+		if haveID[id] {
 			continue
 		}
-		have[id] = true
+		haveID[id] = true
 		mm, err := st.FetchMessage(ctx, id)
 		if err != nil {
 			return nil, nil, err
 		}
+		if have[copyKey(mm.Ref)] {
+			continue // la stessa copia è già in lista con l'ID di un'altra mailbox
+		}
+		have[copyKey(mm.Ref)] = true
 		bodies[id] = mm
 		all = append(all, mm.Ref)
 	}
@@ -76,6 +85,15 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 		bodies[id] = mm
 	}
 	return all, bodies, nil
+}
+
+// copyKey identifica il messaggio: il GmailID (uguale in ogni mailbox), o l'ID se
+// il messaggio non ha ID Gmail (non Gmail, fallback).
+func copyKey(r msg.MessageRef) string {
+	if r.GmailID != 0 {
+		return fmt.Sprintf("g%d", r.GmailID)
+	}
+	return "i" + string(r.ID)
 }
 
 // loadedThread ricava righe e corpi da un risultato di caricamento: m è il solo
