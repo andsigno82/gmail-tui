@@ -41,12 +41,15 @@ type msgLoaded struct {
 // Task 7); le op automatiche — es. auto MarkRead al fetch (Task 5) — non
 // rilistano (lo status resta l'unico feedback, la lista si aggiorna via
 // Watch/nuova ricerca). closeComposer (Piano 4, Task 4) è dell'invio riuscito:
-// il composer si chiude e si torna all'inbox prima del re-list.
+// il composer si chiude e si torna all'inbox prima del re-list. send (fix
+// doppio invio) identifica l'opDone dell'invio: la radice lo usa per
+// riabilitare un nuovo invio (m.sending) al suo arrivo, ok o errore.
 type opDone struct {
 	label         string
 	err           error
 	refresh       bool
 	closeComposer bool
+	send          bool
 }
 
 // changeEvt è un evento push del feed Watch.

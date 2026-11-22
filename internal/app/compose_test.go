@@ -933,6 +933,131 @@ func TestSendRequestedStaleDropped(t *testing.T) {
 	}
 }
 
+// TestSendInFlightCtrlSDropped: ctrl+s DURANTE un invio in flight (pending 1,
+// sender già chiamato una volta — opDone non ancora consegnato) è scartato
+// silenziosamente: la conferma NON si riapre e un secondo `s` non può
+// consegnare una seconda copia della stessa bozza (recorder resta a 1).
+func TestSendInFlightCtrlSDropped(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm, _ = step(mm, msgsLoaded{}) // consolida il load iniziale (pending 0)
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+	}))
+	mm, cmd := step(mm, pressKey("s"))
+	if mm.pending != 1 {
+		t.Fatalf("pending dopo s = %d, voglio 1 (invio in flight)", mm.pending)
+	}
+	// Esegue la cmd SENZA consegnare l'opDone: il send parte (recorder 1) ma
+	// resta in flight (pending 1), come con un SMTP lento.
+	for range runCmd(cmd) {
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("sender dopo il primo s = %d chiamate, voglio 1", len(rec.calls))
+	}
+	// ctrl+s durante l'invio: il composer emette SendRequestedMsg, la radice
+	// lo scarta (pending > 0) — nessuna conferma fantasma.
+	mm, cmd2 := step(mm, pressKey("ctrl+s"))
+	if cmd2 == nil {
+		t.Fatal("ctrl+s: cmd nil, voglio SendRequestedMsg dal composer")
+	}
+	res, ok := cmd2().(composer.SendRequestedMsg)
+	if !ok {
+		t.Fatalf("cmd = %T, voglio composer.SendRequestedMsg", cmd2())
+	}
+	mm, _ = step(mm, res)
+	if mm.confirmSend {
+		t.Error("ctrl+s durante l'invio non deve riaprire la conferma")
+	}
+	if mm.pending != 1 {
+		t.Errorf("pending dopo ctrl+s = %d, voglio 1 (l'invio resta l'unico)", mm.pending)
+	}
+	// Un secondo `s` (ora testo nel campo, conferma mai aperta) non invia.
+	mm, _ = step(mm, pressKey("s"))
+	if len(rec.calls) != 1 {
+		t.Errorf("sender dopo ctrl+s + s = %d chiamate, voglio 1 (no doppia email)", len(rec.calls))
+	}
+}
+
+// TestSendConfirmSRefusedWhileSending: difesa in profondità — `s` alla conferma
+// con un invio già in flight (sending true; stato non raggiungibile via UI
+// perché il SendRequestedMsg è già guardato) è rifutato: nessun secondo
+// sendCmd, la conferma resta aperta (esc può chiuderla).
+func TestSendConfirmSRefusedWhileSending(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+	}))
+	mm.sending = true // simula l'invio in flight (da conferma a opDone)
+	mm, cmd := step(mm, pressKey("s"))
+	if cmd != nil {
+		t.Errorf("s con invio in flight: cmd = %v, voglio nil (rifutato)", cmd)
+	}
+	if !mm.confirmSend {
+		t.Error("s rifutato non deve consumare la conferma")
+	}
+	if !mm.sending {
+		t.Error("sending = false, voglio true (l'invio in flight resta l'unico)")
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("sender chiamato %d volte, voglio 0", len(rec.calls))
+	}
+}
+
+// TestSendRequestedDiscardOpenDropped (leak confirmSend): ctrl+s col
+// SendRequestedMsg in volo, esc apre PRIMA il modale discard — il messaggio
+// arriva a stato invalido (discardOpen) ed è scartato; dopo lo scarto i tasti
+// dell'inbox funzionano normalmente e `s` (stella) NON invia la bozza scartata.
+func TestSendRequestedDiscardOpenDropped(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = draftComposer(mm, composer.ComposerConfig{
+		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
+	})
+	// ctrl+s: SendRequestedMsg generato ma NON ancora consegnato (cmd in volo).
+	mm, cmd := step(mm, pressKey("ctrl+s"))
+	if cmd == nil {
+		t.Fatal("ctrl+s: cmd nil, voglio SendRequestedMsg")
+	}
+	res, ok := cmd().(composer.SendRequestedMsg)
+	if !ok {
+		t.Fatalf("cmd = %T, voglio composer.SendRequestedMsg", cmd())
+	}
+	// esc arriva PRIMA della consegna: il corpo non è vuoto → modale discard.
+	mm, _ = step(mm, pressKey("esc"))
+	if !mm.discardOpen {
+		t.Fatal("esc deve aprire il modale discard (corpo non vuoto)")
+	}
+	// Il SendRequestedMsg ora consegna a stato invalido: scartato.
+	mm, _ = step(mm, res)
+	if mm.confirmSend {
+		t.Error("SendRequestedMsg con discard aperto accettato: confirmSend leak")
+	}
+	if !mm.discardOpen {
+		t.Error("il modale discard deve restare aperto (messaggio scartato)")
+	}
+	// `s` scarta la bozza: back alla vista di provenienza (inbox).
+	mm, _ = step(mm, pressKey("s"))
+	if mm.currentView() != viewInbox {
+		t.Errorf("vista dopo lo scarto = %v, voglio inbox", mm.currentView())
+	}
+	if mm.confirmSend {
+		t.Error("confirmSend deve restare false dopo lo scarto")
+	}
+	// I tasti dell'inbox funzionano normalmente: `s` è stella, NON invia.
+	mm, _ = step(mm, pressKey("s"))
+	if mm.confirmSend || mm.currentView() != viewInbox {
+		t.Errorf("s nell'inbox dopo lo scarto: confirm=%v vista=%v, voglio false/inbox", mm.confirmSend, mm.currentView())
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("sender chiamato %d volte dopo lo scarto, voglio 0", len(rec.calls))
+	}
+}
+
 // --- mouse gate ---------------------------------------------------------------------
 
 // --- mouse gate ---------------------------------------------------------------------

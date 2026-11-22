@@ -67,6 +67,7 @@ type Model struct {
 	discardOpen     bool
 	draft           msg.Outgoing
 	confirmSend     bool // conferma pre-invio aperta ("Invio a …" nella status bar)
+	sending         bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
 
 	// Percorso della config per la persistenza del tema (Piano 4, Task 2:
 	// `:theme`): risolto in New da config.Path(). "" = non disponibile
@@ -283,6 +284,11 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opDone:
 		m.doneOp()
+		if ev.send {
+			// Invio concluso (ok o errore): riabilita un eventuale retry
+			// (ctrl+s dopo un errore riapre la conferma).
+			m.sending = false
+		}
 		if ev.err != nil {
 			m.status = statusMsg{text: fmt.Sprintf("%s: %v", ev.label, ev.err), isErr: true}
 			return m, nil
@@ -437,8 +443,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// si apre la conferma modale ("Invio a …" nella status bar): s →
 		// sendCmd col Sender, esc → ripresa (bozza intatta). Messaggio STANTE
 		// (la vista è cambiata fra pressione e consegna): scartato, come i
-		// risultati di fetch stanti.
-		if m.view != viewComposer {
+		// risultati di fetch stanti — anche col modale discard aperto (ctrl+s
+		// in volo + esc prima della consegna: confermarlo lascerebbe
+		// confirmSend acceso oltre lo scarto, e `s` nell'inbox invierebbe la
+		// bozza scartata). Con un invio già in flight (sending) è scartato
+		// SILENZIOSAMENTE: riaprire la conferma permetterebbe un secondo
+		// sendCmd sulla stessa bozza (doppia email) — lo spinner in status
+		// bar segnala già che l'invio è in corso. Il segnale è `sending`
+		// (invio specifico), NON pending: op estranee in flight (load/re-list
+		// iniziale, refresh) non devono bloccare il primo invio.
+		if m.view != viewComposer || m.sending || m.discardOpen {
 			return m, nil
 		}
 		m.draft = ev.Out
@@ -525,8 +539,17 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// il mouse, gate sotto) sono ignorati: nessuna azione "alla cieca".
 			switch ev.String() {
 			case "s":
+				if m.sending {
+					// Invio già in flight: rifutare — un secondo sendCmd sulla
+					// stessa bozza sarebbe una doppia email. Stato non
+					// raggiungibile via UI (il SendRequestedMsg è già
+					// guardato): difesa in profondità, la conferma resta
+					// aperta (esc può chiuderla).
+					return m, nil
+				}
 				m.confirmSend = false
-				m.pending++ // invio in flight: spinner finché opDone
+				m.sending = true // blocca un secondo invio finché opDone
+				m.pending++      // invio in flight: spinner finché opDone
 				return m, tea.Batch(sendCmd(m.sender, m.draft), m.spinner.Tick)
 			case "esc":
 				m.confirmSend = false // back al composer: la bozza resta

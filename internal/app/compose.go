@@ -262,9 +262,9 @@ func sendCmd(sender Sender, out msg.Outgoing) tea.Cmd {
 		ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
 		defer cancel()
 		if err := sender.Send(ctx, out); err != nil {
-			return opDone{label: "invio", err: err}
+			return opDone{label: "invio", err: err, send: true}
 		}
-		return opDone{label: "inviato", refresh: true, closeComposer: true}
+		return opDone{label: "inviato", refresh: true, closeComposer: true, send: true}
 	}
 }
 
