@@ -336,21 +336,6 @@ func markReadConv(st mail.MailStore, ref msg.MessageRef, read bool) tea.Cmd {
 	}
 }
 
-// markRead esegue MarkRead fuori dal loop UI. refresh=false per l'auto
-// MarkRead al fetch (Task 5: solo feedback, la lista si aggiorna via
-// Watch/nuova ricerca); refresh=true per il toggle `v` dell'utente. Il
-// feedback dipende dalla direzione: "letta" / "segna non letta".
-func markRead(st mail.MailStore, id msg.MessageID, read, refresh bool) tea.Cmd {
-	label := "segna non letta"
-	if read {
-		label = "letta"
-	}
-	return func() tea.Msg {
-		err := st.MarkRead(context.Background(), []msg.MessageID{id}, read)
-		return opDone{label: label, err: err, refresh: refresh, localID: id, localRead: read}
-	}
-}
-
 // star esegue Star fuori dal loop UI: feedback "stella on"/"stella off".
 func star(st mail.MailStore, id msg.MessageID, on bool) tea.Cmd {
 	label := "stella off"

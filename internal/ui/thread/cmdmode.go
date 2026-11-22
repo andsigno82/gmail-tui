@@ -194,10 +194,11 @@ func (m *Model) executeCommand() tea.Cmd {
 // n dell'ELENCO a fondo messaggio: il PartIndex è l'indice filtrato (coerenza
 // garantita dal fix Piano 2), l'elenco è quello renderizzato dalle righe 📎.
 func (m Model) attachmentPart(n int) (part int, filename string, err error) {
-	if m.msg == nil {
+	sel := m.selMsg()
+	if sel == nil {
 		return 0, "", fmt.Errorf("messaggio non ancora caricato")
 	}
-	atts := m.msg.Attachments
+	atts := sel.Attachments
 	if n < 1 || n > len(atts) {
 		if len(atts) == 0 {
 			return 0, "", fmt.Errorf("allegato %d inesistente: il messaggio non ha allegati", n)
@@ -223,7 +224,7 @@ func (m *Model) execSave(args []string) tea.Cmd {
 		return feedbackCmd(err.Error(), true)
 	}
 	if len(args) == 2 {
-		return m.saveRequested(SaveRequested{ID: m.ref.ID, Part: part, Path: args[1]})
+		return m.saveRequested(SaveRequested{ID: m.selRef().ID, Part: part, Path: args[1]})
 	}
 	return m.openPicker(part)
 }
@@ -243,7 +244,7 @@ func (m *Model) execOpen(args []string) tea.Cmd {
 		return feedbackCmd(err.Error(), true)
 	}
 	path := filepath.Join(os.TempDir(), filepath.Base(filename))
-	return m.saveRequested(SaveRequested{ID: m.ref.ID, Part: part, Path: path, Open: true})
+	return m.saveRequested(SaveRequested{ID: m.selRef().ID, Part: part, Path: path, Open: true})
 }
 
 // execTheme esegue :theme: senza argomenti elenca i temi (feedback
@@ -307,7 +308,7 @@ func (m Model) resolvePickPath(sel string) (string, error) {
 		return "", fmt.Errorf("percorso allegato: %w", err)
 	}
 	if info, err := os.Stat(abs); err == nil && info.IsDir() {
-		return filepath.Join(abs, filepath.Base(m.msg.Attachments[m.pickPart].Filename)), nil
+		return filepath.Join(abs, filepath.Base(m.selMsg().Attachments[m.pickPart].Filename)), nil
 	}
 	return abs, nil
 }
@@ -329,7 +330,7 @@ func (m *Model) updatePicker(ev tea.Msg) tea.Cmd {
 				if err != nil {
 					return feedbackCmd(err.Error(), true)
 				}
-				return m.saveRequested(SaveRequested{ID: m.ref.ID, Part: m.msg.Attachments[m.pickPart].PartIndex, Path: path})
+				return m.saveRequested(SaveRequested{ID: m.selRef().ID, Part: m.selMsg().Attachments[m.pickPart].PartIndex, Path: path})
 			}
 			return cmd // navigazione (directory): la cmd ricarica le voci
 		}
@@ -372,11 +373,7 @@ func feedbackCmd(text string, isErr bool) tea.Cmd {
 // stato (ref, scroll, modali aperti). Chiamata dalla radice al cambio tema.
 func (m *Model) SetStyles(st styles.Styles) {
 	m.st = st
-	m.header = m.renderHeader()
-	if m.msg != nil {
-		m.vp.SetContent(m.renderBody(m.msg))
-		m.attLines = m.renderAttachments(m.msg)
-	}
+	m.refresh() // header, corpo (o titoli) e allegati con i nuovi stili
 	m.cmdInput.SetStyles(commandInputStyles(st))
 	if m.pickerOpen {
 		m.picker.Styles = themedPickerStyles(st)

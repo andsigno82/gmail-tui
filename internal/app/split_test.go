@@ -31,7 +31,7 @@ func feedPreview(t *testing.T, m Model) Model {
 	t.Helper()
 	tok := m.prevTok
 	mm, _ := step(m, previewDue{tok: tok})
-	mm, _ = step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	mm, _ = step(mm, fetchPreview(mm.store, tok, mm.prevRef, mm.folder)())
 	return mm
 }
 
@@ -153,7 +153,7 @@ func TestSplitPreviewMarkReadImmediate(t *testing.T) {
 	m.SetPrefs(config.LayoutSplit, config.PreviewMarkReadImmediate)
 	tok := m.prevTok
 	mm, _ := step(m, previewDue{tok: tok})
-	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef, mm.folder)())
 	if mm.thread.Ref().Unread {
 		t.Error("subito: anteprima ancora non letta dopo il caricamento")
 	}
@@ -168,7 +168,7 @@ func TestSplitPreviewMarkReadDelay(t *testing.T) {
 	m := splitModel(t, 120, 30)
 	tok := m.prevTok
 	mm, _ := step(m, previewDue{tok: tok})
-	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef, mm.folder)())
 	if cmd == nil {
 		t.Fatal("dopo 2 secondi: nessun timer armato")
 	}
@@ -200,7 +200,7 @@ func TestSplitPreviewMarkReadNever(t *testing.T) {
 	m.SetPrefs(config.LayoutSplit, config.PreviewMarkReadNever)
 	tok := m.prevTok
 	mm, _ := step(m, previewDue{tok: tok})
-	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef, mm.folder)())
 	if !mm.thread.Ref().Unread {
 		t.Error("mai: messaggio segnato come letto")
 	}
@@ -395,7 +395,7 @@ func TestSplitPreviewMarkReadUpdatesListRow(t *testing.T) {
 	m.SetPrefs(config.LayoutSplit, config.PreviewMarkReadImmediate)
 	tok := m.prevTok
 	mm, _ := step(m, previewDue{tok: tok})
-	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef, mm.folder)())
 	for _, msg := range runCmd(cmd) {
 		mm, _ = step(mm, msg)
 	}

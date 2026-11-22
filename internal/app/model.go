@@ -109,33 +109,33 @@ type Model struct {
 	// salva. SetConfigPath lo sostituisce (seam main/test).
 	cfgPath string
 
-	view          view
-	refs          []msg.MessageRef // copia dei ref correnti (uso interno/test)
+	view view
+	refs []msg.MessageRef // copia dei ref correnti (uso interno/test)
 	// sums è il riepilogo delle conversazioni caricate, per ID del messaggio più
 	// recente (Piano 8, Task 9): la lista è refs + sums; una riga senza riepilogo
 	// è una conversazione di un solo messaggio.
-	sums map[msg.MessageID]mail.Conversation
-	pendingRef    msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
-	query         msg.Query        // query corrente della lista (refresh dopo op, Task 7)
-	queryRaw      string           // stringa digitata della query corrente ("" = inbox)
-	prevQueryRaw  string           // query precedente, ripristinata se la ricerca fallisce (Piano 8, Task 11)
+	sums          map[msg.MessageID]mail.Conversation
+	pendingRef    msg.MessageRef // ref aperto in attesa della thread view (Task 5)
+	query         msg.Query      // query corrente della lista (refresh dopo op, Task 7)
+	queryRaw      string         // stringa digitata della query corrente ("" = inbox)
+	prevQueryRaw  string         // query precedente, ripristinata se la ricerca fallisce (Piano 8, Task 11)
 	prevQuery     msg.Query
-	status        statusMsg        // ultimo messaggio di status (effimero)
-	startup       bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
-	pending       int              // op store in flight (>0: spinner attivo)
-	connectFailed bool             // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
-	refreshing    bool             // re-list silenzioso in flight (coalescing, Task 8)
-	listGen       int              // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
-	refreshGen    int              // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
-	dirty         bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
-	dirtyDeep     bool             // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
-	exhausted     bool             // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
-	loadingMore   bool             // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
-	folder        mail.Mailbox     // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
-	folderOpen    bool             // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
-	folderList    list.Model       // elenco del selettore cartelle (bubbles/list, folders.go)
-	trashOpen     bool             // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
-	trashRef      msg.MessageRef   // messaggio in conferma: letto all'apertura, non al sì
+	status        statusMsg      // ultimo messaggio di status (effimero)
+	startup       bool           // status d'avvio (banner demo/warning tema): sopravvive al primo load
+	pending       int            // op store in flight (>0: spinner attivo)
+	connectFailed bool           // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
+	refreshing    bool           // re-list silenzioso in flight (coalescing, Task 8)
+	listGen       int            // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
+	refreshGen    int            // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
+	dirty         bool           // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+	dirtyDeep     bool           // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
+	exhausted     bool           // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
+	loadingMore   bool           // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
+	folder        mail.Mailbox   // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
+	folderOpen    bool           // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
+	folderList    list.Model     // elenco del selettore cartelle (bubbles/list, folders.go)
+	trashOpen     bool           // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
+	trashRef      msg.MessageRef // messaggio in conferma: letto all'apertura, non al sì
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -423,16 +423,13 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
 		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
-		m.thread = thread.New(m.pendingRef, ev.m, m.styles)
+		// Piano 8, Task 10: la vista mostra la conversazione intera; i messaggi
+		// non letti si segnano letti all'apertura (una sola op, errore in status).
+		m.thread = thread.NewConversation(m.pendingRef, loadedConv(ev.conv, ev.m), m.styles)
 		m.relayout()
-		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
-		// concatenata, errore SOLO in status (non fatale). La copia locale
-		// del ref passa a letta subito; refresh=false (Task 5): niente
-		// re-list, la lista si aggiorna via Watch/nuova ricerca, il back
-		// preserva la lista.
-		if ev.m.Ref.Unread {
+		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
 			m.thread.MarkRead()
-			return m, markRead(m.store, ev.m.Ref.ID, true, false)
+			return m, markReadIDs(m.store, m.pendingRef, unread)
 		}
 		return m, nil
 
@@ -553,7 +550,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.pendingRef = ev.Ref
 		m.view = viewThread
 		m.pending++ // fetch in flight
-		return m, tea.Batch(fetchMsg(m.store, ev.Ref.ID), m.spinner.Tick)
+		return m, tea.Batch(fetchMsg(m.store, ev.Ref, m.folder), m.spinner.Tick)
 
 	case thread.BackMsg:
 		// Uscita dal thread: si torna all'inbox così com'era — nessun
@@ -656,7 +653,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m.previewMarkRead(ev.tok)
 		}
 		m.pending++
-		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef.ID), m.spinner.Tick)
+		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef, m.folder), m.spinner.Tick)
 
 	case previewLoaded:
 		// Esito del fetch dell'anteprima: scartato se il token non è più quello
@@ -674,18 +671,22 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, "anteprima: risposta vuota dallo store")
 			return m, cmd
 		}
-		m.thread = thread.New(m.prevRef, ev.m, m.styles)
+		m.thread = thread.NewConversation(m.prevRef, loadedConv(ev.conv, ev.m), m.styles)
 		m.relayout()
 		return m.previewMarkRead(ev.tok)
 
 	case previewReadDue:
 		// Segna come letto ritardato (U5, "dopo 2 secondi"): solo se il messaggio
 		// è ancora quello in anteprima, con lo stesso token e ancora non letto.
-		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.Ref().ID != ev.id || !m.thread.Ref().Unread {
+		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.AnchorID() != ev.id {
+			return m, nil
+		}
+		unread := m.thread.UnreadIDs()
+		if len(unread) == 0 {
 			return m, nil
 		}
 		m.thread.MarkRead()
-		return m, markRead(m.store, ev.id, true, false)
+		return m, markReadIDs(m.store, m.prevRef, unread)
 
 	case composeLoaded:
 		// Risultato del fetch per r/f nell'inbox (Piano 4, Task 3). Come per
@@ -1106,7 +1107,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 					// Piano 7.2, fix review: click sinistro sull'anteprima = focus; doppio
 					// click = thread a schermo intero (previewClick).
 					if click, ok := ev.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-						return m.previewClick()
+						return m.previewClick(click.Mouse().Y)
 					}
 					if _, wheel := ev.(tea.MouseWheelMsg); wheel && m.previewReady() {
 						var cmd tea.Cmd
@@ -1273,10 +1274,10 @@ func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
 // L'ID richiesto viaggia DENTRO il risultato: i fetch non hanno ordine
 // garantito e il handler lo usa per scartare le risposte stanti (fix
 // merge-gate anti-race).
-func fetchMsg(st mail.MailStore, id msg.MessageID) tea.Cmd {
+func fetchMsg(st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) tea.Cmd {
 	return func() tea.Msg {
-		mm, err := st.FetchMessage(context.Background(), id)
-		return msgLoaded{m: mm, err: err, requested: id}
+		convs, err := loadConversation(context.Background(), st, ref, folder)
+		return msgLoaded{m: anchorMsg(convs, ref.ID), conv: convs, err: err, requested: ref.ID}
 	}
 }
 

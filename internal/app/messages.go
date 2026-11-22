@@ -63,6 +63,7 @@ type moreLoaded struct {
 // in attesa e scarta i risultati stanti (niente rebuild, niente auto MarkRead).
 type msgLoaded struct {
 	m         *msg.Message
+	conv      []*msg.Message // messaggi della conversazione in ordine cronologico (Piano 8, Task 10); nil = solo m
 	err       error
 	requested msg.MessageID
 }
@@ -155,10 +156,11 @@ type previewDue struct {
 }
 
 type previewLoaded struct {
-	tok int
-	id  msg.MessageID
-	m   *msg.Message
-	err error
+	tok  int
+	id   msg.MessageID
+	m    *msg.Message
+	conv []*msg.Message // conversazione in ordine cronologico (Piano 8, Task 10); nil = solo m
+	err  error
 }
 
 type previewReadDue struct {
