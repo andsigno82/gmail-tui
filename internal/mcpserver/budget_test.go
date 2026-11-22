@@ -49,3 +49,25 @@ func TestFieldTruncationIsDeclared(t *testing.T) {
 		t.Fatalf("oggetto troncato senza dichiarazione: ...%q", subj[max(0, len(subj)-20):])
 	}
 }
+
+// Review (budget): il costo JSON di ogni destinatario e allegato include
+// l'indentazione di MarshalIndent; con molti elementi piccoli il budget
+// sottostimava la risposta e read_message falliva anche per i soli metadati.
+func TestReadMessageManySmallRecipientsAndAttachmentsFitBudget(t *testing.T) {
+	m := msgAt(1, "s", "corpo")
+	for i := 0; i < 9000; i++ {
+		m.To = append(m.To, "a@b.c")
+	}
+	for i := 0; i < 2000; i++ {
+		m.Attachments = append(m.Attachments, msg.Attachment{Filename: "a", ContentType: "b", Size: 1})
+	}
+	cs := connect(t, &mail.Mock{Msgs: []*msg.Message{m}}, Options{Version: "test"})
+
+	res := call(t, cs, "read_message", map[string]any{"id": "INBOX:1", "max_chars": 1})
+	if res.IsError {
+		t.Fatalf("risposta in errore per soli metadati: %s", resultText(res))
+	}
+	if n := len(resultText(res)); n > maxResultBytes {
+		t.Fatalf("risposta di %d byte, limite %d", n, maxResultBytes)
+	}
+}

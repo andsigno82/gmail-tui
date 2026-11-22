@@ -140,7 +140,7 @@ func takeFields(xs []string, b *budget) (out []string, omitted int) {
 	out = make([]string, 0, len(xs))
 	for i, x := range xs {
 		f := field(x)
-		if !b.take(jsonLen(f)) {
+		if !b.take(jsonLen(f) + recipientOverhead) {
 			return out, len(xs) - i
 		}
 		out = append(out, f)

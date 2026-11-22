@@ -10,8 +10,13 @@ import "unicode/utf8"
 // reserveBytes copre chiavi JSON, preambolo e marcatori del blocco.
 const reserveBytes = 4 * 1024
 
-// attachmentOverhead copre le chiavi e la dimensione di un allegato.
-const attachmentOverhead = 64
+// attachmentOverhead copre le chiavi, l'indentazione di MarshalIndent e la
+// dimensione (fino a 19 cifre) di un allegato: ~72 byte più le cifre.
+const attachmentOverhead = 96
+
+// recipientOverhead copre l'indentazione, la virgola e il a capo di ogni
+// destinatario nell'array JSON indentato (~6 byte).
+const recipientOverhead = 8
 
 type budget struct{ left int }
 
