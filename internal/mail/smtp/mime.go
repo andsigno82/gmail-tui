@@ -16,8 +16,11 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer"
 	"github.com/yuin/goldmark/renderer/html"
+	"github.com/yuin/goldmark/util"
 )
 
 // buildMIME costruisce il messaggio MIME completo (header + corpo) per
@@ -120,10 +123,57 @@ func toCRLF(s string) string {
 // scritto a mano nel corpo non passa (goldmark lo sostituisce con un commento).
 // html.WithHardWraps: un a capo singolo resta un <br>, così la firma su righe
 // separate non si fonde in un unico paragrafo.
+//
+// Piano 7.2, fix review: rawHTMLEscaper sostituisce il segnaposto "<!-- raw
+// HTML omitted -->" con il testo escapato, così "<nome>" resta leggibile.
+// Priorità 100: in goldmark v1.8.7 vince la priorità minore (il renderer di
+// default è 1000).
 var mdRenderer = goldmark.New(
 	goldmark.WithExtensions(extension.GFM),
-	goldmark.WithRendererOptions(html.WithHardWraps()),
+	goldmark.WithRendererOptions(
+		html.WithHardWraps(),
+		renderer.WithNodeRenderers(util.Prioritized(rawHTMLEscaper{w: html.NewWriter()}, 100)),
+	),
 )
+
+// rawHTMLEscaper rende l'HTML grezzo (inline e a blocco) come testo escapato:
+// il testo passa dal writer escapante di goldmark e non viene mai emesso come
+// tag vivo. Piano 7.2, fix review.
+type rawHTMLEscaper struct {
+	w html.Writer
+}
+
+// RegisterFuncs registra i renderer di ast.KindRawHTML e ast.KindHTMLBlock.
+func (e rawHTMLEscaper) RegisterFuncs(reg renderer.NodeRendererFuncRegisterer) {
+	reg.Register(ast.KindRawHTML, e.renderRawHTML)
+	reg.Register(ast.KindHTMLBlock, e.renderHTMLBlock)
+}
+
+func (e rawHTMLEscaper) renderRawHTML(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+	if !entering {
+		return ast.WalkSkipChildren, nil
+	}
+	seg := n.(*ast.RawHTML).Segments
+	for i := range seg.Len() {
+		s := seg.At(i)
+		e.w.Write(w, s.Value(source))
+	}
+	return ast.WalkSkipChildren, nil
+}
+
+func (e rawHTMLEscaper) renderHTMLBlock(w util.BufWriter, source []byte, n ast.Node, entering bool) (ast.WalkStatus, error) {
+	b := n.(*ast.HTMLBlock)
+	if entering {
+		for i := range b.Lines().Len() {
+			l := b.Lines().At(i)
+			e.w.Write(w, l.Value(source))
+		}
+	} else if b.HasClosure() {
+		cl := b.ClosureLine
+		e.w.Write(w, cl.Value(source))
+	}
+	return ast.WalkContinue, nil
+}
 
 // corpo costruisce Content-Type e bytes della parte corpo. Senza Markdown è
 // text/plain con il corpo CRLF così com'è (invariato). Con Markdown è

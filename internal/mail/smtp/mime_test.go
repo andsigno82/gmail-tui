@@ -391,6 +391,38 @@ func TestBuildMIMEMarkdownEscapesUserScript(t *testing.T) {
 	}
 }
 
+// Piano 7.2, fix review: il testo che sembra HTML ("<nome>", "<script>")
+// nella parte text/html deve restare visibile come testo escapato, non
+// sparire né diventare un tag vivo (goldmark senza WithUnsafe).
+func TestBuildMIMEMarkdownRawHTMLAsEscapedText(t *testing.T) {
+	cases := []struct{ name, body, want string }{
+		{"inline", "Ciao <nome>, come va?", "Ciao &lt;nome&gt;, come va?"},
+		{"blocco", "<script>alert(1)</script>", "&lt;script&gt;alert(1)&lt;/script&gt;"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m := msg.Outgoing{
+				From:     "me@example.com",
+				To:       []string{"a@b.com"},
+				Subject:  "raw",
+				BodyText: c.body,
+				Markdown: true,
+			}
+			out, err := buildMIME(m, time.Now())
+			if err != nil {
+				t.Fatalf("buildMIME: %v", err)
+			}
+			html := string(topLevelParts(t, out, "multipart/alternative")[1].body)
+			if !strings.Contains(html, c.want) {
+				t.Errorf("text/html non contiene %q:\n%s", c.want, html)
+			}
+			if strings.Contains(html, "raw HTML omitted") {
+				t.Errorf("text/html contiene il segnaposto goldmark:\n%s", html)
+			}
+		})
+	}
+}
+
 // TestBuildMIMEMarkdownSignature: la firma appesa dal composer ("\n\n--\n" +
 // firma) resta su righe separate nell'HTML (hard line break, niente unione in
 // un unico paragrafo); il text/plain resta invariato.
