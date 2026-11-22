@@ -108,6 +108,13 @@ func checkIMAP(out io.Writer, probe CapsProbe) int {
 	if missing == 0 {
 		fmt.Fprintf(out, "imap: ok (%s)\n", strings.Join(requiredCaps, " "))
 	}
+	// Piano 8, Task 6: riga informativa, non bloccante. Senza X-GM-EXT-1 le
+	// conversazioni e la ricerca X-GM-RAW non sono disponibili.
+	if have["X-GM-EXT-1"] {
+		fmt.Fprintln(out, "imap: estensioni Gmail X-GM-EXT-1: sì")
+	} else {
+		fmt.Fprintln(out, "imap: estensioni Gmail X-GM-EXT-1: no (lista a messaggi singoli, ricerca Gmail non disponibile)")
+	}
 	return missing
 }
 

@@ -132,6 +132,31 @@ func TestDoctorIMAPError(t *testing.T) {
 	}
 }
 
+// TestDoctorReportsGmailExtensions (Piano 8, Task 6): la riga X-GM-EXT-1 è
+// informativa (non bloccante) e dice se il server supporta le estensioni Gmail.
+func TestDoctorReportsGmailExtensions(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		caps []string
+		want string
+	}{
+		{"con X-GM-EXT-1", append([]string{"X-GM-EXT-1"}, allGmailCaps...), "estensioni Gmail X-GM-EXT-1: sì"},
+		{"senza X-GM-EXT-1", allGmailCaps, "estensioni Gmail X-GM-EXT-1: no"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			probe, _ := capsProbe(tc.caps, nil)
+			var out bytes.Buffer
+			code := Doctor(&out, filepath.Join(t.TempDir(), "config.toml"), func(string) string { return "" }, probe)
+			if code != 0 {
+				t.Errorf("exit code = %d: la riga X-GM-EXT-1 non è bloccante", code)
+			}
+			if !strings.Contains(out.String(), tc.want) {
+				t.Errorf("manca %q in:\n%s", tc.want, out.String())
+			}
+		})
+	}
+}
+
 // TestDoctorIMAPNilProbeSkips: probe nil ⇒ nessuna riga imap (controllo saltato).
 func TestDoctorIMAPNilProbeSkips(t *testing.T) {
 	var out bytes.Buffer
