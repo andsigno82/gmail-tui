@@ -140,6 +140,46 @@ func (m Model) cancelLabel() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// askTrash apre la conferma dello spostamento nel cestino (`#`, Piano 7, Task
+// 5, D4). Il messaggio è quello sotto il cursore nella lista o aperto nel
+// thread, catturato ORA: la conferma agisce su questo, non sul cursore. Nella
+// vista Cestino non si apre nulla: il messaggio è già lì.
+func (m Model) askTrash() (Model, tea.Cmd) {
+	if m.folder.Role == "trash" {
+		m.status = statusMsg{text: "già nel cestino"}
+		return m, nil
+	}
+	ref, ok := m.currentRef()
+	if !ok {
+		return m, nil
+	}
+	m.trashRef = ref
+	m.trashOpen = true
+	return m, nil
+}
+
+// confirmTrash esegue lo spostamento confermato (`s`). Dal thread si torna alla
+// lista (D7): il messaggio non è più nella cartella. L'esito arriva come opDone
+// con refresh a profondità piena (Trash cambia la composizione della lista).
+func (m Model) confirmTrash() (Model, tea.Cmd) {
+	m.trashOpen = false
+	if m.view == viewThread {
+		m.view = viewInbox
+	}
+	m.pending++
+	return m, tea.Batch(trashCmd(m.store, m.trashRef.ID), m.spinner.Tick)
+}
+
+// trashCmd esegue Trash fuori dal loop UI: feedback "spostata nel cestino" e
+// refresh a profondità piena. Un errore (es. cestino assente) resta in status
+// e la lista non cambia.
+func trashCmd(st mail.MailStore, id msg.MessageID) tea.Cmd {
+	return func() tea.Msg {
+		err := st.Trash(context.Background(), []msg.MessageID{id})
+		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true}
+	}
+}
+
 // markRead esegue MarkRead fuori dal loop UI. refresh=false per l'auto
 // MarkRead al fetch (Task 5: solo feedback, la lista si aggiorna via
 // Watch/nuova ricerca); refresh=true per il toggle `v` dell'utente. Il

@@ -102,6 +102,8 @@ type Model struct {
 	folder        mail.Mailbox     // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
 	folderOpen    bool             // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
 	folderList    list.Model       // elenco del selettore cartelle (bubbles/list, folders.go)
+	trashOpen     bool             // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
+	trashRef      msg.MessageRef   // messaggio in conferma: letto all'apertura, non al sì
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -681,6 +683,18 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.trashOpen {
+			// Conferma cestino (Piano 7, Task 5, D4): s sposta il messaggio
+			// catturato all'apertura, esc annulla — gli altri tasti sono ignorati
+			// (nessuna op dietro la conferma, come per il discard).
+			switch ev.String() {
+			case "s":
+				return m.confirmTrash()
+			case "esc":
+				m.trashOpen = false
+			}
+			return m, nil
+		}
 		if m.discardOpen {
 			// Conferma discard del composer (Piano 4, Task 3): s scarta la
 			// bozza, esc riprende — gli altri tasti sono ignorati (nessuna
@@ -778,6 +792,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// dal messaggio già caricato. Il composer precompilato sostituisce
 			// la vista corrente (il back del composer torna lì).
 			return m.startCompose(ev.String() == "f")
+		case key.Matches(ev, keys.Trash):
+			// # (Piano 7, Task 5): apre la conferma sul messaggio corrente (lista
+			// o thread). Nel cestino la conferma non si apre (askTrash).
+			return m.askTrash()
 		case key.Matches(ev, keys.Folders):
 			// Selettore cartelle e label (Piano 7, Task 4): solo dalla lista; nel
 			// thread `m` cade nella delega di coda senza effetti.
@@ -861,7 +879,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
 		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
 		// selezionano nulla: la lista non esiste ancora).
-		if m.showHelp || m.labelOpen || m.folderOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
+		if m.showHelp || m.labelOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -1119,6 +1137,10 @@ func (m Model) statusBar() string {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
 		// stesso al posto dello status, che resta custodito sotto.
 		return m.label.View()
+	}
+	if m.trashOpen {
+		// Conferma cestino (Piano 7, Task 5, D4): stile StatusErr come il discard.
+		return m.renderBar(m.styles.StatusErr, "spostare nel cestino? s conferma · esc annulla")
 	}
 	if m.discardOpen {
 		// Conferma discard del composer (Piano 4, Task 3): occupa la barra

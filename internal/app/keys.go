@@ -39,6 +39,8 @@ type appKeys struct {
 	Label      key.Binding // l — etichetta
 	Folders    key.Binding // m — cartelle e label (selettore, Piano 7, Task 4)
 	Pick       key.Binding // invio — apri la cartella scelta (selettore, Piano 7, Task 4)
+	Trash      key.Binding // # — sposta nel cestino (apre la conferma, Piano 7, Task 5)
+	TrashOK    key.Binding // s — conferma lo spostamento nel cestino (Piano 7, Task 5)
 	Open       key.Binding // o — apri nel browser (thread)
 	Command    key.Binding // : — command line :save/:open/:theme (thread)
 	Submit     key.Binding // invio — esegui la ricerca
@@ -70,6 +72,8 @@ var keys = appKeys{
 	Label:      key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "etichetta")),
 	Folders:    key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "cartelle")),
 	Pick:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "apri cartella")),
+	Trash:      key.NewBinding(key.WithKeys("#"), key.WithHelp("#", "cestino")),
+	TrashOK:    key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "conferma cestino")),
 	Open:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "apri nel browser")),
 	Command:    key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "comandi")),
 	Submit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "cerca")),
@@ -111,6 +115,10 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// Selettore cartelle (Piano 7, Task 4): invio apre, esc chiude.
 		return []key.Binding{keys.Pick, keys.Cancel}
 	}
+	if m.trashOpen {
+		// Conferma cestino (Piano 7, Task 5): s sposta, esc annulla.
+		return []key.Binding{keys.TrashOK, keys.Cancel}
+	}
 	switch v {
 	case viewSearch:
 		return []key.Binding{keys.Submit, keys.Cancel}
@@ -120,7 +128,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// publicizzato: i tasti vanno tutti al wizard (precedente composer).
 		return []key.Binding{keys.WizardCont, keys.WizardSkip, keys.ForceQuit}
 	case viewThread:
-		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
+		return []key.Binding{keys.Back, keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Open, keys.Command, keys.Help}
 	case viewComposer:
 		// Nel composer i tasti operativi sono nella riga d'uso del modello
 		// (tab/ctrl+e/ctrl+s) e la barra documenta solo annulla: `?` qui è
@@ -134,7 +142,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 			// pubblicizzato perché funziona: l'uscita pulita resta possibile.
 			return []key.Binding{keys.Connect, keys.Quit, keys.ForceQuit}
 		}
-		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Help}
+		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Help}
 	}
 }
 
@@ -147,6 +155,9 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	if m.folderOpen {
 		return [][]key.Binding{{keys.Pick, keys.Cancel}}
 	}
+	if m.trashOpen {
+		return [][]key.Binding{{keys.TrashOK, keys.Cancel}}
+	}
 	switch v {
 	case viewSearch:
 		return [][]key.Binding{{keys.Submit, keys.Cancel}, {keys.Help}}
@@ -155,7 +166,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	case viewThread:
 		return [][]key.Binding{
 			{keys.Move, keys.Scroll, keys.Open, keys.Back},
-			{keys.Reply, keys.Forward, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Command},
+			{keys.Reply, keys.Forward, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Command},
 			{keys.Help},
 		}
 	case viewComposer:
@@ -163,7 +174,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	default: // inbox
 		return [][]key.Binding{
 			{keys.Move, keys.OpenSel, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Quit},
-			{keys.Archive, keys.Star, keys.Read, keys.Label, keys.Folders},
+			{keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders},
 			{keys.Help},
 		}
 	}
