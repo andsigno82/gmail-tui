@@ -217,3 +217,22 @@ func TestCorpoStantioNonSiInstallaNelThreadRiaperto(t *testing.T) {
 		t.Errorf("il clic deve caricare il corpo corrente:\n%s", m2.thread.View())
 	}
 }
+
+// Piano 8, review (punto 3): una lista limitata dal tetto di scansione non è esaurita
+// (niente altre pagine per il solo fatto che la pagina è corta) e la barra di stato
+// lo dice, suggerendo la ricerca per andare più indietro.
+func TestListaLimitataNonEsauritaEBarraLoDice(t *testing.T) {
+	m := pagedModel(t, convViewFixture(t))
+	base := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	var convs []mail.Conversation
+	for i := 0; i < 3; i++ {
+		convs = append(convs, mail.SingleConversation(msg.MessageRef{ID: msg.NewID("INBOX", uint32(100+i)), From: "a@x.dev", Subject: "s", Date: base.Add(time.Duration(i) * time.Hour)}))
+	}
+	m, _ = step(m, msgsLoaded{convs: convs, refs: latestRefs(convs), limit: pageSize, limited: true, mailbox: "", gen: m.listGen})
+	if m.exhausted {
+		t.Errorf("lista limitata marcata come esaurita: la pagina corta non vuol dire fine della cartella")
+	}
+	if !strings.Contains(m.statusText(), "limitata") {
+		t.Errorf("status = %q, voglio l'avviso di lista limitata", m.statusText())
+	}
+}

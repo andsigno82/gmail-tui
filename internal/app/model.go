@@ -336,7 +336,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		case ev.silent && len(refs) == ev.limit && len(m.refs) > len(refs):
 			refs = appendUnique(refs, m.refs[len(refs):])
 		default:
-			m.exhausted = len(refs) < ev.limit
+			m.exhausted = len(refs) < ev.limit && !ev.limited
 		}
 		if !ev.silent {
 			// Lista sostituita: un'eventuale pagina in volo appartiene alla
@@ -365,6 +365,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				// azzera (Task 6 review).
 				m.status = statusMsg{}
 			}
+		}
+		if ev.limited {
+			// Piano 8, review punto 3: la lista non è esaurita, lo dice la barra
+			// (dopo il reset del re-list sopra, che altrimenti lo cancellerebbe).
+			m.status = statusMsg{text: limitedStatus}
 		}
 		// L'inbox riceve i ref direttamente qui (update di campo): con
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
@@ -478,7 +483,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("caricamento messaggi: %v", ev.err))
 			return m, cmd
 		}
-		m.exhausted = len(ev.refs) < pageSize
+		m.exhausted = len(ev.refs) < pageSize && !ev.limited
+		if ev.limited {
+			m.status = statusMsg{text: limitedStatus}
+		}
 		m.refs = appendUnique(m.refs, ev.refs)
 		// Piano 7, fix code-review 3: m.inbox si muta nella chiamata (ricevitore
 		// puntatore): la cmd va calcolata PRIMA di costruire il Model restituito.
@@ -1277,7 +1285,8 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		convs, err := st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
-		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, limit: pageSize, mailbox: box, gen: gen}
+		lim, err := scanLimited(err)
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, limit: pageSize, limited: lim, mailbox: box, gen: gen}
 	}
 }
 

@@ -475,7 +475,8 @@ func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box stri
 			convs, err = st.ListConversations(context.Background(), scopeQuery(q, box), mail.Page{Limit: searchLimit})
 			limit = 0
 		}
-		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, silent: true, limit: limit, mailbox: box, gen: gen}
+		lim, err := scanLimited(err)
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, silent: true, limited: lim, limit: limit, mailbox: box, gen: gen}
 	}
 }
 
@@ -486,7 +487,8 @@ func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box stri
 func loadMore(st mail.MailStore, box string, offset int, raw string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		convs, err := st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Offset: offset, Limit: pageSize})
-		return moreLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, mailbox: box, gen: gen}
+		lim, err := scanLimited(err)
+		return moreLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, limited: lim, mailbox: box, gen: gen}
 	}
 }
 

@@ -4,9 +4,15 @@ package mail
 
 import (
 	"context"
+	"errors"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
+
+// ErrScanLimit segnala che ListConversations ha raggiunto il tetto di messaggi letti
+// prima di riempire la pagina, con altri messaggi da leggere: le righe restituite
+// sono valide ma la lista è limitata, non esaurita (Piano 8, review punto 3).
+var ErrScanLimit = errors.New("lista limitata: scansione interrotta al tetto di messaggi")
 
 // Page è la paginazione di ListMessages (Limit 0 = default 50).
 type Page struct {
@@ -95,6 +101,8 @@ type MailStore interface {
 	// si riempie leggendo altri messaggi, con tetto).
 	// Con q.Raw la query è sintassi Gmail verbatim (Q2/D8-4: All Mail se senza
 	// label:/in:). Senza Gmail (server senza X-GM-EXT-1) una riga per messaggio.
+	// Se il tetto di scansione è raggiunto prima di riempire la pagina, restituisce
+	// le righe trovate con ErrScanLimit: la lista è limitata, non esaurita.
 	ListConversations(ctx context.Context, q msg.Query, pg Page) ([]Conversation, error)
 
 	// ConversationMembers restituisce gli ID dei messaggi del thread che stanno

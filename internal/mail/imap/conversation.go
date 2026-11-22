@@ -97,7 +97,8 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 	var latest []msg.MessageRef
 	seen := make(map[string]bool)
 	scanned := 0
-	for i := len(uids) - 1; i >= 0 && len(latest) < offset+limit && scanned < maxMessaggiScansionati; {
+	i := len(uids) - 1
+	for i >= 0 && len(latest) < offset+limit && scanned < maxMessaggiScansionati {
 		lo := i - chunkScansione + 1
 		if lo < 0 {
 			lo = 0
@@ -121,9 +122,15 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		}
 		i = lo - 1
 	}
+	// Tetto raggiunto con la pagina non piena e UID ancora da leggere (i): la lista
+	// è limitata, non esaurita (Piano 8, review punto 3). Le righe restano valide.
+	var limitErr error
+	if i >= 0 && len(latest) < offset+limit {
+		limitErr = mail.ErrScanLimit
+	}
 
 	if offset >= len(latest) {
-		return nil, nil
+		return nil, limitErr
 	}
 	window := latest[offset:]
 	if len(window) > limit {
@@ -148,7 +155,7 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		}
 		out = append(out, summaryConversation(r, sums[r.ThreadID]))
 	}
-	return out, nil
+	return out, limitErr
 }
 
 // ThreadMessages implementa mail.MailStore (Piano 8, Task 7): i messaggi del

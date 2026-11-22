@@ -5,6 +5,7 @@ package imap
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -230,5 +231,32 @@ func TestListConversationsOrdineUIDNonGarantito(t *testing.T) {
 	}
 	if len(convs) != 10 || convs[0].Latest.ID != "INBOX:150" {
 		t.Fatalf("prima riga %v (len %d), voglio INBOX:150 e 10 righe: i più recenti per UID", convs[0].Latest.ID, len(convs))
+	}
+}
+
+// Piano 8, review (punto 3): quando il tetto di scansione (maxMessaggiScansionati)
+// interrompe la lettura con messaggi ancora da leggere e la pagina non è piena, la
+// lista NON è esaurita: il backend lo dichiara con mail.ErrScanLimit, così la UI non
+// la tratta come fine della cartella.
+func TestListConversationsTettoDiScansioneSegnalato(t *testing.T) {
+	var box []gmailFetch
+	for uid := 1; uid <= 600; uid++ { // 600 messaggi in soli 3 thread
+		box = append(box, gmailFetch{uid: uid, thread: uid%3 + 1, login: "ann", date: "01-Nov-2026", read: true})
+	}
+	addr := scriptedGmailServer(t, map[string][]gmailFetch{"INBOX": box, "[Gmail]/All Mail": box})
+
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true})
+	ctx := context.Background()
+	if err := s.Connect(ctx); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	convs, err := s.ListConversations(ctx, msg.Query{}, mail.Page{Limit: 50})
+	if len(convs) != 3 {
+		t.Fatalf("righe = %d, voglio 3 (i thread trovati prima del tetto)", len(convs))
+	}
+	if !errors.Is(err, mail.ErrScanLimit) {
+		t.Fatalf("err = %v, voglio mail.ErrScanLimit: la lista è limitata, non esaurita", err)
 	}
 }

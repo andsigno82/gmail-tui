@@ -88,7 +88,8 @@ func submitQuery(st mail.MailStore, raw string, box string, gen int) tea.Cmd {
 func searchCmd(st mail.MailStore, q msg.Query, raw string, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
 		convs, err := st.ListConversations(context.Background(), scopeQuery(q, box), mail.Page{Limit: searchLimit})
-		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, mailbox: box, gen: gen}
+		lim, err := scanLimited(err)
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, limited: lim, mailbox: box, gen: gen}
 	}
 }
 
