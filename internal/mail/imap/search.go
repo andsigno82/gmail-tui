@@ -36,6 +36,9 @@ const maxAttachmentCandidates = 200
 // piena acquire non è rientrante: sarebbe deadlock), gira come
 // fetchMessage(heldGate=true) sotto l'holder di Search.
 func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error) {
+	if q.Raw != "" { // Piano 8, Task 8: sintassi Gmail nativa, senza post-filtri
+		return s.searchRaw(ctx, q)
+	}
 	defer s.gate.acquire()()
 
 	mailbox, uids, err := s.selectAndSearch(ctx, q)

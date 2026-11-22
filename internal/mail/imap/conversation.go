@@ -343,6 +343,67 @@ func singleConversation(r msg.MessageRef) mail.Conversation {
 	return c
 }
 
+// searchRaw esegue una ricerca X-GM-RAW (Piano 8, Task 8, D8-4): la sintassi
+// Gmail passa verbatim al server. Senza label: la ricerca è su All Mail, come
+// Gmail web. Senza X-GM-EXT-1 è errore esplicito. Prende il gate: non chiamarla
+// con il gate detenuto.
+func (s *Store) searchRaw(ctx context.Context, q msg.Query) ([]msg.MessageRef, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !s.gmailOn() {
+		return nil, errGmailNonDisponibile
+	}
+	allMail, err := s.allMailName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	mailbox := q.Label
+	if mailbox == "" {
+		mailbox = allMail
+	}
+	defer s.gate.acquire()()
+	c, err := s.connected()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	}
+	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{Raw: q.Raw}}, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("imap raw search in %s: %w", mailbox, err)
+	}
+	return gmailRefs(c, mailbox, data.AllUIDs())
+}
+
+// pageRefs pagina un elenco già dal più recente al più vecchio (Offset e
+// Limit come in ListMessages, Limit 0 = default).
+func pageRefs(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
+	limit := pg.Limit
+	if limit == 0 {
+		limit = conversazioniPageDefault
+	}
+	if pg.Offset >= len(refs) {
+		return nil
+	}
+	end := pg.Offset + limit
+	if end > len(refs) {
+		end = len(refs)
+	}
+	return refs[pg.Offset:end]
+}
+
+// setGmailFields copia ID Gmail e label utente dal buffer di FETCH nel riferimento.
+func setGmailFields(ref *msg.MessageRef, buf *imapclient.FetchMessageBuffer) {
+	if buf == nil {
+		return
+	}
+	ref.GmailID = buf.GmailMsgID
+	ref.ThreadID = buf.GmailThreadID
+	ref.Labels = userLabels(buf.GmailLabels)
+}
+
 // threadKey raggruppa i messaggi: il thread, o il messaggio se non Gmail.
 func threadKey(r msg.MessageRef) string {
 	if r.ThreadID != 0 {

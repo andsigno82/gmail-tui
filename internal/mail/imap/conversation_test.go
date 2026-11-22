@@ -93,6 +93,10 @@ func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 				if len(wanted) > 0 && !wanted[fmt.Sprint(m.thread)] {
 					continue
 				}
+				// X-GM-RAW "is:unread" verbatim: solo i messaggi non letti
+				if strings.Contains(cmd, `X-GM-RAW "is:unread"`) && m.read {
+					continue
+				}
 				uids = append(uids, fmt.Sprint(m.uid))
 			}
 			return []string{"* SEARCH " + strings.Join(uids, " ")}
