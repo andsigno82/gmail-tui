@@ -89,10 +89,14 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 			// Config non salvata (percorso non scrivibile): la sessione
 			// funziona ma al prossimo avvio non ritroverà l'indirizzo. Errore
 			// visibile, non fatale.
+			// Piano 7.3, fix review: l'avviso sta nella barra neutra (status, non
+			// startup) finché il primo load riesce; il dettaglio è nel toast.
+			m.status = statusMsg{text: "config NON salvata: l'indirizzo non sopravvive al riavvio"}
 			notice = m.toast.Push(toast.Error, fmt.Sprintf("configurazione completata — config NON salvata: %v", ev.ConfigErr))
 		case ev.KeyringErr != nil:
 			// Keychain che fallisce (o assente): la password non sopravvive al
 			// processo — il piano chiede lo status che indica la env var.
+			m.status = statusMsg{text: "password NON salvata nel keychain — imposta GMAIL_APP_PASSWORD per il prossimo avvio"}
 			notice = m.toast.Push(toast.Error, fmt.Sprintf("configurazione completata — password NON salvata nel keychain (%v) — imposta GMAIL_APP_PASSWORD per il prossimo avvio", ev.KeyringErr))
 		default:
 			// Tutto liscio: feedback positivo come toast di successo.

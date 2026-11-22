@@ -63,6 +63,34 @@ func TestPilaMassimoTre(t *testing.T) {
 	}
 }
 
+// TestErroreSopravviveAlLimite (Piano 7.3, fix review): al limite esce il più
+// vecchio che NON è un errore; un errore resta anche con tre successi dopo.
+func TestErroreSopravviveAlLimite(t *testing.T) {
+	m := newTest(t)
+	m.Push(Error, "invio fallito")
+	for _, s := range []string{"a", "b", "c"} {
+		m.Push(Success, s)
+	}
+	want := []string{"invio fallito", "b", "c"}
+	if got := m.Texts(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("pila = %q, attesa %q", got, want)
+	}
+}
+
+// TestSoloErroriToglieIlPiuVecchio (Piano 7.3, fix review): se tutta la pila è
+// fatta di errori, al limite esce il più vecchio (il massimo resta rispettato).
+func TestSoloErroriToglieIlPiuVecchio(t *testing.T) {
+	m := newTest(t)
+	for _, s := range []string{"e1", "e2", "e3"} {
+		m.Push(Error, s)
+	}
+	m.Push(Success, "ok")
+	want := []string{"e2", "e3", "ok"}
+	if got := m.Texts(); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("pila = %q, attesa %q", got, want)
+	}
+}
+
 // TestExpiredStantio: un ExpiredMsg per un toast già rimosso (dal limite della
 // pila) non tocca gli altri; un ID sconosciuto è ignorato.
 func TestExpiredStantio(t *testing.T) {

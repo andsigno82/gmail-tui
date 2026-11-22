@@ -354,6 +354,36 @@ func TestWizardSuccessKeyringFailureSuggestsEnv(t *testing.T) {
 	}
 }
 
+// TestWizardKeyringWarningStaysInBarUntilLoad (Piano 7.3, fix review): l'avviso
+// di setup (keychain) sta nella barra neutra finché arriva il primo caricamento
+// riuscito; il toast d'errore invece si chiude con un tasto.
+func TestWizardKeyringWarningStaysInBarUntilLoad(t *testing.T) {
+	kr := &krFake{err: errors.New("security: exit 45")}
+	m, _ := newWizardTestModel(t, wizard.Deps{TestConnect: okConnect, Keyring: kr, CfgPath: t.TempDir() + "/config.toml"})
+	m, cmds := wizardToTesting(t, m)
+	for _, c := range cmds {
+		m, cmds = deliver(m, c)
+	}
+	m, _ = step(m, completedIn(t, cmds))
+	if !strings.Contains(m.statusText(), "GMAIL_APP_PASSWORD") {
+		t.Fatalf("barra dopo il wizard = %q, voglio l'avviso con GMAIL_APP_PASSWORD", m.statusText())
+	}
+	if !toastIs(m, toast.Error) {
+		t.Fatalf("toast = %v, voglio l'errore del keychain", m.toast.Kinds())
+	}
+	m, _ = step(m, pressKey("j"))
+	if got := m.toast.Texts(); len(got) != 0 {
+		t.Errorf("il tasto non ha chiuso il toast d'errore: %q", got)
+	}
+	if !strings.Contains(m.statusText(), "GMAIL_APP_PASSWORD") {
+		t.Fatalf("il tasto ha cancellato l'avviso dalla barra: %q", m.statusText())
+	}
+	m, _ = step(m, msgsLoaded{gen: m.listGen, mailbox: m.folder.Name, query: m.queryRaw, refs: testRefs(t), limit: 50})
+	if got := m.statusText(); got != "" {
+		t.Errorf("barra dopo il primo load = %q, voglio vuota", got)
+	}
+}
+
 // TestWizardSecondCompletedDropped: un secondo CompletedMsg (doppio `s` in
 // volo) è STANTE: nessuna seconda costruzione dei backend.
 func TestWizardSecondCompletedDropped(t *testing.T) {

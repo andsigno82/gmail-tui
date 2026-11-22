@@ -21,7 +21,7 @@ import (
 var Duration = 3 * time.Second
 
 // maxToasts è il numero massimo di notifiche in pila (decisione T4): oltre,
-// esce la più vecchia.
+// esce la più vecchia non d'errore (evict).
 const maxToasts = 3
 
 // Kind è il tipo di notifica (colore del bordo).
@@ -57,12 +57,12 @@ func New(st styles.Styles) Model { return Model{st: st} }
 // SetStyles riapplica gli stili (cambio tema).
 func (m *Model) SetStyles(st styles.Styles) { m.st = st }
 
-// Push aggiunge un toast; oltre maxToasts toglie il più vecchio. Gli errori
-// non armano timer; gli altri tipi sì, con un ID che rende lo ExpiredMsg
-// riconoscibile anche se il toast è già uscito dalla pila.
+// Push aggiunge un toast; oltre maxToasts toglie il più vecchio che non è un
+// errore (evict). Gli errori non armano timer; gli altri tipi sì, con un ID che
+// rende lo ExpiredMsg riconoscibile anche se il toast è già uscito dalla pila.
 func (m *Model) Push(k Kind, text string) tea.Cmd {
 	if len(m.items) >= maxToasts {
-		m.items = m.items[1:]
+		m.evict()
 	}
 	m.nextID++
 	id := m.nextID
@@ -71,6 +71,19 @@ func (m *Model) Push(k Kind, text string) tea.Cmd {
 		return nil
 	}
 	return tea.Tick(Duration, func(time.Time) tea.Msg { return ExpiredMsg{ID: id} })
+}
+
+// evict toglie il toast più vecchio che NON è un errore (Piano 7.3, fix review):
+// un errore sopravvive ai successi; solo se la pila è tutta di errori esce il
+// più vecchio.
+func (m *Model) evict() {
+	for i, it := range m.items {
+		if it.kind != Error {
+			m.items = append(m.items[:i], m.items[i+1:]...)
+			return
+		}
+	}
+	m.items = m.items[1:]
 }
 
 // Update gestisce ExpiredMsg: rimuove quel toast se è ancora in pila. Gli altri
