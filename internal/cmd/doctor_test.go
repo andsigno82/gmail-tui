@@ -93,6 +93,19 @@ func TestDoctorIMAPCapsOK(t *testing.T) {
 	}
 }
 
+// TestDoctorPasswordFromKeychain (Piano 7.1, Task 6): env vuota ma probe
+// presente (il main lo costruisce solo con una password risolta, quindi dal
+// keychain) ⇒ la riga password non dice "missing".
+func TestDoctorPasswordFromKeychain(t *testing.T) {
+	probe, _ := capsProbe(allGmailCaps, nil)
+	var out bytes.Buffer
+	Doctor(&out, filepath.Join(t.TempDir(), "config.toml"), func(string) string { return "" }, probe)
+	s := out.String()
+	if strings.Contains(s, "password: missing") || !strings.Contains(s, "password: keychain ok") {
+		t.Errorf("attesa riga password keychain ok, avuto:\n%s", s)
+	}
+}
+
 // TestDoctorIMAPMissingCap: una capability mancante è bloccante ⇒ exit 1.
 func TestDoctorIMAPMissingCap(t *testing.T) {
 	probe, _ := capsProbe([]string{"MOVE", "UIDPLUS", "LIST-EXTENDED"}, nil)

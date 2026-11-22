@@ -52,10 +52,15 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string, probe Cap
 		fmt.Fprintf(out, "theme: %s ok\n", cfg.Theme)
 	}
 
-	if getenv("GMAIL_APP_PASSWORD") == "" {
-		fmt.Fprintln(out, "password: missing — esegui \"gmail-tui login\" o export GMAIL_APP_PASSWORD")
-	} else {
+	// Piano 7.1, Task 6: un probe non nil implica una password risolta dal
+	// main (env → keychain): con env vuota viene dal keychain.
+	switch {
+	case getenv("GMAIL_APP_PASSWORD") != "":
 		fmt.Fprintln(out, "password: GMAIL_APP_PASSWORD ok")
+	case probe != nil:
+		fmt.Fprintln(out, "password: keychain ok")
+	default:
+		fmt.Fprintln(out, "password: missing — esegui \"gmail-tui login\" o export GMAIL_APP_PASSWORD")
 	}
 
 	if probe != nil {
