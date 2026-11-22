@@ -14,12 +14,19 @@ import (
 // Mock è un MailStore in-memory per i test della UI e della logica.
 // Campo Err non-nil: ogni chiamata fallisce (injection per test errori).
 type Mock struct {
-	mu      sync.Mutex
-	Msgs    []*msg.Message
-	Sent    []msg.Outgoing
-	Err     error
-	Raw     map[msg.MessageID]map[int][]byte
-	changes chan Change
+	mu        sync.Mutex
+	Msgs      []*msg.Message
+	Sent      []msg.Outgoing
+	Err       error
+	Mailboxes []Mailbox // nil = default (INBOX + cestino Gmail), cfr. defaultMailboxes
+	Raw       map[msg.MessageID]map[int][]byte
+	changes   chan Change
+}
+
+// defaultMailboxes sono le cartelle del Mock se Mailboxes è nil (Piano 7, Task 1).
+var defaultMailboxes = []Mailbox{
+	{Name: "INBOX", Role: "inbox"},
+	{Name: "[Gmail]/Trash", Role: "trash"},
 }
 
 // Mock implementa MailStore a compile time (conformance assert).
@@ -58,9 +65,14 @@ func (m *Mock) ListMessages(_ context.Context, q msg.Query, pg Page) ([]msg.Mess
 	if m.Err != nil {
 		return nil, m.Err
 	}
+	// Piano 7, Task 1: la mailbox è q.Label (Label vuota = INBOX), come nel backend IMAP.
+	mailbox := q.Label
+	if mailbox == "" {
+		mailbox = "INBOX"
+	}
 	refs := make([]msg.MessageRef, 0, len(m.Msgs))
 	for _, mm := range m.Msgs {
-		if matches(q, mm) {
+		if inMailbox(mm.Ref.ID, mailbox) && matches(q, mm) {
 			refs = append(refs, mm.Ref)
 		}
 	}
@@ -210,6 +222,110 @@ func (m *Mock) Send(_ context.Context, out msg.Outgoing) error {
 	return nil
 }
 
+// ListMailboxes implementa MailStore (Piano 7, Task 1).
+func (m *Mock) ListMailboxes(context.Context) ([]Mailbox, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return append([]Mailbox(nil), m.mailboxes()...), nil
+}
+
+// Trash implementa MailStore: sposta gli id nel cestino con un nuovo ID nel
+// prefisso del cestino. Valida TUTTI gli id prima di agire (niente azioni
+// parziali, come il Trash IMAP).
+func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) error {
+	ids = append([]msg.MessageID(nil), ids...) // copia: il chiamante può riusare la slice
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return m.Err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	trash, ok := trashBox(m.mailboxes())
+	if !ok {
+		return fmt.Errorf("cestino non trovato")
+	}
+
+	seen := make(map[msg.MessageID]bool, len(ids))
+	var targets []*msg.Message
+	for _, id := range ids {
+		if seen[id] {
+			continue // id duplicato: un solo spostamento
+		}
+		seen[id] = true
+		if inMailbox(id, trash) {
+			return fmt.Errorf("messaggio %s già nel cestino", id)
+		}
+		mm := m.find(id)
+		if mm == nil {
+			return fmt.Errorf("messaggio %s non trovato", id)
+		}
+		targets = append(targets, mm)
+	}
+
+	next := m.nextUID(trash)
+	for _, mm := range targets {
+		mm.Ref.ID = msg.NewID(trash, next)
+		next++
+	}
+	m.init()
+	select {
+	case m.changes <- Change{Kind: ChangeFlags, IDs: ids}:
+	default:
+	}
+	return nil
+}
+
+// mailboxes restituisce le cartelle configurate, o il default se Mailboxes è nil.
+func (m *Mock) mailboxes() []Mailbox {
+	if m.Mailboxes != nil {
+		return m.Mailboxes
+	}
+	return defaultMailboxes
+}
+
+// find restituisce il messaggio con quell'ID, o nil.
+func (m *Mock) find(id msg.MessageID) *msg.Message {
+	for _, mm := range m.Msgs {
+		if mm.Ref.ID == id {
+			return mm
+		}
+	}
+	return nil
+}
+
+// nextUID restituisce il primo UID libero nella mailbox (max + 1), come
+// farebbe IMAP assegnando un UID nuovo al messaggio spostato.
+func (m *Mock) nextUID(mailbox string) uint32 {
+	var maxUID uint32
+	for _, mm := range m.Msgs {
+		if box, uid, err := mm.Ref.ID.Split(); err == nil && box == mailbox && uid > maxUID {
+			maxUID = uid
+		}
+	}
+	return maxUID + 1
+}
+
+// trashBox restituisce il nome della mailbox con ruolo trash.
+func trashBox(boxes []Mailbox) (string, bool) {
+	for _, b := range boxes {
+		if b.Role == "trash" {
+			return b.Name, true
+		}
+	}
+	return "", false
+}
+
+// inMailbox dice se l'ID appartiene alla mailbox (prefisso "MAILBOX:").
+func inMailbox(id msg.MessageID, mailbox string) bool {
+	box, _, err := id.Split()
+	return err == nil && box == mailbox
+}
+
 // Watch implementa MailStore.
 func (m *Mock) Watch(context.Context) (<-chan Change, error) {
 	m.mu.Lock()
@@ -241,7 +357,6 @@ func matches(q msg.Query, m *msg.Message) bool {
 			return false
 		}
 	}
-	// q.Label: non supportato dal mock (IMAP-only), ignorato di proposito.
 	return true
 }
 

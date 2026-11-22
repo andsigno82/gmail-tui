@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -32,11 +33,29 @@ type testServer struct {
 	ln   net.Listener
 	srv  *imapserver.Server
 	user *imapmemserver.User
+
+	// mu protegge boxes: il LIST di specialUseSession gira nel goroutine del
+	// server, i test scrivono dal goroutine del test.
+	mu sync.Mutex
+	// boxes elenca le mailbox servite nel LIST RETURN (SPECIAL-USE) con i
+	// rispettivi attributi. Il memserver beta.9 ignora CreateOptions.SpecialUse
+	// (nessun modo di assegnare \Trash e simili): gli attributi vivono qui.
+	// Piano 7, Task 1.
+	boxes map[string][]imap.MailboxAttr
 }
 
 // startTestServer avvia imapmemserver su 127.0.0.1:0 e registra la chiusura
-// con t.Cleanup. INBOX esiste sempre; altre mailbox con createMailbox.
+// con t.Cleanup. INBOX esiste sempre; altre mailbox con createMailbox. Le
+// capability sono il default del server (solo IMAP4rev1: niente MOVE/UIDPLUS).
 func startTestServer(t *testing.T) *testServer {
+	t.Helper()
+	return startTestServerCaps(t, nil)
+}
+
+// startTestServerCaps è startTestServer con le capability annunciate indicate
+// (Options.Caps; nil = default IMAP4rev1). Piano 7, Task 1: il Trash richiede
+// MOVE o UIDPLUS, che il default del memserver non annuncia.
+func startTestServerCaps(t *testing.T, caps imap.CapSet) *testServer {
 	t.Helper()
 
 	mem := imapmemserver.New()
@@ -46,31 +65,102 @@ func startTestServer(t *testing.T) *testServer {
 	}
 	mem.AddUser(user)
 
-	srv := imapserver.New(&imapserver.Options{
+	ts := &testServer{t: t, user: user, boxes: map[string][]imap.MailboxAttr{"INBOX": nil}}
+	ts.srv = imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
-			return mem.NewSession(), nil, nil
+			return &specialUseSession{Session: mem.NewSession(), ts: ts}, nil, nil
 		},
 		// Solo test: LOGIN consentito senza TLS, la connessione è in
 		// chiaro (Options.Insecure dello Store).
 		InsecureAuth: true,
+		Caps:         caps,
 	})
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	ts.ln = ln
 	go func() {
 		// Close fa terminare Serve con net.ErrServerClosed: ignorato.
-		_ = srv.Serve(ln)
+		_ = ts.srv.Serve(ln)
 	}()
-	t.Cleanup(func() { _ = srv.Close() })
+	t.Cleanup(func() { _ = ts.srv.Close() })
 
-	return &testServer{t: t, ln: ln, srv: srv, user: user}
+	return ts
+}
+
+// specialUseDelim è il delimitatore gerarchico del memserver.
+const specialUseDelim = '/'
+
+// specialUseSession avvolge la sessione del memserver (Piano 7, Task 1).
+// LIST con RETURN (SPECIAL-USE) è servito da ts.boxes; il resto, MOVE
+// incluso, delega alla sessione del memserver. L'embedding dell'interfaccia
+// non promuove SessionMove: Move va inoltrato a mano, altrimenti il server
+// annuncia MOVE e va in panic (cfr. imapserver/conn.go).
+type specialUseSession struct {
+	imapserver.Session
+	ts *testServer
+}
+
+// List implementa imapserver.Session: senza RETURN (SPECIAL-USE) delega al
+// memserver; con RETURN scrive le mailbox di ts.boxes che matchano i pattern.
+func (s *specialUseSession) List(w *imapserver.ListWriter, ref string, patterns []string, options *imap.ListOptions) error {
+	if options == nil || !options.ReturnSpecialUse {
+		return s.Session.List(w, ref, patterns, options)
+	}
+	s.ts.mu.Lock()
+	defer s.ts.mu.Unlock()
+	names := make([]string, 0, len(s.ts.boxes))
+	for name := range s.ts.boxes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if !matchAnyPattern(name, ref, patterns) {
+			continue
+		}
+		if err := w.WriteList(&imap.ListData{
+			Attrs:   s.ts.boxes[name],
+			Delim:   specialUseDelim,
+			Mailbox: name,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// Move inoltra il MOVE alla sessione del memserver (imapserver.SessionMove).
+func (s *specialUseSession) Move(w *imapserver.MoveWriter, numSet imap.NumSet, destName string) error {
+	return s.Session.(imapserver.SessionMove).Move(w, numSet, destName)
+}
+
+// matchAnyPattern dice se name matcha uno dei pattern LIST (stessa regola
+// del memserver: imapserver.MatchList).
+func matchAnyPattern(name, ref string, patterns []string) bool {
+	for _, p := range patterns {
+		if imapserver.MatchList(name, specialUseDelim, ref, p) {
+			return true
+		}
+	}
+	return false
 }
 
 // addr restituisce l'indirizzo del server di test.
 func (ts *testServer) addr() string {
 	return ts.ln.Addr().String()
+}
+
+// listAs dichiara una mailbox nel LIST con gli attributi indicati, senza
+// crearla (es. il contenitore "[Gmail]" con \Noselect di Gmail).
+func (ts *testServer) listAs(name string, attrs ...imap.MailboxAttr) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	if ts.boxes == nil {
+		ts.boxes = map[string][]imap.MailboxAttr{}
+	}
+	ts.boxes[name] = attrs
 }
 
 // createMailbox crea una mailbox (label) lato server.
@@ -79,6 +169,15 @@ func (ts *testServer) createMailbox(name string) {
 	if err := ts.user.Create(name, nil); err != nil {
 		ts.t.Fatalf("create mailbox %q: %v", name, err)
 	}
+	ts.listAs(name)
+}
+
+// createSpecialMailbox crea una mailbox con attributi SPECIAL-USE (es.
+// \Trash), come farebbe Gmail alla creazione delle proprie cartelle.
+func (ts *testServer) createSpecialMailbox(name string, attrs ...imap.MailboxAttr) {
+	ts.t.Helper()
+	ts.createMailbox(name)
+	ts.listAs(name, attrs...)
 }
 
 // seedMail appende un messaggio in INBOX e ne restituisce l'UID.

@@ -196,6 +196,13 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 	}
 	defer s.gate.idleDone() // fine del round, qualunque sia la causa
 
+	// Piano 7, Task 1: un'op su un'altra cartella (ListMessages, ApplyLabel) lascia
+	// quella mailbox selezionata sulla connessione. Senza questa SELECT l'IDLE
+	// osserverebbe la cartella sbagliata e la posta nuova in INBOX non arriverebbe.
+	if _, err := c.Select(st.mailbox, nil).Wait(); err != nil {
+		return fmt.Errorf("imap select %s prima di idle: %w", st.mailbox, err)
+	}
+
 	idle, err := c.Idle()
 	if err != nil {
 		return fmt.Errorf("imap idle: %w", err)

@@ -13,6 +13,14 @@ type Page struct {
 	Offset, Limit int
 }
 
+// Mailbox è una cartella IMAP o una label Gmail (Piano 7, Task 1).
+type Mailbox struct {
+	Name string // nome IMAP (es. "[Gmail]/Trash"): è il valore per Query.Label
+	// Role viene dagli attributi SPECIAL-USE (RFC 6154), mai dal nome localizzato.
+	// Valori: "" (label) | "inbox" | "sent" | "drafts" | "trash" | "junk" | "all" | "flagged"
+	Role string
+}
+
 // ChangeKind indica cosa è cambiato nel feed Watch.
 type ChangeKind int
 
@@ -72,6 +80,18 @@ type MailStore interface {
 
 	SaveAttachment(ctx context.Context, id msg.MessageID, part int, path string) error
 	Send(ctx context.Context, m msg.Outgoing) error
+
+	// ListMailboxes restituisce cartelle e label con il ruolo SPECIAL-USE.
+	// Ordine: INBOX, poi le speciali (flagged, sent, drafts, all, junk, trash),
+	// poi le label in ordine alfabetico. Le mailbox \Noselect (contenitori come
+	// "[Gmail]") sono escluse.
+	ListMailboxes(ctx context.Context) ([]Mailbox, error)
+
+	// Trash sposta i messaggi nel cestino (ruolo "trash"), con semantica Gmail:
+	// escono dalla cartella d'origine ed entrano nel cestino. Rifiuta senza
+	// agire se il cestino non esiste, se un id è già nel cestino, o se il server
+	// non supporta né MOVE né UIDPLUS (mai EXPUNGE generico).
+	Trash(ctx context.Context, ids []msg.MessageID) error
 
 	// Watch ritorna il canale degli eventi push del feed.
 	//
