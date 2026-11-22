@@ -13,9 +13,9 @@ Scelte delegate da Andrea "per competenza" (D14). Le voci marcate **da confermar
 | ID | Decisione | Scelta proposta | Motivazione |
 |---|---|---|---|
 | M1 | Trasporto | Solo stdio, sottocomando `gmail-tui mcp` | È il trasporto usato da Claude Code e Claude Desktop per server locali. Nessun listener di rete: nessuna superficie esposta, nessuna auth da gestire. |
-| M2 | SDK | `github.com/modelcontextprotocol/go-sdk` **v1.8.0** (ultima stabile; GitHub release "Latest", 14 set 2026; v1.7.0 del 28 lug 2026 è la precedente). Versione attesa in `go.mod`: `v1.8.0`, verificata in fase B sul module cache | Ufficiale, mantenuto con Google. Alternative community scartate: non ufficiali, nessuna garanzia di compatibilità col protocollo. **Da confermare: nuova dipendenza, passa `govulncheck`.** |
+| M2 | SDK | `github.com/modelcontextprotocol/go-sdk` **v1.8.0** (ultima stabile; GitHub release "Latest", 14 set 2026; v1.7.0 del 28 lug 2026 è la precedente). Versione attesa in `go.mod`: `v1.8.0`, verificata in fase B sul module cache | Ufficiale, mantenuto con Google. Alternative community scartate: non ufficiali, nessuna garanzia di compatibilità col protocollo. **Approvata dal coordinatore (delega di Andrea); passa `govulncheck`.** |
 | M3 | Connessione | Lazy: `Connect` alla prima chiamata di tool, timeout 30 s (come `connectCmd`, AGENTS regola 7), riprova alla chiamata successiva se fallisce. Errore restituito come risultato tool con `IsError`, non come errore di protocollo | Il server parte anche senza rete; un avvio che fallisce non blocca il client MCP. |
-| M4 | Cache bbolt | **Da confermare.** Proposta: il server MCP non usa la cache della TUI: nessuna cache oppure un file separato (es. `mcp-cache.db`) | `internal/mail/cache/cache.go:25` apre bbolt con `Timeout: time.Second`: con la TUI aperta, un secondo processo sullo stesso file fallisce. |
+| M4 | Cache bbolt | **Approvata: nessuna cache nel server MCP.** | `internal/mail/cache/cache.go:25` apre bbolt con `Timeout: time.Second`: con la TUI aperta, un secondo processo sullo stesso file fallisce. |
 | M5 | Limiti di risposta | Liste: `limit` default 20, max 100. Corpo: default 8 000 caratteri, max 32 000, troncamento con marcatore esplicito. Risposta totale del tool ≤ 64 KB | Un messaggio enorme o una ricerca larga non devono saturare il contesto dell'agente. Il troncamento dichiara sempre quanto manca. |
 | M6 | Password | Nessun cambio alle fonti: `GMAIL_APP_PASSWORD` → keychain → assente (come `resolvePassword`). La password non compare in risultati, errori o log; la documentazione sconsiglia di metterla nella config MCP (il campo `env` finirebbe in file di config leggibili) | Il vincolo "sola lettura" sta nel server: una App Password non si restringe a lettura. Il segreto resta nel portachiavi. |
 
@@ -39,11 +39,11 @@ Fonti verificate con ricerca web (2026-11-22, dai risultati di ricerca, non pagi
 - **apchat-agent/mcp-email:** server MCP per Gmail definito "injection-hardened", fondato sull'idea che l'email è un canale su cui chiunque può mettere testo davanti al modello ([github.com/apchat-agent/mcp-email](https://github.com/apchat-agent/mcp-email)). Da leggere in fase B per i dettagli dei marcatori (non verificati qui).
 - **nikolausm/imap-mcp-server:** supporta un'allowlist di tool (solo lettura via `IMAP_MCP_ENABLED_TOOLS`) ([github.com/nikolausm/imap-mcp-server](https://github.com/nikolausm/imap-mcp-server)). Conferma il pattern "limitare i tool, non fidarsi del client".
 - **non-dirty/imap-mcp:** dai risultati di ricerca non risultano difese contro injection (da verificare, non usare come modello).
-- **`ni-c/imap-mcp`** (citato nel brief): **non trovato** nella ricerca. Il piano non lo usa come riferimento finché Andrea non fornisce il link.
+- **ni-c/imap-mcp** ([github.com/ni-c/imap-mcp](https://github.com/ni-c/imap-mcp)): avvolge i corpi tra marcatori con un nonce casuale generato a ogni chiamata; rimuove caratteri zero-width; dichiara `"untrusted": true` in ogni risultato con contenuto di posta; di default è in sola lettura (`IMAP_READ_ONLY=true`). Il formato esatto del marcatore non è riportato nel README: quello del piano è definito qui.
 
 Difese del piano:
 
-1. **Marcatori con nonce per chiamata.** Ogni risposta che contiene testo di email (intestazioni, corpo, nomi file, anteprime di lista) è racchiusa in `BEGIN_UNTRUSTED_EMAIL nonce=<hex>` … `END_UNTRUSTED_EMAIL nonce=<hex>`, dove `<hex>` sono 16 byte da `crypto/rand`, diversi a ogni chiamata. Un messaggio che contiene una falsa riga `END_UNTRUSTED_EMAIL` non può chiudere il blocco perché non conosce il nonce. *Il pattern col nonce è una scelta di progetto, non verificata nelle fonti sopra: va validata nei test.*
+1. **Marcatori con nonce per chiamata.** Ogni risposta che contiene testo di email (intestazioni, corpo, nomi file, anteprime di lista) è racchiusa in `BEGIN_UNTRUSTED_EMAIL nonce=<hex>` … `END_UNTRUSTED_EMAIL nonce=<hex>`, dove `<hex>` sono 16 byte da `crypto/rand`, diversi a ogni chiamata. Un messaggio che contiene una falsa riga `END_UNTRUSTED_EMAIL` non può chiudere il blocco perché non conosce il nonce. *Pattern del nonce per chiamata: ni-c/imap-mcp (vedi sopra). Il formato dei marcatori è nostro.*
 2. **Descrizioni dei tool** che dichiarano il contenuto non fidato e vietano di eseguire istruzioni trovate nelle email.
 3. **Sanificazione:** rimozione di caratteri di controllo e sequenze ANSI/OSC (evita injection nel terminale quando l'output viene mostrato), normalizzazione dei fine riga.
 4. **Nessun tool di scrittura:** il server riceve un `Reader` che espone solo metodi di lettura (Task 2); un test verifica che il set di tool registrati sia esattamente quello previsto.
@@ -59,8 +59,8 @@ Difese del piano:
 
 **Files:** nessuno.
 
-- [ ] Ottenere conferma su M2 (nuova dipendenza `go-sdk` v1.8.0), M4 (cache del server), M5 (limiti), M6 (password fuori dalla config MCP), e sull'ordine rispetto al Piano 8 (vedi Wave 4).
-- [ ] Chiedere il link di `ni-c/imap-mcp`, se Andrea intende usarlo come riferimento.
+- [x] Conferme del coordinatore (delega di Andrea, FASE B): M2 approvata (go-sdk v1.8.0), M4 nessuna cache nel server MCP, M5 e M6 approvati, Wave 1-3 ora, Wave 4 dopo il merge del Piano 8.
+- [x] Link `ni-c/imap-mcp`: https://github.com/ni-c/imap-mcp (letto: nonce per chiamata, `untrusted: true`, default read-only).
 
 ## Wave 1 — Nucleo senza SDK (logica pura, test puri)
 
@@ -201,13 +201,13 @@ Nel README: la password resta nel portachiavi (`gmail-tui login`) o in `GMAIL_AP
 | Piano 8 cambia `Query` e `MailStore` mentre il server è in corso | Adattatore `Reader` (Task 2) e Wave 4 separata: Wave 1-3 non dipendono dal Piano 8. |
 | Client che non gestisce bene troncamento o marcatori | Il marcatore dichiara il troncamento in linguaggio esplicito; verifica nello smoke (Task 8). |
 
-## Dubbi per Andrea (da chiudere prima della FASE B)
+## Dubbi: chiusi dal coordinatore prima della FASE B
 
-1. M2: approvare la dipendenza `github.com/modelcontextprotocol/go-sdk` v1.8.0.
-2. M4: server senza cache oppure cache separata.
-3. Ordine: Piano 14 prima del Piano 8 (Wave 1-3 indipendenti, Wave 4 dopo) oppure dopo. Proposta: prima, perché Wave 1-3 non dipendono dal Piano 8.
-4. `ni-c/imap-mcp`: serve il link se vuoi usarlo come riferimento.
-5. Limiti M5: confermare 20/100 righe, 8 000/32 000 caratteri, 64 KB.
+1. M2: approvata, go-sdk v1.8.0 (ultima stabile; v1.9.0-pre.1 esiste ma è pre-release, esclusa).
+2. M4: nessuna cache nel server MCP.
+3. Ordine: Wave 1-3 ora, Wave 4 dopo il merge del Piano 8.
+4. `ni-c/imap-mcp`: link ricevuto, citato come fonte del nonce.
+5. Limiti M5 (20/100 righe, 8 000/32 000 caratteri, 64 KB): approvati.
 
 ## Fonti
 
