@@ -45,9 +45,14 @@ const (
 )
 
 // Change è un evento push (IMAP IDLE nel backend reale).
+//
+// Refs (Piano 11, Task 2) è valorizzato per ChangeNewMail: intestazioni dei nuovi
+// messaggi dal più recente (ENVELOPE, senza \Seen), per la notifica desktop. Vuoto
+// per gli altri eventi e se la lettura delle intestazioni fallisce (best-effort).
 type Change struct {
 	Kind ChangeKind
 	IDs  []msg.MessageID
+	Refs []msg.MessageRef
 }
 
 // Conversation è la riga di lista in vista conversazione (Piano 8, Task 5),

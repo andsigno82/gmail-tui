@@ -412,7 +412,14 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 	for i, uid := range newUIDs {
 		ids[i] = msg.NewID(st.mailbox, uint32(uid))
 	}
-	sendChange(ch, mail.Change{Kind: mail.ChangeNewMail, IDs: ids})
+	// Piano 11, Task 2: intestazioni dei nuovi messaggi per la notifica desktop
+	// (ENVELOPE/FLAGS/INTERNALDATE: nessun BODY, nessun \Seen). Best-effort: un fetch
+	// fallito non è un errore di connessione, l'evento parte con i soli ID.
+	refs, err := s.fetchRefs(st.mailbox, newUIDs)
+	if err != nil {
+		refs = nil
+	}
+	sendChange(ch, mail.Change{Kind: mail.ChangeNewMail, IDs: ids, Refs: refs})
 	return nil
 }
 
