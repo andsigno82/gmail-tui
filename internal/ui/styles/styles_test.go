@@ -176,7 +176,7 @@ func TestOnColor(t *testing.T) {
 // TestContrastoStiliConSfondo: per ogni tema embedded e ogni stile con
 // Background, il testo ha contrasto >= 4.5 in dark e in light. I colori sono
 // letti dagli stili costruiti da New (non da una lista a mano): uno stile
-// nuovo con sfondo e' coperto automaticamente.
+// nuovo con sfondo è coperto automaticamente.
 func TestContrastoStiliConSfondo(t *testing.T) {
 	const minContrast = 4.5
 	for _, name := range theme.Names() {
