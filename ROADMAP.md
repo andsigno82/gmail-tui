@@ -41,6 +41,17 @@ with an App Password (no Google Cloud project, no OAuth):
 - **Demo mode** — without credentials the app runs with seeded mail, so the
   UI can be tried before configuring anything.
 
+## v1.1 — delivered
+
+- **Inbox paging** — the list loads 50 messages at a time; reaching the last
+  row loads the next 50 (not during search).
+- **Folders and labels** — `m` opens a picker with the Gmail folders (by
+  SPECIAL-USE role, so localized names work) and labels.
+- **Trash** — `#` moves a message to the Trash after confirmation; refused on
+  servers without MOVE or UIDPLUS (no generic EXPUNGE).
+- **Recipient validation** — `To`/`Cc`/`Bcc` are checked in the composer and by
+  the `send` CLI before the SMTP round-trip.
+
 ## v1.1 — planned
 
 - **Markdown → HTML multipart sending** — the composer edits markdown but
@@ -49,12 +60,11 @@ with an App Password (no Google Cloud project, no OAuth):
 - **Send-only CLI completion** — allow `gmail-tui fetch`/`send` to work
   without a config file when the password is only in the keychain (resolve
   the address from the wizard instead of an empty user).
-- **Recipient validation** — validate `To`/`Cc`/`Bcc` in the composer and the
-  `send` CLI before the SMTP round-trip (today a malformed address only
-  surfaces as a server error after sending is already under way).
 
 ## Later — under consideration
 
+- **Gmail conversations** — threads by `X-GM-THRID`, search with `X-GM-RAW`,
+  labels with `X-GM-LABELS`. Requires a patch to go-imap (planned as Piano 8).
 - **Gmail API backend** — an alternative store/sender implementation behind
   the existing `MailStore` abstraction, for accounts where App Passwords are
   unavailable (OAuth device flow). The interface split (`internal/mail`) was

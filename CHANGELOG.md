@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Inbox paging** — the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
+- **Folders and labels** — `m` opens a picker with the Gmail folders (by IMAP SPECIAL-USE role, so localized names work) and labels; choosing a folder clears the active search.
+- **Trash** — `#` moves the message to the Trash after confirmation (`s`); from a thread it returns to the list. Refused on servers without MOVE or UIDPLUS.
+- **Recipient validation** — the composer blocks the send confirmation for a missing or malformed recipient; `gmail-tui send` exits 1 on the same errors.
+- **Demo** — seeded Sent folder and a `Work` label.
+
+### Changed
+
+- `a` (archive) works only in Posta in arrivo; elsewhere it shows a status message.
+- `l` refuses a label equal to the current folder (it would duplicate the message).
+- IDLE push watches INBOX only; other folders are refreshed after operations.
+
+### Fixed
+
+- IDLE reselects INBOX before each round, so push keeps working after operations on other folders.
+
 ## [0.1.0] - 2026-11-22
 
 Initial release: a complete terminal Gmail client built on the Charm stack — IMAP IDLE push, composer with reply/forward, 12 themes, and a keychain-only credential flow. This entry summarizes the ~54 conventional commits of the first development cycle; infra and docs commits are folded into the entries below.
@@ -34,4 +54,5 @@ Initial release: a complete terminal Gmail client built on the Charm stack — I
 - **Credentials never in config or logs** — the App Password lives only in the system keychain or the `GMAIL_APP_PASSWORD` env var; it is never written to `config.toml` and never logged, and keychain-related errors are masked so the secret cannot leak through them.
 - **Encrypted transport only** — IMAP over implicit TLS (`imap.gmail.com:993`) and SMTP over STARTTLS (`smtp.gmail.com:587`), the fixed Gmail preset.
 
+[Unreleased]: https://github.com/andsigno82/gmail-tui/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/andsigno82/gmail-tui/releases/tag/v0.1.0

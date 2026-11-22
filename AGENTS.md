@@ -49,7 +49,7 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 2. **MailStore ops are serialized** (one at a time, single IMAP connection).
    The IMAP backend queues ops through its `idleGate` (interrupts IDLE safely).
    Read the contract comments in `store.go` before changing `Watch`, `Archive`,
-   `ApplyLabel` or search semantics (e.g. `HasAttachment` is a client-side
+   `ApplyLabel`, `Trash`, `ListMailboxes` or search semantics (e.g. `HasAttachment` is a client-side
    post-filter, `ThreadLen` is always 1).
 3. **UI uses theme slots only, never hard-coded colors.** Styles derive from
    themes in `internal/ui/styles`. If no slot fits, raise it instead of adding a color.
@@ -110,6 +110,14 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   (`internal/app/keys.go`) before binding anything.
 - Mouse input is gated while a modal is open; stale fetch results are
   discarded by guards in `internal/app`. Preserve both when touching routing.
+- **`g`/`G` belong to bubbles/list** (go to start/end of the list): they are
+  not in `internal/app/keys.go`; check it before binding them.
+- **Trash never uses a generic EXPUNGE**: `Trash` rejects servers with neither
+  MOVE nor UIDPLUS, because go-imap beta.9's `Client.Move` fallback expunges
+  the whole mailbox.
+- **List results are dropped on a stale generation**: every non-silent load
+  (folder switch, search, connect) bumps `Model.listGen`; a result whose
+  generation, mailbox or query differs from the current one is discarded.
 - `BodyHTML` is populated for every HTML part (multipart/alternative too):
   the `o` key depends on it.
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the

@@ -82,9 +82,13 @@ type MailStore interface {
     ApplyLabel(ctx context.Context, ids []MessageID, label string, on bool) error
     SaveAttachment(ctx context.Context, id MessageID, part int, path string) error
     Send(ctx context.Context, m Outgoing) error
-    Watch(ctx context.Context) (<-chan Change, error) // IMAP IDLE → push
+    ListMailboxes(ctx context.Context) ([]Mailbox, error) // cartelle e label, ruolo SPECIAL-USE
+    Trash(ctx context.Context, ids []MessageID) error     // sposta nel cestino (MOVE/UIDPLUS, mai EXPUNGE generico)
+    Watch(ctx context.Context) (<-chan Change, error) // IMAP IDLE → push (solo INBOX)
 }
 ```
+
+`Mailbox{Name, Role}`: `Name` è il nome IMAP (valore di `Query.Label`), `Role` il ruolo SPECIAL-USE (`inbox`, `sent`, `drafts`, `trash`, `junk`, `all`, `flagged`; vuoto = label). Il ruolo, non il nome, identifica il cestino e le cartelle speciali, perché il nome è localizzato. `Trash` rifiuta senza agire se il cestino non esiste, se un id è già nel cestino o se il server non supporta né MOVE né UIDPLUS. `Archive` è disponibile dalla UI solo in Posta in arrivo.
 
 ## Modello dati e sincronizzazione
 

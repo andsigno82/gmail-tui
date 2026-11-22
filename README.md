@@ -48,10 +48,12 @@ Without a config file the app launches the **first-run wizard**; with a config b
 | `Ctrl+C` | quit from anywhere |
 | `/` | search — Gmail-style: `from:x is:unread label:Work has:attachment`, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
-| `a` | archive |
+| `a` | archive (Inbox only) |
+| `#` | move to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
+| `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
 | `s` | star on/off |
 | `v` | mark read/unread |
-| `l` | apply/remove label |
+| `l` | apply/remove label (refused for the current folder) |
 | `o` | open HTML body in browser (thread view) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view) |
@@ -82,6 +84,10 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 
 ## Notes & limitations (v1)
 
+- **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
+- **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
+- **Archive only in Inbox**: `a` outside Posta in arrivo is refused with a status message.
+- **Recipient validation**: the composer does not open the send confirmation without a recipient or with a malformed address; `gmail-tui send` exits 1 on the same errors.
 - **`gmail-tui login` rewrites the config**: your address is kept, but `name` and `signature` are reset to empty (and theme to `default`). Back up `~/.config/gmail-tui/config.toml` before re-running it.
 - **IMAP/SMTP hosts are fixed to the Gmail preset** (`imap.gmail.com:993`, `smtp.gmail.com:587` STARTTLS) and not configurable in v1.
 - **Markdown bodies are sent as `text/plain`** — the composer is a markdown textarea but generates no HTML part yet (v1.1: markdown → HTML multipart).
@@ -90,8 +96,8 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 
 ## Roadmap
 
-- **v1.1** — markdown → HTML multipart sending, CLI send-only completion, multi-account evaluation
-- **Later** — optional Gmail API backend behind the existing `MailStore` abstraction
+- **v1.1** — delivered: paging, folders and labels picker, trash, recipient validation. Planned: markdown → HTML multipart sending, CLI send-only completion
+- **Later** — Gmail conversations (`X-GM-THRID`/`X-GM-RAW`, needs a go-imap patch), optional Gmail API backend behind the existing `MailStore` abstraction
 
 See [ROADMAP.md](ROADMAP.md).
 

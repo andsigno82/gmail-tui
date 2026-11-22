@@ -93,6 +93,18 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `gmail-tui login` on an existing config: starts the wizard even if a config exists; completing it **rewrites the config** (address kept, `name`/`signature` reset — re-set them afterwards).
 - [ ] Unknown subcommand / stray positional argument → usage printed, exit 1.
 
+## Daily use (v1.1)
+
+- [ ] Scroll past 50: in the inbox move the cursor to the last row (`G` or repeated `j`); the next 50 messages load, with no duplicated rows.
+- [ ] Folder switch: `m` opens "cartelle e label"; `Enter` on Inviati shows sent mail and the status bar tag reads Inviati; an active search is cleared; `m` back to "Posta in arrivo" restores the inbox.
+- [ ] Trash on a real account: `#` opens the confirmation; `Esc` cancels; `s` moves the message out of the list. Verify in Gmail web that the message is in the Cestino (not deleted). From a thread, `s` returns to the list.
+- [ ] `#` inside the Cestino folder shows "già nel cestino" and does nothing else.
+- [ ] `a` outside Posta in arrivo (Inviati or a label) shows "archivia è disponibile solo in Posta in arrivo"; the message is untouched.
+- [ ] `l` with the current folder name (`INBOX` in the inbox) shows "etichetta INBOX non applicata: è la cartella corrente"; no label is applied.
+- [ ] Malformed address: in the composer, To = `anna@@example` and `Ctrl+S` shows "A: indirizzo non valido" and no confirmation; empty To shows "nessun destinatario".
+- [ ] `echo body | gmail-tui send --to not-an-address --subject smoke` prints "send: A: indirizzo non valido …" on stderr, exit 1.
+- [ ] Gmail announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED: `openssl s_client -quiet -connect imap.gmail.com:993`, then `a CAPABILITY` lists all four.
+
 ## Doctor
 
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).
