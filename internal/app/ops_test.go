@@ -525,3 +525,55 @@ func TestRefreshPreservesCursorAfterArchive(t *testing.T) {
 			sel.ID, ok, opsRefs(t)[2].ID)
 	}
 }
+
+// TestRowMailboxDecidesArchiveAndLabel (Piano 7, fix code-review 1): da INBOX una
+// ricerca `label:Work` mostra righe della mailbox Work. `a` e `l` agiscono sulla
+// mailbox della RIGA (codificata nell'ID), non su quella della cartella mostrata:
+// archiviare una riga di Work o applicarle la label Work (COPY nella stessa
+// mailbox, duplicato) è rifiutato senza chiamare lo store. La label INBOX resta
+// valida (COPY Work→INBOX).
+func TestRowMailboxDecidesArchiveAndLabel(t *testing.T) {
+	mock := folderMock(t)
+	mock.Msgs = append(mock.Msgs, &msg.Message{Ref: msg.MessageRef{
+		ID: msg.NewID("Work", 1), From: "bob@x.dev", Subject: "etichettata",
+		Date: time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC),
+	}})
+	rec := &recorder{MailStore: mock}
+	m := folderModel(t, rec)
+	m, _ = step(m, pressKey("/"))
+	m = typeKeys(m, "label:Work bob")
+	m, cmd := step(m, pressKey("enter"))
+	m = applyAll(t, m, cmd)
+	if ref, ok := m.inbox.SelectedRef(); !ok || ref.ID != msg.NewID("Work", 1) {
+		t.Fatalf("setup: riga selezionata = %q (ok=%v), voglio la riga di Work", ref.ID, ok)
+	}
+
+	before := len(mock.Msgs)
+	m, cmd = step(m, pressKey("a"))
+	m = applyAll(t, m, cmd)
+	if len(mock.Msgs) != before {
+		t.Errorf("a su riga di Work da INBOX: messaggi %d -> %d, voglio nessuna Archive", before, len(mock.Msgs))
+	}
+	if want := "archivia è disponibile solo in Posta in arrivo"; m.statusText() != want {
+		t.Errorf("status = %q, voglio %q", m.statusText(), want)
+	}
+
+	m, _ = step(m, pressKey("l"))
+	m = typeKeys(m, "Work")
+	m, cmd = step(m, pressKey("enter"))
+	m = applyAll(t, m, cmd)
+	if len(rec.labels) != 0 {
+		t.Errorf("label Work su riga di Work: ApplyLabel %d volte, voglio 0 (COPY nella stessa mailbox)", len(rec.labels))
+	}
+	if !m.status.isErr || !strings.Contains(m.statusText(), "cartella corrente") {
+		t.Errorf("status = %q (err=%v), voglio errore sulla cartella corrente", m.statusText(), m.status.isErr)
+	}
+
+	m, _ = step(m, pressKey("l"))
+	m = typeKeys(m, "INBOX")
+	_, cmd = step(m, pressKey("enter"))
+	applyAll(t, m, cmd)
+	if len(rec.labels) != 1 {
+		t.Errorf("label INBOX su riga di Work: ApplyLabel %d volte, voglio 1", len(rec.labels))
+	}
+}

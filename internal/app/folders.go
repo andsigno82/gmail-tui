@@ -110,6 +110,10 @@ func newFolderList(st styles.Styles) list.Model {
 	l.SetShowPagination(false)
 	l.SetShowHelp(false)
 	l.SetFilteringEnabled(false)
+	// Piano 7, fix code-review 5: q/esc della bubbles/list ritornerebbero tea.Quit,
+	// bypassando quitCmd (cancel del ctx del feed Watch). Il picker chiude con esc
+	// nel modello (model.go, ramo folderOpen); q non fa nulla.
+	l.DisableQuitKeybindings()
 	return l
 }
 
@@ -156,6 +160,10 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.exhausted = false
 	m.loadingMore = false
 	m.dirty, m.dirtyDeep = false, false
+	// Piano 7, fix code-review 4: le righe della cartella precedente non restano
+	// visibili né azionabili finché il load non torna (lo stato vuoto è coerente).
+	m.refs = nil
+	clearRows := m.inbox.SetRefs(nil)
 	m.inbox.Select(0)
 	// Il nome della cartella è già nel tag della status bar: lo status si
 	// svuota (fix review 6, niente "[Inviati] cartella Inviati").
@@ -163,7 +171,7 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.startup = true
 	m.pending++
 	m.listGen++ // nuova generazione: le pagine e i refresh della cartella precedente sono stanti (fix review 2)
-	return m, tea.Batch(loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
+	return m, tea.Batch(clearRows, loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
 }
 
 // foldersView rende il corpo del selettore: titolo con l'hint dei tasti e la

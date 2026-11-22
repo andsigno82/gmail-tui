@@ -225,7 +225,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// risultato di quel refresh libera il token a QUALSIASI esito (un refresh
 		// fallito non deve bloccare i successivi); dirty NON viene consumato: il
 		// follow-up partirà alla prima riuscita (self-healing).
-		if ev.silent && ev.gen == m.refreshGen {
+		freed := ev.silent && ev.gen == m.refreshGen
+		if freed {
 			m.refreshing = false
 		}
 		if ev.gen != m.listGen || ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
@@ -233,7 +234,14 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// generazione di lista (cambio cartella/ricerca/connect durante il
 			// load, anche tornando sulla stessa cartella) o di un'altra cartella
 			// o query: la lista visibile non va sovrascritta.
-			return m, nil
+			// Piano 7, fix code-review 2: il refresh stante ha appena liberato il
+			// token; un cambio arrivato mentre era in volo (dirty) non deve perdersi,
+			// quindi il follow-up parte qui (dirtyDeep è consumato da requestRefresh).
+			var follow tea.Cmd
+			if freed && m.dirty {
+				follow = m.requestRefresh(m.dirtyDeep)
+			}
+			return m, follow
 		}
 		if ev.err != nil {
 			// La query distingue l'errore di ricerca da quello di list.
@@ -415,7 +423,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.exhausted = len(ev.refs) < pageSize
 		m.refs = appendUnique(m.refs, ev.refs)
-		return m, m.inbox.AppendRefs(ev.refs)
+		// Piano 7, fix code-review 3: m.inbox si muta nella chiamata (ricevitore
+		// puntatore): la cmd va calcolata PRIMA di costruire il Model restituito.
+		cmd := m.inbox.AppendRefs(ev.refs)
+		return m, cmd
 
 	case opDone:
 		m.doneOp()
@@ -448,7 +459,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// refresh già in volo non si accatasta, il follow-up parte al
 			// risultato (dirty). deep (Piano 7, D5): profondità piena solo per
 			// Archive/Trash, che cambiano la composizione della lista.
-			return m, m.requestRefresh(ev.deep)
+			// Piano 7, fix code-review 3: requestRefresh muta m (ricevitore puntatore):
+			// va chiamato prima di restituire m, mai nella stessa return.
+			follow := m.requestRefresh(ev.deep)
+			return m, follow
 		}
 		return m, nil
 
@@ -854,7 +868,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			if m.view == viewInbox {
 				m.view = viewSearch
 				// Focus del textinput: la cmd avvia il blink del cursore.
-				return m, m.search.Focus()
+				// Piano 7, fix code-review 3: Focus muta m.search (ricevitore puntatore).
+				follow := m.search.Focus()
+				return m, follow
 			}
 		case key.Matches(ev, keys.Composer):
 			if m.view == viewInbox {

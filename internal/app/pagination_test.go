@@ -421,9 +421,15 @@ func TestRefreshTokenFreedOnlyByItsOwnResult(t *testing.T) {
 	if extra := m.requestRefresh(false); extra != nil {
 		t.Error("refresh concorrente: il coalescing è rotto")
 	}
-	m, _ = step(m, refreshRes) // risultato stante del refresh in volo
-	if m.refreshing {
-		t.Error("il risultato del refresh in volo non ha liberato il token")
+	m, follow := step(m, refreshRes) // risultato stante del refresh in volo
+	// Piano 7, fix code-review 2: il token si libera a quel risultato e il cambio
+	// coalescato (extra) non va perso: il follow-up riparte subito e rimette in
+	// volo il re-list della lista nuova.
+	if follow == nil || m.dirty {
+		t.Error("il cambio coalescato non ha il follow-up al risultato stante")
+	}
+	if !m.refreshing {
+		t.Error("il follow-up non ha ripreso il token dopo il risultato stante")
 	}
 }
 

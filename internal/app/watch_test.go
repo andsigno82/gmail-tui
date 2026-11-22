@@ -375,3 +375,61 @@ func TestWatchStartedErrorShowsStatus(t *testing.T) {
 		t.Errorf("status = %q (isErr=%v), voglio l'errore del Watch", mm.statusText(), mm.status.isErr)
 	}
 }
+
+// TestStaleRefreshFollowsUpPendingDirty (Piano 7, fix code-review 2): R parte in
+// INBOX, si cambia lista (listGen+1), ChangeNewMail marca dirty mentre R è in
+// volo, il load della nuova lista rientra e coalesce, poi R rientra stantio.
+// Il token va liberato E il cambio pendente va rilistato: il follow-up non può
+// perdersi nel ramo stantio.
+func TestStaleRefreshFollowsUpPendingDirty(t *testing.T) {
+	mock := &mail.Mock{Msgs: mockMsgs(t)}
+	m := watchModel(t, mock)
+	m.refreshing = true // R in volo nella lista precedente
+	m.refreshGen = m.listGen
+	m.listGen++ // cambio di lista: R diventa stante
+
+	mm, _ := step(m, changeEvt{c: mail.Change{Kind: mail.ChangeNewMail}})
+	if !mm.dirty {
+		t.Fatal("setup: dirty = false dopo ChangeNewMail con refresh in volo")
+	}
+	mm, _ = step(mm, msgsLoaded{refs: opsRefs(t), gen: mm.listGen}) // load della nuova lista: coalesce
+	if !mm.dirty {
+		t.Fatal("setup: il load non deve consumare dirty")
+	}
+
+	mm2, follow := step(mm, msgsLoaded{refs: opsRefs(t), silent: true, gen: m.refreshGen})
+	if mm2.refreshing != true {
+		t.Error("refreshing = false: il follow-up non è partito")
+	}
+	if mm2.dirty {
+		t.Error("dirty non consumata dal follow-up nel ramo stantio")
+	}
+	if follow == nil {
+		t.Fatal("R stantio con dirty pendente: serve la cmd di follow-up")
+	}
+	loadedOf(t, drainCmd(t, mm2, follow))
+}
+
+// TestRefreshStartedByOpAndWatchIsReturned (Piano 7, fix code-review 3): il
+// re-list avviato da opDone o da un cambio del feed deve stare nel Model
+// restituito. `return m, m.requestRefresh(...)` legge m in ordine non specificato.
+func TestRefreshStartedByOpAndWatchIsReturned(t *testing.T) {
+	mock := &mail.Mock{Msgs: mockMsgs(t)}
+	m := watchModel(t, mock)
+
+	mm, cmd := step(m, opDone{label: "stella on", refresh: true})
+	if !mm.refreshing {
+		t.Error("opDone: refreshing = false nel Model restituito, voglio true")
+	}
+	if cmd == nil {
+		t.Error("opDone: cmd nil, voglio il re-list")
+	}
+
+	mm2, cmd2 := step(m, changeEvt{c: mail.Change{Kind: mail.ChangeFlags}})
+	if !mm2.refreshing {
+		t.Error("changeEvt: refreshing = false nel Model restituito, voglio true")
+	}
+	if cmd2 == nil {
+		t.Error("changeEvt: cmd nil, voglio re-list e rearm")
+	}
+}

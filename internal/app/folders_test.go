@@ -441,3 +441,35 @@ func TestFolderStatusNotDuplicated(t *testing.T) {
 		t.Errorf("\"Inviati\" compare %d volte in status bar (%q), voglio 1", n, plainBar(m))
 	}
 }
+
+// TestSwitchFolderClearsPreviousRows (Piano 7, fix code-review 4): al cambio di
+// cartella le righe della cartella precedente non restano visibili né azionabili
+// finché il load della nuova non torna.
+func TestSwitchFolderClearsPreviousRows(t *testing.T) {
+	rec := &recorder{MailStore: folderMock(t)}
+	m := folderModel(t, rec)
+	m, _ = pickFolder(t, openPicker(t, m), 1) // nessun applyAll: il load resta in volo
+	if len(m.refs) != 0 {
+		t.Errorf("refs = %d durante il load della nuova cartella, voglio 0", len(m.refs))
+	}
+	if ref, ok := m.inbox.SelectedRef(); ok {
+		t.Errorf("riga %q della cartella precedente ancora azionabile", ref.ID)
+	}
+}
+
+// TestFolderPickerQDoesNotQuit (Piano 7, fix code-review 5): `q` nel selettore non
+// deve arrivare al Quit della bubbles/list (tea.Quit): bypasserebbe quitCmd e il
+// ctx del feed Watch resterebbe vivo.
+func TestFolderPickerQDoesNotQuit(t *testing.T) {
+	rec := &recorder{MailStore: folderMock(t)}
+	m := openPicker(t, folderModel(t, rec))
+	m, cmd := step(m, pressKey("q"))
+	for _, ms := range runCmd(cmd) {
+		if _, ok := ms.(tea.QuitMsg); ok {
+			t.Error("q nel selettore produce tea.QuitMsg, voglio nessun quit")
+		}
+	}
+	if m.ctx.Err() != nil {
+		t.Error("ctx del feed annullato da q nel selettore")
+	}
+}

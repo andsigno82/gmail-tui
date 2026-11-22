@@ -68,11 +68,12 @@ func (m Model) currentRef() (msg.MessageRef, bool) {
 // Senza ref corrente (lista vuota, thread in caricamento) le op sono un
 // no-op silenzioso.
 func (m Model) runOp(k string) (Model, tea.Cmd) {
-	if k == "a" && !m.inInbox() {
+	if k == "a" && !strings.EqualFold(m.opBox(), "INBOX") {
 		// Piano 7, fix review 3: l'archivio è solo della posta in arrivo. Nel
 		// cestino l'expunge sarebbe una eliminazione definitiva; in una label
-		// rimuoverebbe solo la label; in Inviati non ha senso. Nessuna op, status
-		// informativo (anche con lista vuota: il rifiuto non dipende dal ref).
+		// rimuoverebbe solo la label; in Inviati non ha senso. Piano 7, fix
+		// code-review 1: la mailbox è quella della RIGA (opBox), non della cartella
+		// mostrata. Nessuna op, status informativo (anche con lista vuota).
 		m.status = statusMsg{text: "archivia è disponibile solo in Posta in arrivo"}
 		return m, nil
 	}
@@ -101,7 +102,8 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 	case "l": // label: mini-prompt (enter applica, esc annulla)
 		m.label.Reset()
 		m.labelOpen = true
-		return m, m.label.Focus()
+		follow := m.label.Focus()
+		return m, follow
 	}
 	return m, nil
 }
@@ -133,9 +135,11 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
-	if m.isCurrentFolder(name) {
+	if strings.EqualFold(name, m.opBox()) {
 		// Piano 7, fix review 4: la COPY nella stessa mailbox duplicherebbe il
-		// messaggio. Rifiuto con status d'errore, lo store non è chiamato.
+		// messaggio. Piano 7, fix code-review 1: il confronto è con la mailbox
+		// della riga (opBox), non con la cartella mostrata. Rifiuto con status
+		// d'errore, lo store non è chiamato.
 		m.status = statusMsg{text: fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name), isErr: true}
 		return m, nil
 	}
@@ -147,20 +151,21 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 	return m, tea.Batch(applyLabel(m.store, ref.ID, name, true), m.spinner.Tick)
 }
 
-// isCurrentFolder dice se il nome IMAP dato è la cartella mostrata (la posta in
-// arrivo è il nome "INBOX"). Piano 7, fix review 4.
-func (m Model) isCurrentFolder(name string) bool {
-	cur := m.folder.Name
-	if cur == "" {
-		cur = "INBOX"
+// opBox è la mailbox IMAP su cui agisce un'op: quella della RIGA operata (l'ID
+// del ref è mailbox+uid), non quella della cartella mostrata — da INBOX una
+// ricerca `label:Work` mostra righe di Work. Piano 7, fix code-review 1. Senza
+// ref (lista vuota, thread in caricamento) ricade sulla cartella mostrata: lo
+// zero value di folder è la posta in arrivo ("INBOX").
+func (m Model) opBox() string {
+	if ref, ok := m.currentRef(); ok {
+		if box, _, err := ref.ID.Split(); err == nil {
+			return box
+		}
 	}
-	return strings.EqualFold(name, cur)
-}
-
-// inInbox dice se la lista mostra la posta in arrivo (zero value di folder, o
-// la cartella con ruolo inbox). Piano 7, fix review 3.
-func (m Model) inInbox() bool {
-	return m.folder.Name == "" || m.folder.Role == "inbox"
+	if m.folder.Name == "" {
+		return "INBOX"
+	}
+	return m.folder.Name
 }
 
 // cancelLabel chiude il prompt senza operare (esc).
