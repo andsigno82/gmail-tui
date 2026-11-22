@@ -1,6 +1,7 @@
 package msg
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -16,7 +17,9 @@ func TestValidateRecipients(t *testing.T) {
 	}{
 		{"solo to", Outgoing{To: []string{"a@b.it"}}, ""},
 		{"nome visualizzato", Outgoing{To: []string{"Mario Rossi <m@x.it>"}}, ""},
-		{"dominio senza punto", Outgoing{To: []string{"a@b"}}, ""},
+		{"dominio senza punto", Outgoing{To: []string{"a@b"}}, `A: indirizzo non valido "a@b"`},
+		{"local part non ASCII", Outgoing{To: []string{"josé@x.it"}}, `A: indirizzo non valido "josé@x.it"`},
+		{"dominio IDN", Outgoing{To: []string{"x@café.it"}}, ""},
 		{"solo bcc", Outgoing{Bcc: []string{"c@d.it"}}, ""},
 		{"nessuno", Outgoing{}, "nessun destinatario"},
 		{"solo vuoti", Outgoing{To: []string{"  "}}, "nessun destinatario"},
@@ -52,5 +55,70 @@ func TestValidateAddressesIgnoresEmptyLists(t *testing.T) {
 	}
 	if err := ValidateAddresses(Outgoing{To: []string{"a@b.it"}, Bcc: []string{"abc"}}); err == nil || !strings.Contains(err.Error(), "Ccn") {
 		t.Errorf("Ccn malformato: err = %v, voglio errore che cita Ccn", err)
+	}
+}
+
+// TestNormalizeRecipients (Piano 7.1, Task 1): forma canonica di ogni indirizzo
+// (nome RFC 2047 se non ASCII, dominio in punycode), errori come ValidateRecipients.
+func TestNormalizeRecipients(t *testing.T) {
+	cases := []struct {
+		name    string
+		in      Outgoing
+		want    Outgoing
+		wantErr string
+	}{
+		{
+			"nome visualizzato quotato",
+			Outgoing{To: []string{"Mario Rossi <m@x.it>"}},
+			Outgoing{To: []string{`"Mario Rossi" <m@x.it>`}},
+			"",
+		},
+		{
+			"dominio IDN in punycode",
+			Outgoing{To: []string{"x@café.it"}},
+			Outgoing{To: []string{"x@xn--caf-dma.it"}},
+			"",
+		},
+		{
+			"elementi vuoti scartati, ordine e duplicati preservati",
+			Outgoing{To: []string{" b@x.it ", "", "a@x.it", "b@x.it"}, Bcc: []string{"  "}},
+			Outgoing{To: []string{"b@x.it", "a@x.it", "b@x.it"}},
+			"",
+		},
+		{
+			"dominio senza punto",
+			Outgoing{To: []string{"a@b"}},
+			Outgoing{},
+			`A: indirizzo non valido "a@b"`,
+		},
+		{
+			"local part non ASCII",
+			Outgoing{To: []string{"x@x.it"}, Cc: []string{"josé@x.it"}},
+			Outgoing{},
+			`Cc: indirizzo non valido "josé@x.it"`,
+		},
+		{
+			"nessun destinatario",
+			Outgoing{Subject: "s"},
+			Outgoing{},
+			"nessun destinatario",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := NormalizeRecipients(tc.in)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("err = %v, want contenente %q", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("errore inatteso: %v", err)
+			}
+			if !reflect.DeepEqual(got.To, tc.want.To) || !reflect.DeepEqual(got.Cc, tc.want.Cc) || !reflect.DeepEqual(got.Bcc, tc.want.Bcc) {
+				t.Errorf("To/Cc/Bcc = %q/%q/%q, want %q/%q/%q", got.To, got.Cc, got.Bcc, tc.want.To, tc.want.Cc, tc.want.Bcc)
+			}
+		})
 	}
 }

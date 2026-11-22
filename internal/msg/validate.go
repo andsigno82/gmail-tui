@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"net/mail"
 	"strings"
+
+	"golang.org/x/net/idna"
 )
 
 // ValidateRecipients controlla i destinatari prima del round-trip SMTP
 // (Piano 7, Task 2): almeno un destinatario non vuoto in To/Cc/Bcc e ogni
-// indirizzo valido per net/mail.ParseAddress (RFC 5322, nome visualizzato
-// ammesso). L'errore cita il campo con le etichette del composer (A, Cc,
-// Ccn) e l'indirizzo. Gli elementi vuoti sono ignorati, come in splitAddrs.
+// indirizzo valido (regole di checkAddress, Piano 7.1 Task 1). L'errore cita il
+// campo con le etichette del composer (A, Cc, Ccn) e l'indirizzo. Gli elementi
+// vuoti sono ignorati, come in splitAddrs.
 func ValidateRecipients(o Outgoing) error {
 	if err := ValidateAddresses(o); err != nil {
 		return err
@@ -33,12 +35,88 @@ func ValidateAddresses(o Outgoing) error {
 			if a == "" {
 				continue
 			}
-			if _, err := mail.ParseAddress(a); err != nil {
+			if _, err := checkAddress(a); err != nil {
 				return fmt.Errorf("%s: indirizzo non valido %q", f.label, a)
 			}
 		}
 	}
 	return nil
+}
+
+// NormalizeRecipients valida To/Cc/Bcc come ValidateRecipients e restituisce
+// una copia di o con ogni indirizzo in forma canonica: mail.Address.String()
+// se c'è un nome visualizzato (RFC 2047 se non ASCII), indirizzo nudo altrimenti;
+// dominio convertito in punycode con
+// idna.Lookup.ToASCII. Local part non ASCII → errore (niente SMTPUTF8).
+// Piano 7.1, Task 1 (decisione D7.1).
+func NormalizeRecipients(o Outgoing) (Outgoing, error) {
+	if err := ValidateRecipients(o); err != nil {
+		return Outgoing{}, err
+	}
+	return Outgoing{
+		From:        o.From,
+		To:          normalizeList(o.To),
+		Cc:          normalizeList(o.Cc),
+		Bcc:         normalizeList(o.Bcc),
+		Subject:     o.Subject,
+		BodyText:    o.BodyText,
+		Attachments: o.Attachments,
+	}, nil
+}
+
+// normalizeList canonicalizza una lista già validata: scarta i vuoti, conserva
+// ordine e duplicati (il dedup resta del Sender). Lista senza elementi ⇒ nil.
+func normalizeList(addrs []string) []string {
+	var out []string
+	for _, a := range addrs {
+		a = strings.TrimSpace(a)
+		if a == "" {
+			continue
+		}
+		// Già validato da ValidateRecipients: l'errore qui non può accadere.
+		c, _ := checkAddress(a)
+		out = append(out, c)
+	}
+	return out
+}
+
+// checkAddress valida un indirizzo e ne restituisce la forma canonica (Piano
+// 7.1, Task 1): net/mail.ParseAddress (nome visualizzato ammesso), local part
+// ASCII, dominio con almeno un punto (D7.1) e convertibile in punycode.
+func checkAddress(a string) (string, error) {
+	parsed, err := mail.ParseAddress(a)
+	if err != nil {
+		return "", err
+	}
+	at := strings.LastIndex(parsed.Address, "@")
+	local, domain := parsed.Address[:at], parsed.Address[at+1:]
+	if !isASCII(local) {
+		return "", errors.New("local part non ASCII")
+	}
+	if !strings.Contains(domain, ".") || strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") || strings.Contains(domain, "..") {
+		return "", errors.New("dominio senza punto")
+	}
+	ascii, err := idna.Lookup.ToASCII(domain)
+	if err != nil {
+		return "", err
+	}
+	parsed.Address = local + "@" + ascii
+	if parsed.Name == "" {
+		// Senza nome visualizzato resta l'indirizzo nudo: Address.String()
+		// lo racchiuderebbe in <> negli header.
+		return parsed.Address, nil
+	}
+	return parsed.String(), nil
+}
+
+// isASCII riporta se s contiene solo caratteri ASCII.
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // countRecipients conta gli indirizzi non vuoti di To/Cc/Bcc.

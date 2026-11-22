@@ -15,6 +15,7 @@ require (
 	github.com/jhillyerd/enmime v1.3.0
 	github.com/k3a/html2text v1.5.1
 	go.etcd.io/bbolt v1.5.0
+	golang.org/x/net v0.63.0
 )
 
 require (
@@ -41,7 +42,6 @@ require (
 	github.com/sahilm/fuzzy v0.1.3 // indirect
 	github.com/ssor/bom v0.0.0-20170718123548-6386211fdfcf // indirect
 	github.com/xo/terminfo v1.0.0 // indirect
-	golang.org/x/net v0.63.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect

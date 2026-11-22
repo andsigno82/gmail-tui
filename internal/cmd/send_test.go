@@ -33,7 +33,7 @@ func (f *fakeSender) Send(_ context.Context, m msg.Outgoing) error {
 func TestSendOK(t *testing.T) {
 	fs := &fakeSender{}
 	cfg := config.Config{Address: "me@gmail.com"}
-	args := SendArgs{To: "a@b", Bcc: "c@d", Subject: "Saluti"}
+	args := SendArgs{To: "a@b.it", Bcc: "c@d.it", Subject: "Saluti"}
 	var out bytes.Buffer
 
 	code := Send(&out, fs, cfg, args, strings.NewReader("corpo\n"))
@@ -45,8 +45,8 @@ func TestSendOK(t *testing.T) {
 	}
 	want := msg.Outgoing{
 		From:     "me@gmail.com",
-		To:       []string{"a@b"},
-		Bcc:      []string{"c@d"},
+		To:       []string{"a@b.it"},
+		Bcc:      []string{"c@d.it"},
 		Subject:  "Saluti",
 		BodyText: "corpo\n",
 	}
@@ -63,7 +63,7 @@ func TestSendEmptyBody(t *testing.T) {
 	fs := &fakeSender{}
 	var out bytes.Buffer
 	code := Send(&out, fs, config.Config{Address: "me@gmail.com"},
-		SendArgs{To: "a@b", Subject: "vuoto"}, strings.NewReader(""))
+		SendArgs{To: "a@b.it", Subject: "vuoto"}, strings.NewReader(""))
 	if code != 0 {
 		t.Fatalf("Send exit = %d, want 0", code)
 	}
@@ -77,7 +77,7 @@ func TestSendAttachments(t *testing.T) {
 	fs := &fakeSender{}
 	var out bytes.Buffer
 	code := Send(&out, fs, config.Config{Address: "me@gmail.com"},
-		SendArgs{To: "a@b", Subject: "s", Attach: []string{"foto.png", "doc.pdf"}}, strings.NewReader("x"))
+		SendArgs{To: "a@b.it", Subject: "s", Attach: []string{"foto.png", "doc.pdf"}}, strings.NewReader("x"))
 	if code != 0 {
 		t.Fatalf("Send exit = %d, want 0", code)
 	}
@@ -96,17 +96,17 @@ func TestSendRecipientsCount(t *testing.T) {
 	}{
 		{
 			"duplicati fra campi",
-			SendArgs{To: "a@b", Cc: "a@b", Bcc: "c@d"},
+			SendArgs{To: "a@b.it", Cc: "a@b.it", Bcc: "c@d.it"},
 			"sent to 2 recipients\n",
 		},
 		{
 			"duplicati nello stesso campo + spazi + vuoti",
-			SendArgs{To: " a@b , a@b ,, c@d ", Subject: "s"},
+			SendArgs{To: " a@b.it , a@b.it ,, c@d.it ", Subject: "s"},
 			"sent to 2 recipients\n",
 		},
 		{
 			"tre unici",
-			SendArgs{To: "a@b", Cc: "c@d", Bcc: "e@f"},
+			SendArgs{To: "a@b.it", Cc: "c@d.it", Bcc: "e@f.it"},
 			"sent to 3 recipients\n",
 		},
 	}
@@ -141,8 +141,8 @@ func TestSendNoRecipients(t *testing.T) {
 func TestSendInvalidRecipient(t *testing.T) {
 	for _, args := range []SendArgs{
 		{To: "abc"},
-		{To: "a@b", Cc: "x@"},
-		{To: "a@b", Bcc: "<>"},
+		{To: "a@b.it", Cc: "x@"},
+		{To: "a@b.it", Bcc: "<>"},
 	} {
 		fs := &fakeSender{}
 		var out bytes.Buffer
@@ -159,7 +159,7 @@ func TestSendInvalidRecipient(t *testing.T) {
 func TestSendError(t *testing.T) {
 	fs := &fakeSender{err: errors.New("smtp giù")}
 	var out bytes.Buffer
-	if code := Send(&out, fs, config.Config{Address: "m@x"}, SendArgs{To: "a@b"}, strings.NewReader("b")); code != 1 {
+	if code := Send(&out, fs, config.Config{Address: "m@x"}, SendArgs{To: "a@b.it"}, strings.NewReader("b")); code != 1 {
 		t.Errorf("Send exit = %d, want 1", code)
 	}
 }
