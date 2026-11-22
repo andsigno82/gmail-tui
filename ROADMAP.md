@@ -23,7 +23,7 @@ with an App Password (no Google Cloud project, no OAuth):
   pre-filled fields; Tab-navigated fields, Cc toggle (`Ctrl+E`), attachments,
   pre-send confirmation.
 - **Sending** — SMTP via the Gmail preset (STARTTLS on port 587); markdown
-  bodies (sent as `text/plain` for now).
+  bodies (plain text in v1.0, HTML part since v1.1).
 - **Attachments** — save with `:save <n> [path]`, open in the OS viewer with
   `:open <n>`; `o` opens the HTML body in the browser.
 - **Themes** — 12 embedded themes, selectable via config, `--theme` flag or
@@ -51,12 +51,16 @@ with an App Password (no Google Cloud project, no OAuth):
   servers without MOVE or UIDPLUS (no generic EXPUNGE).
 - **Recipient validation** — `To`/`Cc`/`Bcc` are checked in the composer and by
   the `send` CLI before the SMTP round-trip.
+- **Markdown sending** — composed messages go out as `multipart/alternative`
+  (Markdown source as plain text, GFM-rendered HTML); `gmail-tui send --markdown`.
+- **Settings menu and two-column layout** — `,` opens theme, layout,
+  mark-as-read, name and signature; `layout = "split"` shows a message preview
+  beside the list from 120 columns.
+- **Readable colors** — text on colored bars is computed to reach WCAG AA
+  contrast on every theme.
 
 ## v1.1 — planned
 
-- **Markdown → HTML multipart sending** — the composer edits markdown but
-  currently sends `text/plain` only; generate the `text/html` part and send
-  multipart/alternative.
 - **Send-only CLI completion** — allow `gmail-tui fetch`/`send` to work
   without a config file when the password is only in the keychain (resolve
   the address from the wizard instead of an empty user).

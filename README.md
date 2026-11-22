@@ -38,13 +38,16 @@ gmail-tui
 
 Without a config file the app launches the **first-run wizard**; with a config but no password it starts in **demo mode** with seeded mail and a banner.
 
+Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gmail-tui/`), `~/Library/Application Support/gmail-tui/config.toml` on macOS, `%AppData%\gmail-tui\config.toml` on Windows.
+
 ## Keymap
 
 | Key | Action |
 |---|---|
-| `j`/`k`, `↑`/`↓` | move cursor (list) / scroll (thread) |
-| `Enter` | open selected message |
-| `Esc` / `q` | back / quit |
+| `j`/`k`, `↑`/`↓` | move cursor (list) / scroll (thread, or the preview when focused) |
+| `Enter` | open selected message (full screen; with the preview focused, the previewed message) |
+| `Tab` | two-column layout: move focus between list and preview |
+| `Esc` / `q` | back / quit (two-column layout with the preview focused: back to the list) |
 | `Ctrl+C` | quit from anywhere |
 | `/` | search — Gmail-style: `from:x is:unread label:Work has:attachment`, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
@@ -56,9 +59,10 @@ Without a config file the app launches the **first-run wizard**; with a config b
 | `l` | apply/remove label (refused for the current folder) |
 | `o` | open HTML body in browser (thread view) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
-| `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view) |
+| `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
+| `,` | settings menu: theme, layout, mark-as-read, name, signature |
 | `?` | full help overlay |
-| mouse | wheel = scroll, click = select, double-click = open |
+| mouse | wheel = scroll, click = select, double-click = open; two-column layout: click on the preview focuses it, double-click opens it, wheel scrolls it |
 
 Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc · `Ctrl+S` send (confirmation first) · `Esc` cancel. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
 
@@ -68,14 +72,30 @@ Twelve embedded themes: `default`, `catppuccin-latte`, `catppuccin-frappe`, `cat
 
 Select with `theme = "…"` in the config, the `--theme` flag, or `:theme <name>` at runtime (immediate preview, persisted to config); `gmail-tui themes` lists them all. Adding a theme is one TOML file — no test changes needed (the table-driven test validates it automatically) — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Settings
+
+Press `,` in the inbox or thread view to open the settings menu. `↑`/`↓` choose a row and `←`/`→` change its value; theme and layout preview at once. `Enter` on a choice saves to the config and closes; `Esc` cancels and restores the previous theme and layout. On **Name** and **Signature**, `Enter` starts editing and `Enter` (name) or `Esc` stops editing; `Ctrl+S` saves from any row. Name and signature apply to the next message you compose.
+
+| Setting | Values | Config key | Default |
+|---|---|---|---|
+| Theme | the 12 themes | `theme` | `default` |
+| Reading layout | one column, two columns | `layout = "single"` or `"split"` | one column |
+| Mark as read in preview | immediately, after 2 seconds, never | `preview_mark_read = "immediate"`, `"delay"` or `"never"` | after 2 seconds |
+| Name | shown in the From header | `name` | empty |
+| Signature | appended to composed messages | `signature` | empty |
+
+**Two-column layout** (`layout = "split"`) is active when the terminal is at least 120 columns wide; narrower terminals show one column. The list takes 35% of the width and the message preview the rest; the preview loads 150 ms after the cursor stops on a message. `Tab` moves focus to the preview: `j`/`k`, `pgup`/`pgdn`, `space`, `d`/`u` scroll it, and `Esc`, `q` or `Tab` return to the list. Actions (`r` `f` `a` `s` `v` `l` `#` `o` `:`) always apply to the previewed message. `Enter` or a double-click opens it full screen. With "after 2 seconds" (the default) a previewed unread message is marked read after two seconds on the same message; "immediately" marks it as soon as it loads, "never" leaves it unread.
+
+A value the app does not accept (for example `layout = "wide"`) is reset to its default for that field only; the other fields are kept and a warning is printed to stderr at startup.
+
 ## CLI
 
 | Command | Description |
 |---|---|
 | `gmail-tui` | launch the TUI (wizard on first run, demo mode without credentials) |
-| `gmail-tui login` | re-run the setup wizard (rewrites the config — see Notes) |
+| `gmail-tui login` | re-run the setup wizard (updates the address, keeps the other settings — see Notes) |
 | `gmail-tui fetch [--limit N] [--query "…"]` | list matching messages (default limit 20) |
-| `gmail-tui send --to a@b.com [--cc …] [--bcc …] --subject "…" [--attach f]... < body` | send an email read from stdin |
+| `gmail-tui send --to a@b.com [--cc …] [--bcc …] --subject "…" [--attach f]... [--markdown] < body` | send an email read from stdin; `--markdown` sends the body as Markdown (plain text + HTML part) |
 | `gmail-tui themes` | list available themes |
 | `gmail-tui doctor` | diagnose config, theme, password and cache; with credentials, also checks that the IMAP server announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED |
 | `gmail-tui version` | print the version |
@@ -88,15 +108,15 @@ Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system key
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
 - **Archive only in Inbox**: `a` is refused with a status message when the selected message is not in INBOX (also for search results from other folders).
 - **Recipient validation**: the composer does not open the send confirmation without a recipient or with a malformed address; `gmail-tui send` exits 1 on the same errors. The domain must contain a dot; internationalized domains are sent in punycode; non-ASCII local parts (SMTPUTF8) are not supported. Display names are allowed (`"Rossi, Mario" <m@x.it>`).
-- **`gmail-tui login` rewrites the config**: your address is kept, but `name` and `signature` are reset to empty (and theme to `default`). Back up `~/.config/gmail-tui/config.toml` before re-running it.
+- **`gmail-tui login` updates the config**: the address is replaced, while `name`, `signature`, `theme`, `layout` and `preview_mark_read` are kept. The wizard also starts when no password is available and the config has no address.
 - **IMAP/SMTP hosts are fixed to the Gmail preset** (`imap.gmail.com:993`, `smtp.gmail.com:587` STARTTLS) and not configurable in v1.
-- **Markdown bodies are sent as `text/plain`** — the composer is a markdown textarea but generates no HTML part yet (v1.1: markdown → HTML multipart).
+- **Markdown**: composed messages go out as `multipart/alternative`. The `text/plain` part is the Markdown source; the `text/html` part is rendered with GitHub-flavored Markdown (tables, strikethrough, task lists). Raw HTML typed in a message is shown as escaped text. `gmail-tui send --markdown` does the same for stdin. Messages you receive are shown as plain text: Markdown in incoming mail is not interpreted.
 - The composer is adapted from [charmbracelet/pop](https://github.com/charmbracelet/pop) (MIT).
 - An external `SIGINT` exits without cancelling the IMAP IDLE watcher (harmless — the process is exiting anyway); use `q`/`Ctrl+C` inside the app for a clean exit.
 
 ## Roadmap
 
-- **v1.1** — delivered: paging, folders and labels picker, trash, recipient validation. Planned: markdown → HTML multipart sending, CLI send-only completion
+- **v1.1** — delivered: paging, folders and labels picker, trash, recipient validation, markdown → HTML multipart sending, settings menu, two-column layout, readable colors on colored bars. Planned: CLI send-only completion
 - **Later** — Gmail conversations (`X-GM-THRID`/`X-GM-RAW`, needs a go-imap patch), optional Gmail API backend behind the existing `MailStore` abstraction
 
 See [ROADMAP.md](ROADMAP.md).

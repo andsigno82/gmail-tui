@@ -15,7 +15,7 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] Address step: empty + `Enter` → error ("inserisci l'indirizzo…"); no `@` → error ("manca @"); valid address → next step.
 - [ ] Password step: input is masked (`*`); `Esc` goes back to the address step keeping the typed value.
 - [ ] Wrong password at the test step: connection test fails within its 30 s budget, a clear error is shown and the wizard returns to the password step with the credentials retained — retry works.
-- [ ] Correct password: wizard completes, `~/.config/gmail-tui/config.toml` is written **without the password** (grep it), the password is in the keychain, the real inbox loads and the status bar shows "configurazione completata — connesso come …".
+- [ ] Correct password: wizard completes, the config file is written (`~/.config/gmail-tui/config.toml` on Linux, `~/Library/Application Support/gmail-tui/config.toml` on macOS) **without the password** (grep it), the password is in the keychain, the real inbox loads and the status bar shows "configurazione completata — connesso come …".
 - [ ] With a config present but no password: **demo mode** — full-width yellow banner "demo mode — set GMAIL_APP_PASSWORD", inbox seeded with 6 realistic messages (3 unread ●, 2 starred ★).
 - [ ] Wizard skip (`s`): lands in the same seeded demo mode with the banner.
 - [ ] Terminal smaller than 80×24 (e.g. 40×10): dedicated "too small" screen naming the current and required size; `q` still exits.
@@ -90,7 +90,7 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `gmail-tui fetch --limit 5` → the 5 newest messages of the real inbox (password from env or keychain; without one, a clear "password non trovata" error, exit 1).
 - [ ] `gmail-tui fetch --query "from:<x> is:unread"` → only matching messages.
 - [ ] `echo body | gmail-tui send --to a@b --subject "smoke" --attach ./f.pdf` → prints "sent to 1 recipients", the mail arrives with subject, body and attachment; missing `--to` → error on stderr, exit 1.
-- [ ] `gmail-tui login` on an existing config: starts the wizard even if a config exists; completing it **rewrites the config** (address kept, `name`/`signature` reset — re-set them afterwards).
+- [ ] `gmail-tui login` on an existing config: starts the wizard even if a config exists; completing it updates the address and keeps `name`, `signature`, `theme`, `layout` and `preview_mark_read`.
 - [ ] Unknown subcommand / stray positional argument → usage printed, exit 1.
 
 ## Daily use (v1.1)
@@ -105,6 +105,22 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `echo body | gmail-tui send --to not-an-address --subject smoke` prints "send: A: indirizzo non valido …" on stderr, exit 1.
 - [ ] Gmail announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED: `gmail-tui doctor` prints `imap: ok (MOVE UIDPLUS SPECIAL-USE LIST-EXTENDED)`.
 - [ ] Display name and IDN: send to `"Rossi, Mario" <your-address>` from the composer and from `gmail-tui send`; the message arrives and the To header shows the name.
+
+## Readability, settings & layout (Piano 7.2)
+
+- [ ] Themes `catppuccin-latte` (light) and `one-dark` (dark), `gmail-tui --theme <name>` (demo mode is fine): the status bar, the OK and error status messages, the selected inbox row and the demo banner are all readable; no bar has text that blends into its background.
+- [ ] `,` in the inbox opens the settings menu, centred; `↑`/`↓` move through Tema, Layout lettura, Segna come letto in anteprima, Nome, Firma; `esc` closes it.
+- [ ] On Tema, `←`/`→` recolors the whole UI at once; `esc` restores the previous theme; `invio` on Tema saves and the config file holds the new `theme`.
+- [ ] `,` also works in a thread view. While the menu is open, list keys such as `a`, `s`, `#` do nothing and mouse clicks are ignored.
+- [ ] On Layout lettura, `←`/`→` selects "due colonne" (applied at once); `invio` saves `layout = "split"`.
+- [ ] With `layout = "split"` and a terminal of at least 120 columns: list on the left (about 35%), preview on the right after a short pause, separated by a vertical line. Narrowing below 120 columns returns to one column; widening again restores two.
+- [ ] `Tab` moves focus to the preview (the separator changes color); `j`/`k` scroll the preview and the list does not move; `esc` or `q` return to the list and do not quit the app; double-click on the preview or `invio` opens the message full screen.
+- [ ] Mark as read in preview: with "dopo 2 secondi" an unread message is still unread after a moment and becomes read after about 2 s; with "mai" it stays unread; with "subito" it is marked read as soon as the preview loads.
+- [ ] Name: set Nome in the menu (`invio` edits, `invio` ends editing, then `ctrl+s` saves). A new message shows From as `Nome <address>`, and the received mail shows the name as sender in Gmail web.
+- [ ] Markdown: a composed message with `**bold**`, a GFM table and a `> quote` arrives in Gmail web formatted (bold text, a table, a quote block; no raw asterisks or pipes). Literal `<b>x</b>` typed in the body arrives as text.
+- [ ] `echo "**ciao**" | gmail-tui send --markdown --to <you> --subject smoke` arrives formatted; without `--markdown` the same text arrives as plain text.
+- [ ] A received message with Markdown (`**x**`) is shown as raw text in the app: expected, incoming Markdown is not interpreted.
+- [ ] Invalid config: set `layout = "wide"` in the config file and start the app: a warning naming the invalid field appears on stderr, the app runs in one column, and `name` and `signature` are still set.
 
 ## Doctor
 

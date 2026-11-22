@@ -149,7 +149,7 @@
       </div>
       <div class="card">
         <h3>Compose, reply, forward</h3>
-        <p>Markdown composer with Tab field navigation and a send confirmation, adapted from charmbracelet/pop.</p>
+        <p>Markdown composer with Tab field navigation and a send confirmation, adapted from charmbracelet/pop. Markdown goes out as formatted HTML, with a plain-text part.</p>
       </div>
       <div class="card">
         <h3>Search</h3>
@@ -162,6 +162,10 @@
       <div class="card">
         <h3>Attachments</h3>
         <p>Attach files when composing, open HTML bodies in the browser, and save parts with <code>:save &lt;n&gt; [path]</code>.</p>
+      </div>
+      <div class="card">
+        <h3>Two-column reading</h3>
+        <p>Optional list-and-preview layout from 120 columns. <code>,</code> opens the settings menu: layout, theme, mark-as-read, name and signature.</p>
       </div>
       <div class="card">
         <h3>12 themes</h3>
@@ -218,12 +222,14 @@
       <tr><th>Key</th><th>Action</th></tr>
       <tr><td>j / k, &uarr; / &darr;</td><td>move cursor (list) / scroll (thread)</td></tr>
       <tr><td>Enter</td><td>open selected message</td></tr>
+      <tr><td>Tab</td><td>two-column layout: move focus between list and preview</td></tr>
       <tr><td>Esc / q, Ctrl+C</td><td>back / quit (Ctrl+C quits from anywhere)</td></tr>
       <tr><td>/</td><td>search — <code>from:x is:unread label:Work has:attachment</code></td></tr>
       <tr><td>r / f / c</td><td>reply / forward / compose new</td></tr>
       <tr><td>a / s</td><td>archive (Inbox only) / star on-off</td></tr>
       <tr><td>m / #</td><td>folders and labels picker / move to trash (confirm with s)</td></tr>
       <tr><td>l / v</td><td>apply-remove label / mark read-unread</td></tr>
+      <tr><td>,</td><td>settings: theme, layout, mark-as-read, name, signature</td></tr>
       <tr><td>?</td><td>full help overlay</td></tr>
     </table>
     <p style="color: var(--muted);">Mouse works too: wheel scrolls, click selects, double-click opens. <a href="https://github.com/andsigno82/gmail-tui#keymap">Full keymap in the README</a>.</p>

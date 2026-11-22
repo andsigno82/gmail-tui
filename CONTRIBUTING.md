@@ -23,8 +23,9 @@ golangci-lint run ./...
 
 There is no Makefile — the four commands above are the whole toolchain. The
 binary is built with `go build ./cmd/gmail-tui` (output: `./gmail-tui`).
-Configuration lives at `~/.config/gmail-tui/config.toml`; see `gmail-tui doctor`
-to sanity-check your local setup.
+Configuration lives at `~/.config/gmail-tui/config.toml` on Linux and
+`~/Library/Application Support/gmail-tui/config.toml` on macOS (`os.UserConfigDir`);
+see `gmail-tui doctor` to sanity-check your local setup.
 
 ## Quality gates (non-negotiable)
 

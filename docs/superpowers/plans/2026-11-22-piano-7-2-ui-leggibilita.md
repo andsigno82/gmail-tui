@@ -59,7 +59,7 @@ Wave 3
 - **Test tabellare** (come `TestEveryEmbeddedThemeValid`): per ogni tema embedded × ogni stile con sfondo × variante dark/light → contrasto ≥ 4.5. Un tema nuovo illeggibile fa fallire il test.
 - Test unitari della funzione di contrasto su coppie note (nero/bianco = 21, stesso colore = 1).
 
-- [ ] RED → impl → GREEN → Commit `fix(styles): readable text on colored bars (WCAG AA auto contrast)`
+- [x] RED → impl → GREEN → Commit `fix(styles): readable text on colored bars (WCAG AA auto contrast)`
 
 ### Task 2: nuovi campi di configurazione
 
@@ -68,7 +68,7 @@ Wave 3
 - `Config` aggiunge `Layout string` (`"single"` | `"split"`, vuoto = `single`) e `PreviewMarkRead string` (`"immediate"` | `"delay"` | `"never"`, vuoto = `delay`), con chiavi TOML `layout` e `preview_mark_read`. `Validate` rifiuta valori sconosciuti. File esistenti senza queste chiavi si caricano con i default.
 - `gmail-tui login` oggi riscrive la config con solo indirizzo e tema `default` (`wizard.go`, `config.Config{Address: ..., Theme: "default"}`), cancellando nome e firma. Con nome e firma ora modificabili dal menu, il login deve **conservare** nome, firma, tema, layout e preview dalla config esistente, aggiornando solo l'indirizzo. Rimuovere la limitazione dalle Notes del README (Task 6).
 
-- [ ] RED → impl → GREEN → Commit `feat(config): layout and preview mark-read settings; login keeps existing settings`
+- [x] RED → impl → GREEN → Commit `feat(config): layout and preview mark-read settings; login keeps existing settings`
 
 ### Task 3: menu impostazioni (`,`)
 
@@ -85,7 +85,7 @@ Wave 3
 
 **Test:** apertura/chiusura; ←→ sul tema cambia gli stili subito; esc ripristina il tema; invio salva in un config temporaneo e il file contiene i valori; nome e firma aggiornano la bozza successiva; tasti globali (`a`, `#`…) e mouse ignorati con la modale aperta.
 
-- [ ] RED → impl → GREEN → Commit `feat(app): settings menu (,) with live preview`
+- [x] RED → impl → GREEN → Commit `feat(app): settings menu (,) with live preview`
 
 ### Task 4: vista a due colonne
 
@@ -103,7 +103,7 @@ Wave 3
 
 **Test:** attivazione per layout e larghezza (119 vs 120); proporzione 35/65; anteprima caricata dopo il timer e non prima; risultato stantio scartato dopo movimento rapido; mark-read per i tre valori (orologio/timer iniettabili, niente sleep reali); Tab/esc; azioni sul messaggio in anteprima; rotella a destra; resize da 140 a 100 colonne torna a una colonna.
 
-- [ ] RED → impl → GREEN → Commit `feat(app): two-column layout with message preview`
+- [x] RED → impl → GREEN → Commit `feat(app): two-column layout with message preview`
 
 ### Task 5: markdown → HTML in uscita
 
@@ -117,7 +117,7 @@ Wave 3
 
 **Test:** struttura MIME (boundary annidati, Content-Type delle parti) con e senza allegati; HTML contiene `<strong>`, `<table>` per una tabella GFM, `<blockquote>` per le citazioni; `<script>` scritto dall'utente risulta escapato; senza `Markdown` il messaggio è identico a prima (test esistenti verdi); CLI `--markdown` imposta il campo.
 
-- [ ] RED → impl → GREEN → `govulncheck` → Commit `feat(smtp): send markdown as multipart/alternative with HTML (goldmark, GFM)`
+- [x] RED → impl → GREEN → `govulncheck` → Commit `feat(smtp): send markdown as multipart/alternative with HTML (goldmark, GFM)`
 
 ### Task 6: documentazione
 
@@ -125,7 +125,7 @@ Wave 3
 - `site/index.html`: keymap e feature card se presenti.
 - CHANGELOG [Unreleased]; ROADMAP (markdown → HTML consegnato, togliere da "planned"); `docs/smoke-checklist.md` (contrasto in un tema chiaro e uno scuro, menu `,`, due colonne, email markdown ricevuta formattata in Gmail web); AGENTS.md se emergono gotcha nuovi; piano dei gap (il markdown esce dal Piano 9).
 
-- [ ] Commit `docs: settings menu, two-column layout, markdown sending, readable themes`
+- [x] Commit `docs: settings menu, two-column layout, markdown sending, readable themes`
 
 ### Task 7: verifica finale
 

@@ -53,6 +53,11 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
    post-filter, `ThreadLen` is always 1).
 3. **UI uses theme slots only, never hard-coded colors.** Styles derive from
    themes in `internal/ui/styles`. If no slot fits, raise it instead of adding a color.
+   Exception (Piano 7.2, U1): the text color on colored bars is computed by `onColor`
+   (`internal/ui/styles/styles.go`): the first of the theme's `fg`/`bg` that reaches
+   WCAG 4.5:1 against the bar, otherwise black or white. Those two literals are the
+   only ones allowed in that package. `TestContrastoStiliConSfondo` (`styles_test.go`)
+   requires every style with a background to reach 4.5:1 on every theme, dark and light.
 4. **No CGO.** Every target builds with `CGO_ENABLED=0`. This is why the keyring
    shells out to `security`/`secret-tool` instead of using go-keyring.
 5. **Gmail hosts are fixed** (`imap.gmail.com:993`, `smtp.gmail.com:587`
@@ -104,7 +109,7 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   so state mutated in a helper is lost unless the model is returned. Command
   builders such as `beginSession` stay pure; state changes happen at the call
   sites in `Update`. staticcheck SA4005 has already caught a real bug here.
-- **Reserved keys**: `f` = forward, `b` is free. The thread viewport keymap is
+- **Reserved keys**: `f` = forward, `b` is free, `,` = settings menu (inbox and thread), `Tab` = list/preview focus (two-column layout only). The thread viewport keymap is
   rebound (`internal/ui/thread/thread.go`) so `f`/`b` no longer page; paging
   is `pgup`/`pgdn`/`space` and `d`/`u`. Check the central keymap
   (`internal/app/keys.go`) before binding anything.
@@ -120,6 +125,12 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   generation, mailbox or query differs from the current one is discarded.
 - `BodyHTML` is populated for every HTML part (multipart/alternative too):
   the `o` key depends on it.
+- **Markdown rendering (goldmark)**: `mdRenderer` in `internal/mail/smtp/mime.go` has
+  no `html.WithUnsafe`, so raw HTML is escaped. goldmark's default raw-HTML renderer
+  emits a `<!-- raw HTML omitted -->` placeholder; `rawHTMLEscaper` replaces it with
+  the escaped text at priority 100. In goldmark v1.8.7 the renderers are sorted
+  ascending and the lowest priority value wins (default 1000): do not raise it.
+  `TestBuildMIMEMarkdownRawHTMLAsEscapedText` guards it.
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the
   source of the pinned version, not against docs or memory (e.g. `DialInsecure`,
   `UIDExpunge`). bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.

@@ -72,7 +72,7 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 ## Piano 9 — Scrittura
 
 - **Bozze:** `Ctrl+S` salva o "posponi" la bozza con APPEND nella mailbox `\Drafts` (ruolo SPECIAL-USE, già letto da `ListMailboxes`); dalla cartella Bozze `r`/invio la riapre nel composer. Modello: `:postpone`/`:recall` di aerc. Nuovo metodo `MailStore.SaveDraft`.
-- **Markdown → HTML:** genera la parte `text/html` e invia `multipart/alternative`. Con goldmark (D9-1).
+- **Markdown → HTML:** consegnato nel Piano 7.2 (`multipart/alternative` con GFM, `gmail-tui send --markdown`, goldmark per D9-1). Non più in questo piano.
 - **Autocompletamento contatti** nei campi A/Cc/Ccn. Due fonti possibili: gli indirizzi già visti nelle ENVELOPE e nella cache (zero configurazione), più un comando esterno opzionale come `address-book-cmd` di aerc (es. khard), entrambi (D9-2).
 - **Annulla invio** (ritardo di qualche secondo come Gmail web): opzionale, da valutare con D10.
 
@@ -94,6 +94,7 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 - **Paginazione della ricerca:** oggi `Search` fa FETCH di tutti i risultati. Paginarla come la lista (o con ESEARCH, se Gmail lo annuncia).
 - **Trash su più cartelle:** oggi può fermarsi a metà lasciando spostato solo il primo gruppo. Riportare quali messaggi sono stati spostati invece di un errore generico.
 - **`[Gmail]/Importanti`** (`\Important`) oggi appare come label normale: mapparlo come ruolo.
+- **Codifica MIME del corpo:** aggiungere `Content-Transfer-Encoding` e il limite di 998 caratteri per riga (RFC 5322) a `text/plain` e `text/html`. Oggi le parti di testo non dichiarano CTE (`internal/mail/smtp/mime.go`), quindi vale il default MIME 7bit, e nessun limite di riga è applicato.
 
 ## Piano 13 — Account
 
