@@ -10,6 +10,13 @@ La copia resta identica a upstream salvo i file elencati nella tabella delle pat
 | Task | File | Patch |
 |---|---|---|
 | 1 | (nessuno) | Copia iniziale, nessuna modifica |
+| 2 | `fetch.go` | `FetchOptions.GmailMsgID`, `GmailThreadID`, `GmailLabels` (campi aggiunti in coda) |
+| 2 | `imapclient/fetch.go` | scrittura degli item `X-GM-*` in `writeFetchItems`; campi `GmailMsgID`/`GmailThreadID`/`GmailLabels` in `FetchMessageBuffer`; `populateItemData`; case `X-GM-MSGID`/`X-GM-THRID`/`X-GM-LABELS` in `handleFetch`; il `default` che era errore ora scarta il valore (`skipMsgAttValue`) |
+| 2 | `imapclient/gmail.go` (nuovo) | tipi `FetchItemDataGmail*`, parser (`readGmailID` uint64, `readGmailLabels`), decoder modified UTF-7 (RFC 3501 §5.1.3, scritto a mano: `cention-sany/utf7` implementa lo UTF-7 con "+", non quello IMAP con "&") |
+
+Test della patch: `imapclient/gmail_test.go` (server scriptato su `net.Pipe`, non il memserver).
+
+Deviazioni dall'upstream oltre alle patch: nessuna. Il `go.mod` della copia è quello upstream (`go 1.18`).
 
 ## Procedura di riallineamento a una nuova versione upstream
 

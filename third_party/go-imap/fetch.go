@@ -21,6 +21,11 @@ type FetchOptions struct {
 	ModSeq            bool                          // requires CONDSTORE
 
 	ChangedSince uint64 // requires CONDSTORE
+
+	// Piano 8, Task 2 (patch Gmail, X-GM-EXT-1; vedi PATCHES.md).
+	GmailMsgID    bool // X-GM-MSGID
+	GmailThreadID bool // X-GM-THRID
+	GmailLabels   bool // X-GM-LABELS
 }
 
 // FetchItemBodyStructure contains FETCH options for the body structure.

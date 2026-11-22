@@ -64,6 +64,17 @@ func writeFetchItems(enc *imapwire.Encoder, numKind imapwire.NumKind, options *i
 		}
 	}
 
+	// Piano 8, Task 2 (patch Gmail).
+	if options.GmailMsgID {
+		listEnc.Item().Atom("X-GM-MSGID")
+	}
+	if options.GmailThreadID {
+		listEnc.Item().Atom("X-GM-THRID")
+	}
+	if options.GmailLabels {
+		listEnc.Item().Atom("X-GM-LABELS")
+	}
+
 	for _, bs := range options.BodySection {
 		writeFetchItemBodySection(listEnc.Item(), bs)
 	}
@@ -508,6 +519,11 @@ type FetchMessageBuffer struct {
 	BinarySection     []FetchBinarySectionBuffer
 	BinarySectionSize []FetchItemDataBinarySectionSize
 	ModSeq            uint64 // requires CONDSTORE
+
+	// Piano 8, Task 2 (patch Gmail, X-GM-EXT-1).
+	GmailMsgID    uint64
+	GmailThreadID uint64
+	GmailLabels   []string
 }
 
 func (buf *FetchMessageBuffer) populateItemData(item FetchItemData) error {
@@ -554,6 +570,12 @@ func (buf *FetchMessageBuffer) populateItemData(item FetchItemData) error {
 		buf.BinarySectionSize = append(buf.BinarySectionSize, item)
 	case FetchItemDataModSeq:
 		buf.ModSeq = item.ModSeq
+	case FetchItemDataGmailMsgID: // Piano 8, Task 2
+		buf.GmailMsgID = item.ID
+	case FetchItemDataGmailThreadID:
+		buf.GmailThreadID = item.ID
+	case FetchItemDataGmailLabels:
+		buf.GmailLabels = item.Labels
 	default:
 		panic(fmt.Errorf("unsupported fetch item data %T", item))
 	}
@@ -801,8 +823,28 @@ func (c *Client) handleFetch(seqNum uint32) error {
 				return dec.Err()
 			}
 			item = FetchItemDataModSeq{ModSeq: modSeq}
+		case "X-GM-MSGID": // Piano 8, Task 2 (patch Gmail)
+			id, err := readGmailID(dec)
+			if err != nil {
+				return err
+			}
+			item = FetchItemDataGmailMsgID{ID: id}
+		case "X-GM-THRID":
+			id, err := readGmailID(dec)
+			if err != nil {
+				return err
+			}
+			item = FetchItemDataGmailThreadID{ID: id}
+		case "X-GM-LABELS":
+			labels, err := readGmailLabels(dec)
+			if err != nil {
+				return err
+			}
+			item = FetchItemDataGmailLabels{Labels: labels}
 		default:
-			return fmt.Errorf("unsupported msg-att name: %q", attName)
+			// Piano 8, Task 2: un msg-att sconosciuto non è più un errore che
+			// chiude la connessione: il suo valore viene scartato.
+			return skipMsgAttValue(dec)
 		}
 
 		numAtts++
