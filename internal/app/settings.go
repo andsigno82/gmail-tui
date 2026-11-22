@@ -35,11 +35,12 @@ const (
 	rowMarkRead
 	rowName
 	rowSignature
+	rowNotify // Piano 11, Task 5: sola lettura, stato di notify_command
 	rowCount
 )
 
 // settingsLabels sono le etichette delle voci, nell'ordine di settingsRow.
-var settingsLabels = [rowCount]string{"Tema", "Layout lettura", "Segna come letto in anteprima", "Nome", "Firma"}
+var settingsLabels = [rowCount]string{"Tema", "Layout lettura", "Segna come letto in anteprima", "Nome", "Firma", "Notifiche desktop"}
 
 // settingsLabelWidth è la colonna del valore nel menu (le etichette sono ASCII).
 const settingsLabelWidth = 30
@@ -300,6 +301,12 @@ func (m Model) settingsValueText(r settingsRow) string {
 			return v
 		}
 		return st.ListDate.Render("(vuoto)")
+	case rowNotify:
+		// Piano 11, Task 5: stato del comando dalla config (SetNotify); nessuna modifica dal menu.
+		if len(m.notifyArgv) > 0 {
+			return "comando configurato"
+		}
+		return st.ListDate.Render("non configurate (vedi README)")
 	default: // rowSignature
 		if m.menu.editing && m.menu.cur == rowSignature {
 			return m.menu.sig.View()

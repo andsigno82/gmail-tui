@@ -149,6 +149,7 @@ func runTUI(args []string, forceWizard bool) int {
 	m := app.New(store, sender, th)
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
 	m.SetPrefs(cfg.Layout, cfg.PreviewMarkRead)         // layout e segna come letto (Piano 7.2, Task 2-3)
+	m.SetNotify(cfg.NotifyCommand)                      // notifiche desktop (Piano 11, Task 4)
 	if demo {
 		m.SetDemoBanner()
 	}

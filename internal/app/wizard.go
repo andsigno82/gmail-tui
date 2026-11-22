@@ -57,6 +57,7 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 	// config: il radice le riprende, così un `,` successivo non le scrive vuote.
 	saved := m.savedSettings()
 	m.SetPrefs(saved.Layout, saved.PreviewMarkRead)
+	m.SetNotify(saved.NotifyCommand) // Piano 11, Task 4: il wizard ricarica la config
 	// La factory va CONSUMATA prima di azzerarla (serve qui sotto per i
 	// backend reali): la si salva localmente e si azzera lo stato del radice.
 	factory := m.factory
