@@ -25,7 +25,12 @@ import (
 
 // draftSaved è l'esito di SaveDraft (Piano 9, Task 5): ok → composer chiuso
 // con toast; errore → composer aperto con la bozza intatta.
-type draftSaved struct{ err error }
+// id è la copia in Bozze anche con err (rimozione della precedente fallita,
+// Piano 9, review F): la bozza del composer punta alla copia nuova.
+type draftSaved struct {
+	id  msg.MessageID
+	err error
+}
 
 // draftDeleted è l'esito di DeleteDraft: discard → toast "bozza scartata" se
 // riuscita; errore → toast d'errore in ogni caso.
@@ -53,8 +58,8 @@ func saveDraftCmd(st mail.MailStore, out msg.Outgoing, replace []msg.MessageID) 
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
 		defer cancel()
-		_, err = st.SaveDraft(ctx, raw, replace)
-		return draftSaved{err: err}
+		id, err := st.SaveDraft(ctx, raw, replace)
+		return draftSaved{id: id, err: err}
 	}
 }
 

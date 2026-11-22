@@ -795,6 +795,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Piano 9, Task 5 (D9-A): bozza salvata → composer chiuso, torna la vista
 		// di provenienza; errore → composer aperto con la bozza intatta.
 		m.draftBusy = false
+		if ev.id != "" {
+			// Piano 9, review F: la copia in Bozze è quella del composer anche se la
+			// rimozione della precedente è fallita: il prossimo esc la sostituisce.
+			m.draftID, m.draftKeep = ev.id, false
+		}
 		if ev.err != nil {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata: %v", ev.err))
 			return m, cmd
