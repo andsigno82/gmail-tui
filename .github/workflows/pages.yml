@@ -1,0 +1,40 @@
+# Deploys the landing page (site/) to GitHub Pages with the official actions.
+#
+# ONE-TIME SETUP, after the first push to GitHub:
+#   Settings → Pages → Build and deployment → Source: "GitHub Actions"
+# The deploy-pages step fails until that source is selected once.
+#
+# Docs: https://docs.github.com/en/pages/getting-started-with-github-pages
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+  workflow_dispatch:
+
+permissions:
+  pages: write
+  id-token: write
+
+# Do not cancel an in-progress deployment (official Pages starter template).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

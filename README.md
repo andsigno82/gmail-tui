@@ -5,6 +5,8 @@
 
 🌐 **[Landing page](https://USER.github.io/gmail-tui/)** — screenshots, themes showcase *(after the first push + Pages setup)*
 
+Docs: [CHANGELOG](CHANGELOG.md) · [SECURITY](SECURITY.md) · [CONTRIBUTING](CONTRIBUTING.md)
+
 **A Gmail client for your terminal, built with Charm.**
 
 Inbox, threads, search, compose/reply/forward with attachments, labels, themes and IMAP IDLE push — no Google Cloud project, no OAuth: just an App Password.
