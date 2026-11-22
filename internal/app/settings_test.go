@@ -316,3 +316,70 @@ func mustTheme(t *testing.T, name string) theme.Theme {
 	}
 	return th
 }
+
+// Piano 7.2, fix review: l'indirizzo vuoto dà From vuoto, non "\"Ada\" <@>".
+func TestIdentityFromEmptyAddress(t *testing.T) {
+	if got := identityFrom("", "Ada"); got != "" {
+		t.Errorf("identityFrom(\"\", Ada) = %q, voglio stringa vuota", got)
+	}
+	if got := identityFrom("ada@example.com", ""); got != "ada@example.com" {
+		t.Errorf("identityFrom senza nome = %q", got)
+	}
+}
+
+// Piano 7.2, fix review: una config con un valore non valido (layout "grid")
+// non blocca il salvataggio dal menu: il file viene riscritto valido e
+// l'indirizzo resta.
+func TestSaveSettingsRepairsInvalidConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("address = \"ada@example.com\"\nlayout = \"grid\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := saveSettingsCmd(path, settingsValues{Theme: "default", Layout: "split", PreviewMarkRead: "delay", Name: "Ada"})()
+	if s, ok := got.(settingsSaved); !ok || s.err != nil {
+		t.Fatalf("settingsSaved = %+v, voglio nessun errore", got)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("file ancora non valido dopo il salvataggio: %v", err)
+	}
+	if cfg.Address != "ada@example.com" || cfg.Layout != "split" || cfg.Name != "Ada" {
+		t.Errorf("config dopo il salvataggio = %+v", cfg)
+	}
+}
+
+// Piano 7.2, fix review: stesso ripristino per `:theme` (saveThemeCmd).
+func TestSaveThemeRepairsInvalidConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("address = \"ada@example.com\"\npreview_mark_read = \"later\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := saveThemeCmd(path, "dracula")()
+	if s, ok := got.(themePersisted); !ok || s.err != nil {
+		t.Fatalf("themePersisted = %+v, voglio nessun errore", got)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("file ancora non valido: %v", err)
+	}
+	if cfg.Theme != "dracula" || cfg.Address != "ada@example.com" {
+		t.Errorf("config = %+v", cfg)
+	}
+}
+
+// Piano 7.2, fix review: un file illeggibile (parsing rotto) NON viene
+// sovrascritto dal salvataggio del menu: errore in status, file intatto.
+func TestSaveSettingsKeepsUnparsableFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	broken := "questo non è toml = [\n"
+	if err := os.WriteFile(path, []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := saveSettingsCmd(path, settingsValues{Theme: "default", Layout: "single", PreviewMarkRead: "delay"})()
+	if s, ok := got.(settingsSaved); !ok || s.err == nil {
+		t.Errorf("settingsSaved = %+v, voglio errore", got)
+	}
+	if data, _ := os.ReadFile(path); string(data) != broken {
+		t.Errorf("file sovrascritto: %q", data)
+	}
+}

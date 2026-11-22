@@ -9,6 +9,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"net/mail"
 	"slices"
@@ -85,6 +86,10 @@ func (m *Model) SetIdentity(address, name, signature string) {
 // identityFrom compone l'header From: indirizzo nudo senza nome, altrimenti
 // "Nome <indirizzo>" con il nome in RFC 2047 se non ASCII (net/mail).
 func identityFrom(address, name string) string {
+	// Piano 7.2, fix review: senza indirizzo non c'è identità da comporre.
+	if address == "" {
+		return ""
+	}
 	if name == "" {
 		return address
 	}
@@ -212,6 +217,10 @@ func saveSettingsCmd(path string, v settingsValues) tea.Cmd {
 	}
 	return func() tea.Msg {
 		cfg, err := config.Load(path)
+		// Piano 7.2, fix review: valore non valido → default solo per quel campo.
+		if errors.Is(err, config.ErrInvalid) {
+			cfg, err = cfg.Sanitized(), nil
+		}
 		if err == nil {
 			cfg.Theme, cfg.Layout, cfg.PreviewMarkRead = v.Theme, v.Layout, v.PreviewMarkRead
 			cfg.Name, cfg.Signature = v.Name, v.Signature

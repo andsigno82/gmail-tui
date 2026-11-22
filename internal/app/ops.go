@@ -8,6 +8,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -319,6 +320,10 @@ func saveThemeCmd(path, name string) tea.Cmd {
 	}
 	return func() tea.Msg {
 		cfg, err := config.Load(path)
+		// Piano 7.2, fix review: valore non valido → default solo per quel campo.
+		if errors.Is(err, config.ErrInvalid) {
+			cfg, err = cfg.Sanitized(), nil
+		}
 		if err == nil {
 			cfg.Theme = name
 			err = cfg.Save(path)
