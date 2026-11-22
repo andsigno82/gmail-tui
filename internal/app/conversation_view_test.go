@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,7 @@ func convViewFixture(t *testing.T) *mail.Mock {
 				ID: msg.NewID(box, uid), From: from, Subject: "piano settimana",
 				Date: base.Add(time.Duration(hours) * time.Hour), ThreadID: 7, Unread: unread,
 			},
-			BodyText: "corpo di " + from,
+			BodyText: fmt.Sprintf("corpo di %s n%d", from, uid),
 		}
 	}
 	return &mail.Mock{Msgs: []*msg.Message{
@@ -89,4 +90,36 @@ func TestAnteprimaConversazioneSegnaLettiTuttiDopoDueSecondi(t *testing.T) {
 	if n := unreadInFixture(store); n != 0 {
 		t.Errorf("dopo 2 s la conversazione in anteprima deve essere tutta letta: ne restano %d", n)
 	}
+}
+
+// Piano 8, Task 10 (test mancante): il clic sul titolo di un messaggio compresso
+// nell'anteprima a due colonne lo espande, come nella vista a schermo intero.
+// La prima riga del thread è il titolo di anna (letta, compressa) a Y=5 (header
+// di 4 righe più la riga vuota); la colonna dell'anteprima inizia dopo la lista.
+func TestClickSuTitoloNellAnteprimaEspande(t *testing.T) {
+	store := convViewFixture(t)
+	m := pagedModel(t, store)
+	m.SetPrefs(config.LayoutSplit, config.PreviewMarkReadDelay)
+	m, _ = step(m, tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = feedPreview(t, m)
+	if !m.previewReady() {
+		t.Fatalf("anteprima non pronta")
+	}
+	if hasBodyLine(m.thread.View(), "corpo di anna@x.dev n1") {
+		t.Fatalf("prima del clic il primo messaggio deve essere compresso:\n%s", m.thread.View())
+	}
+	m, _ = step(m, tea.MouseClickMsg{X: 100, Y: 5, Button: tea.MouseLeft})
+	if !hasBodyLine(m.thread.View(), "corpo di anna@x.dev n1") {
+		t.Errorf("il clic sul titolo nell'anteprima deve espandere il messaggio:\n%s", m.thread.View())
+	}
+}
+
+// hasBodyLine dice se una riga della vista è esattamente s (corpo espanso).
+func hasBodyLine(view, s string) bool {
+	for _, ln := range strings.Split(view, "\n") {
+		if strings.TrimSpace(ln) == s {
+			return true
+		}
+	}
+	return false
 }
