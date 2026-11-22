@@ -40,8 +40,8 @@ const SendTimeout = 60 * time.Second
 // Su ok stampa "sent to N recipients" su out, dove N è
 // il numero di destinatari UNICI di To+Cc+Bcc (stessa semantica di dedup
 // del Sender SMTP: vuoti scartati, dedup esatto case-sensitive).
-// Nessun destinatario o errore del sender ⇒ messaggio su stderr, ritorna 1;
-// 0 se ok.
+// Nessun destinatario, indirizzo malformato (msg.ValidateRecipients) o
+// errore del sender ⇒ messaggio su stderr, ritorna 1; 0 se ok.
 func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body io.Reader) int {
 	text, err := io.ReadAll(body)
 	if err != nil {
@@ -62,6 +62,12 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		Subject:     args.Subject,
 		BodyText:    string(text),
 		Attachments: args.Attach,
+	}
+	// Piano 7, Task 2: indirizzi malformati fermati prima del round-trip
+	// SMTP (prima emergevano solo come errore del server a invio avviato).
+	if err := msg.ValidateRecipients(m); err != nil {
+		fmt.Fprintf(os.Stderr, "send: %v\n", err)
+		return 1
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), SendTimeout)
 	defer cancel()

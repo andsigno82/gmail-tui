@@ -136,6 +136,25 @@ func TestSendNoRecipients(t *testing.T) {
 	}
 }
 
+// TestSendInvalidRecipient (Piano 7, Task 2): un indirizzo malformato ⇒
+// exit 1 PRIMA del round-trip SMTP: il sender non viene chiamato.
+func TestSendInvalidRecipient(t *testing.T) {
+	for _, args := range []SendArgs{
+		{To: "abc"},
+		{To: "a@b", Cc: "x@"},
+		{To: "a@b", Bcc: "<>"},
+	} {
+		fs := &fakeSender{}
+		var out bytes.Buffer
+		if code := Send(&out, fs, config.Config{Address: "m@x"}, args, strings.NewReader("b")); code != 1 {
+			t.Errorf("%+v: Send exit = %d, want 1", args, code)
+		}
+		if fs.called {
+			t.Errorf("%+v: sender chiamato con un destinatario non valido", args)
+		}
+	}
+}
+
 // TestSendError: sender in errore ⇒ exit 1.
 func TestSendError(t *testing.T) {
 	fs := &fakeSender{err: errors.New("smtp giù")}
