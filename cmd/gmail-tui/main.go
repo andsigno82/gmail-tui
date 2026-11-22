@@ -414,7 +414,7 @@ func loadConfig() (config.Config, bool) {
 	// Piano 7.2, fix review: un valore non valido riporta al default solo quel
 	// campo; indirizzo e nome restano. Parsing/lettura rotti: come prima.
 	if errors.Is(err, config.ErrInvalid) {
-		fmt.Fprintf(os.Stderr, "config: %v (campi riportati al default)\n", err)
+		fmt.Fprintf(os.Stderr, "config: %v (layout e preview_mark_read non validi tornano al default)\n", err)
 		return cfg.Sanitized(), true
 	}
 	if err != nil {
