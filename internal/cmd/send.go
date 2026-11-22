@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ const SendTimeout = 60 * time.Second
 // Su ok stampa "sent to N recipients" su out, dove N è
 // il numero di destinatari UNICI di To+Cc+Bcc (stessa semantica di dedup
 // del Sender SMTP: vuoti scartati, dedup esatto case-sensitive).
-// Nessun destinatario, indirizzo malformato (msg.ValidateRecipients) o
+// Nessun destinatario, indirizzo malformato (msg.NormalizeRecipients) o
 // errore del sender ⇒ messaggio su stderr, ritorna 1; 0 se ok.
 func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body io.Reader) int {
 	text, err := io.ReadAll(body)
@@ -48,9 +49,22 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 		fmt.Fprintf(os.Stderr, "send: leggo il corpo: %v\n", err)
 		return 1
 	}
-	to, cc, bcc := splitAddrs(args.To), splitAddrs(args.Cc), splitAddrs(args.Bcc)
-	rcpts := dedupAddrs(concat(concat(to, cc), bcc))
-	if len(rcpts) == 0 {
+	to, err := parseAddrs(args.To)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "send: --to: %v\n", err)
+		return 1
+	}
+	cc, err := parseAddrs(args.Cc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "send: --cc: %v\n", err)
+		return 1
+	}
+	bcc, err := parseAddrs(args.Bcc)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "send: --bcc: %v\n", err)
+		return 1
+	}
+	if len(to)+len(cc)+len(bcc) == 0 {
 		fmt.Fprintln(os.Stderr, "send: nessun destinatario (--to)")
 		return 1
 	}
@@ -65,10 +79,13 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 	}
 	// Piano 7, Task 2: indirizzi malformati fermati prima del round-trip
 	// SMTP (prima emergevano solo come errore del server a invio avviato).
-	if err := msg.ValidateRecipients(m); err != nil {
+	// Piano 7.1, Task 3: forma canonica (dominio punycode, nome RFC 2047).
+	m, err = msg.NormalizeRecipients(m)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "send: %v\n", err)
 		return 1
 	}
+	rcpts := bareRecipients(m)
 	ctx, cancel := context.WithTimeout(context.Background(), SendTimeout)
 	defer cancel()
 	if err := sender.Send(ctx, m); err != nil {
@@ -79,17 +96,36 @@ func Send(out io.Writer, sender Sender, cfg config.Config, args SendArgs, body i
 	return 0
 }
 
-// splitAddrs spezza una lista separata da virgole, trimmando gli spazi e
-// scartando gli elementi vuoti ("a@b , c@d" → ["a@b" "c@d"]; lista vuota
-// ⇒ slice nil, così l'Outgoing non porta campi vuoti).
-func splitAddrs(s string) []string {
-	var out []string
-	for _, p := range strings.Split(s, ",") {
-		if p = strings.TrimSpace(p); p != "" {
-			out = append(out, p)
+// parseAddrs legge una lista di indirizzi RFC 5322 (Piano 7.1, Task 3): la
+// virgola dentro un nome quotato ("Rossi, Mario" <m@x.it>) non spezza il
+// destinatario. Lista vuota ⇒ slice nil, così l'Outgoing non porta campi vuoti.
+func parseAddrs(s string) ([]string, error) {
+	if strings.TrimSpace(s) == "" {
+		return nil, nil
+	}
+	list, err := mail.ParseAddressList(s)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(list))
+	for _, a := range list {
+		out = append(out, a.String())
+	}
+	return out, nil
+}
+
+// bareRecipients restituisce gli indirizzi nudi unici di To+Cc+Bcc di un
+// Outgoing già normalizzato: è il conteggio "sent to N recipients".
+func bareRecipients(m msg.Outgoing) []string {
+	all := concat(concat(m.To, m.Cc), m.Bcc)
+	bare := make([]string, 0, len(all))
+	for _, a := range all {
+		// Già normalizzato da msg.NormalizeRecipients: il parse non fallisce.
+		if p, err := mail.ParseAddress(a); err == nil {
+			bare = append(bare, p.Address)
 		}
 	}
-	return out
+	return dedupAddrs(bare)
 }
 
 // dedupAddrs scarta i duplicati esatti (case-sensitive: la

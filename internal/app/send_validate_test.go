@@ -130,3 +130,22 @@ func TestSendCcOnlyKeepsConfirmation(t *testing.T) {
 		t.Errorf("conferma = %q, voglio l'indirizzo in Cc", bar)
 	}
 }
+
+// TestSendConfirmsNormalizedRecipient (Piano 7.1, Task 3): il dominio IDN è
+// mostrato e inviato in punycode; la conferma e il Sender ricevono la bozza
+// normalizzata.
+func TestSendConfirmsNormalizedRecipient(t *testing.T) {
+	rec := &senderRecorder{}
+	m, _ := senderModel(t, rec)
+	mm, _ := step(m, teaSize())
+	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "x@café.it", Subject: "s", Body: "c"}))
+	if !mm.confirmSend || mm.status.isErr {
+		t.Fatalf("IDN valido: confirm=%v status=%q (err=%v)", mm.confirmSend, mm.statusText(), mm.status.isErr)
+	}
+	if bar := plainBar(mm); !strings.Contains(bar, "Invio a x@xn--caf-dma.it") {
+		t.Errorf("conferma = %q, voglio l'indirizzo in punycode", bar)
+	}
+	if want := []string{"x@xn--caf-dma.it"}; strings.Join(mm.draft.To, ",") != strings.Join(want, ",") {
+		t.Errorf("draft.To = %q, want %q", mm.draft.To, want)
+	}
+}

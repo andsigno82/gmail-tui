@@ -163,3 +163,39 @@ func TestSendError(t *testing.T) {
 		t.Errorf("Send exit = %d, want 1", code)
 	}
 }
+
+// TestSendDisplayNameRecipientIsOne (Piano 7.1, Task 3): una virgola dentro
+// il nome quotato non spezza il destinatario; il nome resta nell'Outgoing.
+func TestSendDisplayNameRecipientIsOne(t *testing.T) {
+	fs := &fakeSender{}
+	var out bytes.Buffer
+	code := Send(&out, fs, config.Config{Address: "me@gmail.com"},
+		SendArgs{To: `"Rossi, Mario" <m@x.it>`, Subject: "s"}, strings.NewReader("b"))
+	if code != 0 {
+		t.Fatalf("Send exit = %d, want 0", code)
+	}
+	if want := []string{`"Rossi, Mario" <m@x.it>`}; !reflect.DeepEqual(fs.got.To, want) {
+		t.Errorf("To = %q, want %q", fs.got.To, want)
+	}
+	if got := out.String(); got != "sent to 1 recipients\n" {
+		t.Errorf("output = %q, want un solo destinatario", got)
+	}
+}
+
+// TestSendIDNNormalized (Piano 7.1, Task 3): il dominio IDN arriva al sender
+// in punycode, e la stessa casella in forma IDN e punycode conta una volta.
+func TestSendIDNNormalized(t *testing.T) {
+	fs := &fakeSender{}
+	var out bytes.Buffer
+	code := Send(&out, fs, config.Config{Address: "me@gmail.com"},
+		SendArgs{To: "x@café.it", Cc: "x@xn--caf-dma.it", Subject: "s"}, strings.NewReader("b"))
+	if code != 0 {
+		t.Fatalf("Send exit = %d, want 0", code)
+	}
+	if want := []string{"x@xn--caf-dma.it"}; !reflect.DeepEqual(fs.got.To, want) {
+		t.Errorf("To = %q, want %q", fs.got.To, want)
+	}
+	if got := out.String(); got != "sent to 1 recipients\n" {
+		t.Errorf("output = %q, want 1 destinatario unico", got)
+	}
+}

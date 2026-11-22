@@ -613,15 +613,18 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		// Piano 7, Task 6 + fix review 7: un destinatario malformato o assente
-		// non apre la conferma (ValidateRecipients: formato di A/Cc/Ccn e almeno
+		// non apre la conferma (NormalizeRecipients: formato di A/Cc/Ccn e almeno
 		// un indirizzo). Il controllo viene DOPO i guard sopra: una richiesta
 		// stante o in volo resta scartata in silenzio, senza errori in status. Il
 		// composer resta aperto con la bozza intatta.
-		if err := msg.ValidateRecipients(ev.Out); err != nil {
+		// Piano 7.1, Task 3: la bozza confermata è quella normalizzata (dominio in
+		// punycode, nome RFC 2047): conferma e Sender vedono la stessa forma.
+		norm, err := msg.NormalizeRecipients(ev.Out)
+		if err != nil {
 			m.status = statusMsg{text: err.Error(), isErr: true}
 			return m, nil
 		}
-		m.draft = ev.Out
+		m.draft = norm
 		m.confirmSend = true
 		return m, nil
 
