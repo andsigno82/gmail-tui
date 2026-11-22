@@ -89,13 +89,13 @@ func (m Model) handleChange(ev changeEvt) (Model, tea.Cmd) {
 	switch ev.c.Kind {
 	case mail.ChangeNewMail:
 		m.status = statusMsg{text: newMailText}
-		return m, tea.Batch(m.requestRefresh(), rearm)
+		return m, tea.Batch(m.requestRefresh(true), rearm)
 	case mail.ChangeFlags:
-		// nessun feedback: solo la lista si aggiorna
-		return m, tea.Batch(m.requestRefresh(), rearm)
+		// nessun feedback: solo la lista si aggiorna (prima pagina, D5)
+		return m, tea.Batch(m.requestRefresh(false), rearm)
 	case mail.ChangeDisconnected:
 		m.status = statusMsg{text: reconnectIndicator}
-		return m, tea.Batch(m.requestRefresh(), rearm)
+		return m, tea.Batch(m.requestRefresh(true), rearm)
 	default:
 		// tipo ignoto (feed futuro): il loop resta vivo, nessun re-list
 		return m, rearm

@@ -132,6 +132,38 @@ func (m *Model) SetSize(width, height int) { m.list.SetSize(width, height) }
 // selezione dopo un refresh e uso dai test).
 func (m *Model) Select(i int) { m.list.Select(i) }
 
+// AppendRefs accoda una pagina successiva alla lista (scroll in fondo, Piano 7,
+// Task 3). Dedup per ID: posta arrivata fra due pagine, o un offset slittato,
+// non duplica righe. Il cursore resta sulla riga su cui era.
+func (m *Model) AppendRefs(refs []msg.MessageRef) tea.Cmd {
+	items := m.list.Items()
+	seen := make(map[msg.MessageID]bool, len(items)+len(refs))
+	all := make([]list.Item, 0, len(items)+len(refs))
+	for _, it := range items {
+		if i, ok := it.(item); ok {
+			seen[i.ref.ID] = true
+			all = append(all, it)
+		}
+	}
+	for _, r := range refs {
+		if !seen[r.ID] {
+			seen[r.ID] = true
+			all = append(all, item{ref: r})
+		}
+	}
+	idx := m.list.Index()
+	cmd := m.list.SetItems(all)
+	m.list.Select(idx)
+	return cmd
+}
+
+// AtEnd dice se il cursore è sull'ultima riga: è il segnale per chiedere la
+// pagina successiva. Lista vuota: mai in fondo (nulla da scorrere).
+func (m Model) AtEnd() bool {
+	n := len(m.list.Items())
+	return n > 0 && m.list.Index() == n-1
+}
+
 // SelectedRef restituisce il ref della riga sotto il cursore; serve all'app
 // per le mutazioni sul messaggio selezionato (Task 7).
 func (m Model) SelectedRef() (msg.MessageRef, bool) {

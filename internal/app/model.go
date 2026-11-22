@@ -95,6 +95,9 @@ type Model struct {
 	connectFailed bool             // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
 	refreshing    bool             // re-list silenzioso in flight (coalescing, Task 8)
 	dirty         bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+	dirtyDeep     bool             // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
+	exhausted     bool             // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
+	loadingMore   bool             // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -237,7 +240,26 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				selID, hadSel = r.ID, true
 			}
 		}
-		m.refs = ev.refs
+		// Paginazione (Piano 7, Task 3). limit 0 = risultato non paginato
+		// (ricerca, risultato costruito a mano): nessuna pagina successiva.
+		// Refresh silenzioso a pagina piena: la coda già caricata oltre la
+		// pagina si conserva (Star/MarkRead rilistano solo 50, D5) — l'esito
+		// esaurito resta quello di prima. Altrimenti esaurita = pagina corta.
+		refs := ev.refs
+		switch {
+		case ev.limit == 0:
+			m.exhausted = true
+		case ev.silent && len(refs) == ev.limit && len(m.refs) > len(refs):
+			refs = appendUnique(refs, m.refs[len(refs):])
+		default:
+			m.exhausted = len(refs) < ev.limit
+		}
+		if !ev.silent {
+			// Lista sostituita: un'eventuale pagina in volo appartiene alla
+			// lista precedente e non blocca più lo scroll della nuova.
+			m.loadingMore = false
+		}
+		m.refs = refs
 		if !ev.silent {
 			if ev.query != "" {
 				// Badge dei risultati di ricerca: conteggio + query digitata.
@@ -259,15 +281,15 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
 		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
 		// nulla. La cmd viene comunque propagata per fedeltà all'API.
-		cmd := m.inbox.SetRefs(ev.refs)
-		if ev.silent && len(ev.refs) > 0 {
+		cmd := m.inbox.SetRefs(refs)
+		if ev.silent && len(refs) > 0 {
 			// Ripristino del cursore dopo il refresh di un'op: stesso
 			// messaggio se c'è ancora nell'elenco (anche se si è spostato),
 			// altrimenti lo stesso indice clampato alla nuova lunghezza (il
 			// messaggio operato può essere sparito, es. archiviato).
 			idx := -1
 			if hadSel {
-				for i, r := range ev.refs {
+				for i, r := range refs {
 					if r.ID == selID {
 						idx = i
 						break
@@ -275,7 +297,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if idx < 0 {
-				idx = min(oldIdx, len(ev.refs)-1)
+				idx = min(oldIdx, len(refs)-1)
 			}
 			m.inbox.Select(idx)
 		}
@@ -284,7 +306,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// comunque più vecchio del cambio).
 		var follow tea.Cmd
 		if m.dirty {
-			follow = m.requestRefresh()
+			follow = m.requestRefresh(false)
 		}
 		return m, tea.Batch(cmd, follow)
 
@@ -327,6 +349,24 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case moreLoaded:
+		// Pagina successiva (scroll in fondo, Piano 7, Task 3). Stante se la
+		// ricerca è cambiata dopo la richiesta: la pagina non appartiene più
+		// alla lista visibile e si scarta (il loadingMore lo libera il
+		// msgsLoaded della lista nuova).
+		m.doneOp()
+		if ev.query != m.queryRaw {
+			return m, nil
+		}
+		m.loadingMore = false
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("caricamento messaggi: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		m.exhausted = len(ev.refs) < pageSize
+		m.refs = appendUnique(m.refs, ev.refs)
+		return m, m.inbox.AppendRefs(ev.refs)
+
 	case opDone:
 		m.doneOp()
 		if ev.send {
@@ -350,8 +390,9 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// (query corrente) in silenzio — refs e cursore aggiornati, il
 			// feedback resta in status. Via requestRefresh (Task 8): con un
 			// refresh già in volo non si accatasta, il follow-up parte al
-			// risultato (dirty).
-			return m, m.requestRefresh()
+			// risultato (dirty). deep (Piano 7, D5): profondità piena solo per
+			// Archive/Trash, che cambiano la composizione della lista.
+			return m, m.requestRefresh(ev.deep)
 		}
 		return m, nil
 
@@ -735,7 +776,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
-			return m, cmd
+			return m.loadMoreAtEnd(cmd)
 		}
 		if m.view == viewThread {
 			var cmd tea.Cmd
@@ -765,7 +806,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view == viewInbox {
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
-			return m, cmd
+			return m.loadMoreAtEnd(cmd)
 		}
 		if m.view == viewThread {
 			var cmd tea.Cmd
@@ -864,9 +905,23 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 // finché il wiring del programma non esponga il ctx del programma (Task 7/8).
 func loadRefs(st mail.MailStore) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: 50})
-		return msgsLoaded{refs: refs, err: err}
+		refs, err := st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: pageSize})
+		return msgsLoaded{refs: refs, err: err, limit: pageSize}
 	}
+}
+
+// loadMoreAtEnd chiede la pagina successiva quando il cursore è in fondo alla
+// lista (Piano 7, Task 3): scroll con tasti o rotella nella vista inbox. Non
+// parte con una ricerca attiva (non paginata), con la lista già esaurita, o con
+// una pagina in volo (mai due richieste insieme). L'offset è il numero di righe
+// caricate: il dedup di moreLoaded assorbe gli slittamenti.
+func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
+	if m.queryRaw != "" || m.exhausted || m.loadingMore || !m.inbox.AtEnd() {
+		return m, cmd
+	}
+	m.loadingMore = true
+	m.pending++
+	return m, tea.Batch(cmd, loadMore(m.store, len(m.refs), m.queryRaw), m.spinner.Tick)
 }
 
 // fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).

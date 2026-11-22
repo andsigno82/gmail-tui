@@ -330,3 +330,42 @@ func TestJAndKMoveCursor(t *testing.T) {
 		t.Errorf("cursor dopo k = %d, voglio 0", got)
 	}
 }
+
+// --- paginazione (Piano 7, Task 3) ---------------------------------------------
+
+// TestAppendRefsDedupAndKeepsCursor: le pagine successive si accodano, gli ID
+// già presenti (posta arrivata fra due pagine, slittamento dell'offset) non si
+// duplicano, e il cursore resta sulla stessa riga.
+func TestAppendRefsDedupAndKeepsCursor(t *testing.T) {
+	m := newTestModel(t, testRefs()) // ID 1, 2, 3
+	m.Select(1)
+	dup := msg.MessageRef{ID: msg.NewID("INBOX", 3), Subject: "duplicato"}
+	fresh := msg.MessageRef{ID: msg.NewID("INBOX", 4), From: "d@x.dev", Subject: "quarta"}
+	m.AppendRefs([]msg.MessageRef{dup, fresh})
+
+	if got := len(m.list.Items()); got != 4 {
+		t.Fatalf("righe dopo AppendRefs = %d, voglio 4 (dedup per ID)", got)
+	}
+	if sel, _ := m.SelectedRef(); sel.ID != msg.NewID("INBOX", 2) {
+		t.Errorf("cursore spostato: selezionato %v, voglio INBOX:2", sel.ID)
+	}
+	if !strings.Contains(m.View(), "quarta") {
+		t.Error("la riga accodata non è resa")
+	}
+}
+
+// TestAtEnd: il cursore sull'ultima riga è "in fondo"; lista vuota mai.
+func TestAtEnd(t *testing.T) {
+	m := newTestModel(t, testRefs())
+	if m.AtEnd() {
+		t.Error("cursore in cima con 3 righe: AtEnd = true")
+	}
+	m.Select(2)
+	if !m.AtEnd() {
+		t.Error("cursore sull'ultima riga: AtEnd = false")
+	}
+	empty := newTestModel(t, nil)
+	if empty.AtEnd() {
+		t.Error("lista vuota: AtEnd = true (nessuna pagina da chiedere)")
+	}
+}

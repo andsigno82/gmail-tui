@@ -21,6 +21,7 @@ import (
 type recorder struct {
 	mail.MailStore
 	lists  []msg.Query
+	pages  []mail.Page // Piano 7, Task 3: Page di ogni ListMessages (paginazione)
 	search []msg.Query
 	labels []labelCall // Task 7: ApplyLabel (il Mock è no-op, solo registrazione)
 	err    error
@@ -28,6 +29,7 @@ type recorder struct {
 
 func (r *recorder) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error) {
 	r.lists = append(r.lists, q)
+	r.pages = append(r.pages, pg)
 	return r.MailStore.ListMessages(ctx, q, pg)
 }
 

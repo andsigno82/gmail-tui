@@ -18,11 +18,26 @@ import (
 // (Task 7): aggiorna lista e cursore ma NON tocca lo status (il feedback
 // dell'op deve restare visibile; il badge/clear sono solo per azioni
 // esplicite dell'utente).
+//
+// limit è il Limit della pagina richiesta (Piano 7, Task 3): 0 = risultato non
+// paginato (ricerca o risultato costruito a mano), nessuna pagina successiva.
+// Con silent e pagina piena la coda già caricata oltre la prima pagina non si
+// perde (il refresh di prima pagina, D5, non tronca la lista).
 type msgsLoaded struct {
 	refs   []msg.MessageRef
 	err    error
 	query  string
 	silent bool
+	limit  int
+}
+
+// moreLoaded è il risultato di una pagina successiva (scroll in fondo, Piano 7,
+// Task 3). query è la stringa di ricerca al momento della richiesta: se la
+// lista è cambiata nel frattempo la pagina è STANTE e viene scartata.
+type moreLoaded struct {
+	refs  []msg.MessageRef
+	err   error
+	query string
 }
 
 // msgLoaded è il risultato di FetchMessage. requested è l'ID richiesto dalla
@@ -48,6 +63,7 @@ type opDone struct {
 	label         string
 	err           error
 	refresh       bool
+	deep          bool // refresh a profondità piena (D5, Piano 7 Task 3): solo Archive/Trash
 	closeComposer bool
 	send          bool
 }

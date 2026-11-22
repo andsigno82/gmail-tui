@@ -25,6 +25,16 @@ import (
 // bar); la sua lunghezza in colonne serve a dimensionare l'input.
 const labelPrompt = "etichetta: "
 
+// pageSize è la dimensione della pagina di ListMessages (load, scroll in fondo,
+// refresh di prima pagina). Piano 7, Task 3.
+const pageSize = 50
+
+// refreshCap è il tetto del refresh a profondità piena (D5, Piano 7, Task 3):
+// oltre questa soglia il refresh rilista solo fino a refreshCap righe e la
+// coda caricata resta com'è (appendUnique in msgsLoaded). Limite noto: per
+// rilistare di più serve paginare anche il refresh.
+const refreshCap = 500
+
 // newLabelInput costruisce il textinput del mini-prompt label (stili condivisi
 // con la ricerca via newPromptInput). Nasce NON focalizzato: il focus arriva
 // quando `l` apre il prompt.
@@ -162,7 +172,7 @@ func star(st mail.MailStore, id msg.MessageID, on bool) tea.Cmd {
 func archive(st mail.MailStore, id msg.MessageID) tea.Cmd {
 	return func() tea.Msg {
 		err := st.Archive(context.Background(), []msg.MessageID{id})
-		return opDone{label: "archiviata", err: err, refresh: true}
+		return opDone{label: "archiviata", err: err, refresh: true, deep: true}
 	}
 }
 
@@ -217,30 +227,75 @@ func saveThemeCmd(path, name string) tea.Cmd {
 // feed Watch (Task 8). Coalescing: con un re-list già in flight NON si
 // accatasta — marca dirty e il follow-up parte al risultato di quello in
 // corso (msgsLoaded); i cambi arrivati durante il refresh non si perdono.
-func (m *Model) requestRefresh() tea.Cmd {
+// deep (Piano 7, Task 3, D5): profondità piena, chiesta solo per ChangeNewMail,
+// ChangeDisconnected, Archive e Trash; si ricorda anche se la richiesta arriva
+// durante un refresh in volo (dirtyDeep).
+func (m *Model) requestRefresh(deep bool) tea.Cmd {
 	if m.refreshing {
 		m.dirty = true
+		m.dirtyDeep = m.dirtyDeep || deep
 		return nil
 	}
 	m.dirty = false // il refresh che parte ora copre anche i cambi pendenti
+	deep = deep || m.dirtyDeep
+	m.dirtyDeep = false
 	m.refreshing = true
 	m.pending++
-	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw), m.spinner.Tick)
+	limit := refreshLimit(len(m.refs), deep)
+	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw, limit), m.spinner.Tick)
+}
+
+// refreshLimit è il Limit del re-list silenzioso (Piano 7, Task 3, D5): la sola
+// prima pagina per le op che non cambiano la composizione della lista; con
+// deep, tutta la profondità caricata (minimo una pagina) fino a refreshCap.
+func refreshLimit(loaded int, deep bool) int {
+	if !deep {
+		return pageSize
+	}
+	return min(max(pageSize, loaded), refreshCap)
 }
 
 // refreshRefs rilista la lista corrente fuori dal loop UI, nello stato
 // silenzioso (msgsLoaded.silent): aggiorna refs e cursore senza toccare lo
-// status. Riusa il pattern del load: query vuota → ListMessages (prima pagina
-// da 50, come Init), query di ricerca → Search con la query corrente.
-func refreshRefs(st mail.MailStore, q msg.Query, raw string) tea.Cmd {
+// status. Riusa il pattern del load: query vuota → ListMessages (limit righe
+// dalla prima pagina, come Init), query di ricerca → Search con la query
+// corrente (non paginata: limit 0).
+func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int) tea.Cmd {
 	return func() tea.Msg {
 		var refs []msg.MessageRef
 		var err error
 		if raw == "" {
-			refs, err = st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: 50})
+			refs, err = st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: limit})
 		} else {
 			refs, err = st.Search(context.Background(), q)
+			limit = 0
 		}
-		return msgsLoaded{refs: refs, err: err, query: raw, silent: true}
+		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit}
 	}
+}
+
+// loadMore esegue ListMessages per la pagina successiva fuori dal loop UI
+// (Piano 7, Task 3): l'offset è il numero di righe già caricate. Il risultato
+// porta la query di origine per lo scarto dei risultati stanti.
+func loadMore(st mail.MailStore, offset int, raw string) tea.Cmd {
+	return func() tea.Msg {
+		refs, err := st.ListMessages(context.Background(), msg.Query{}, mail.Page{Offset: offset, Limit: pageSize})
+		return moreLoaded{refs: refs, err: err, query: raw}
+	}
+}
+
+// appendUnique concatena i ref di more a base saltando gli ID già presenti
+// (il primo vince, ordine preservato). Piano 7, Task 3: dedup delle pagine.
+func appendUnique(base, more []msg.MessageRef) []msg.MessageRef {
+	seen := make(map[msg.MessageID]bool, len(base)+len(more))
+	out := make([]msg.MessageRef, 0, len(base)+len(more))
+	for _, group := range [][]msg.MessageRef{base, more} {
+		for _, r := range group {
+			if !seen[r.ID] {
+				seen[r.ID] = true
+				out = append(out, r)
+			}
+		}
+	}
+	return out
 }
