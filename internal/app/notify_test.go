@@ -138,6 +138,54 @@ func TestRunNotifyTimeoutKillsCommand(t *testing.T) {
 	}
 }
 
+// Piano 11, review punto 9: il CSI C1 (U+009B) va rimosso con il suo corpo, come ESC [.
+func TestSanitizeNotifyTextStripsC1CSI(t *testing.T) {
+	if got := sanitizeNotifyText("\u009b31mRossi\u009b0m euro", 100); got != "Rossi euro" {
+		t.Fatalf("C1 CSI = %q, voglio %q", got, "Rossi euro")
+	}
+}
+
+// Piano 11, review punto 1: GMAIL_APP_PASSWORD non arriva mai al comando, e le
+// GMAIL_TUI_* preesistenti non si mescolano con quelle del messaggio.
+func TestNotifyEnvDropsAppPasswordAndPreexistingTUIVars(t *testing.T) {
+	t.Setenv("GMAIL_APP_PASSWORD", "s3cret")
+	t.Setenv("GMAIL_TUI_SUBJECT", "falso")
+	env := notifyEnv([]msg.MessageRef{{Subject: "Ok"}}, 1)
+	if _, ok := envValue(env, "GMAIL_APP_PASSWORD"); ok {
+		t.Fatal("GMAIL_APP_PASSWORD presente nell'env del comando")
+	}
+	n := 0
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "GMAIL_TUI_SUBJECT=") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("GMAIL_TUI_SUBJECT presente %d volte, voglio 1", n)
+	}
+	if v, _ := envValue(env, "GMAIL_TUI_SUBJECT"); v != "Ok" {
+		t.Fatalf("GMAIL_TUI_SUBJECT = %q, voglio %q", v, "Ok")
+	}
+}
+
+// Piano 11, review punto 1: il processo figlio non riceve GMAIL_APP_PASSWORD
+// anche se il processo della TUI la possiede (verifica sul processo helper).
+func TestRunNotifyChildDoesNotSeeAppPassword(t *testing.T) {
+	t.Setenv("GMAIL_APP_PASSWORD", "s3cret")
+	out := filepath.Join(t.TempDir(), "subject.txt")
+	env := append(notifyEnv(nil, 1), "GMAIL_TUI_TEST_HELPER=1", "GMAIL_TUI_TEST_OUT="+out)
+	if err := runNotify(context.Background(), []string{os.Args[0], "-test.run=^TestNotifyHelperProcess$"}, env); err != nil {
+		t.Fatalf("helper: %v", err)
+	}
+	pw, err := os.ReadFile(out + ".pw")
+	if err != nil {
+		t.Fatalf("il helper non ha scritto lo stato della password: %v", err)
+	}
+	if string(pw) != "absent" {
+		t.Fatalf("GMAIL_APP_PASSWORD nel figlio: %q, voglio absent", pw)
+	}
+}
+
 // Helper process: il test binary rieseguito con GMAIL_TUI_TEST_HELPER=1 scrive
 // su file il valore di GMAIL_TUI_SUBJECT che ha ricevuto nell'ambiente. Nessuno
 // script esterno e nessuna shell: prova che i dati arrivano SOLO via env.
@@ -146,6 +194,11 @@ func TestNotifyHelperProcess(t *testing.T) {
 		t.Skip("solo come processo helper")
 	}
 	_ = os.WriteFile(os.Getenv("GMAIL_TUI_TEST_OUT"), []byte(os.Getenv("GMAIL_TUI_SUBJECT")), 0o600)
+	pw := "absent"
+	if _, ok := os.LookupEnv("GMAIL_APP_PASSWORD"); ok {
+		pw = "present"
+	}
+	_ = os.WriteFile(os.Getenv("GMAIL_TUI_TEST_OUT")+".pw", []byte(pw), 0o600)
 }
 
 func TestRunNotifyPassesDataOnlyInEnv(t *testing.T) {

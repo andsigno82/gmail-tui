@@ -48,6 +48,10 @@ func sanitizeNotifyText(s string, max int) string {
 			i = skipEscape(r, i)
 			continue
 		}
+		if c == 0x9b { // CSI C1 (Piano 11, review punto 9): come ESC [
+			i = skipCSI(r, i+1)
+			continue
+		}
 		switch {
 		case c == '\t' || c == '\r' || c == '\n':
 			b.WriteRune(' ')
@@ -78,11 +82,7 @@ func skipEscape(r []rune, i int) int {
 	}
 	switch r[i+1] {
 	case '[':
-		j := i + 2
-		for j < len(r) && (r[j] < 0x40 || r[j] > 0x7e) {
-			j++
-		}
-		return j + 1
+		return skipCSI(r, i+2)
 	case ']':
 		for j := i + 2; j < len(r); j++ {
 			if r[j] == 0x07 {
@@ -98,6 +98,31 @@ func skipEscape(r []rune, i int) int {
 	}
 }
 
+// skipCSI restituisce l'indice dopo il byte finale di una CSI il cui corpo inizia
+// in r[j] (parametri 0x30-0x3f e intermedi 0x20-0x2f, finale 0x40-0x7e).
+func skipCSI(r []rune, j int) int {
+	for j < len(r) && (r[j] < 0x40 || r[j] > 0x7e) {
+		j++
+	}
+	return j + 1
+}
+
+// notifyEnvBase restituisce os.Environ senza GMAIL_APP_PASSWORD (la password non
+// esce mai dalla TUI verso un comando esterno) e senza le GMAIL_TUI_* preesistenti,
+// che non devono mescolarsi con quelle del messaggio (Piano 11, review punto 1).
+func notifyEnvBase() []string {
+	env := os.Environ()
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		k, _, _ := strings.Cut(kv, "=")
+		if k == "GMAIL_APP_PASSWORD" || strings.HasPrefix(k, "GMAIL_TUI_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
+
 // notifyEnv costruisce l'ambiente del comando (Piano 11, D11-4): FROM e SUBJECT
 // del messaggio più recente (refs[0], come da Change.Refs), COUNT del numero di
 // messaggi dell'evento, FOLDER fisso. Le voci sono in coda a os.Environ: exec
@@ -108,7 +133,7 @@ func notifyEnv(refs []msg.MessageRef, count int) []string {
 		from = sanitizeNotifyText(refs[0].From, notifyFromMax)
 		subject = sanitizeNotifyText(refs[0].Subject, notifySubjectMax)
 	}
-	return append(os.Environ(),
+	return append(notifyEnvBase(),
 		"GMAIL_TUI_FROM="+from,
 		"GMAIL_TUI_SUBJECT="+subject,
 		"GMAIL_TUI_COUNT="+strconv.Itoa(count),
@@ -132,6 +157,7 @@ func runNotifyTimeout(ctx context.Context, argv, env []string, d time.Duration) 
 	defer cancel()
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = env
+	setNotifyProcessGroup(cmd) // Piano 11, review punto 4: il timeout uccide il gruppo
 	var stderr capBuffer
 	cmd.Stderr = &stderr
 	cmd.WaitDelay = time.Second
