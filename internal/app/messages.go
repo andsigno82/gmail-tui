@@ -93,3 +93,11 @@ type attachmentSaved struct {
 type themePersisted struct {
 	err error
 }
+
+// connResult è l'esito del connectCmd d'avvio (bugfix 2026-11-22): il
+// contratto MailStore richiede Connect prima delle letture, e con lo store
+// IMAP reale il load senza connessione fallisce ("non connesso"). Il Mock
+// la mascherava perché Connect è un no-op.
+type connResult struct {
+	err error
+}

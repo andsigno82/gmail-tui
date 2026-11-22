@@ -28,6 +28,7 @@ type appKeys struct {
 	Quit       key.Binding // q esc — esci dall'app (inbox)
 	Back       key.Binding // esc q — torna alla lista (thread)
 	ForceQuit  key.Binding // ctrl+c — uscita immediata da qualunque stato
+	Connect    key.Binding // R — riprova la connessione d'avvio (solo dopo un fallimento; bugfix 2026-11-22)
 	Search     key.Binding // / — cerca
 	Reply      key.Binding // r — rispondi (inbox: ref selezionato, thread: msg caricato; P4 Task 3)
 	Forward    key.Binding // f — inoltra (idem; f liberato dal rebind scroll, P4 Task 3)
@@ -56,6 +57,7 @@ var keys = appKeys{
 	Quit:       key.NewBinding(key.WithKeys("q", "esc"), key.WithHelp("q/esc", "esci")),
 	Back:       key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", "torna alla lista")),
 	ForceQuit:  key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "esci subito")),
+	Connect:    key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "riprova connessione")),
 	Search:     key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "cerca")),
 	Reply:      key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rispondi")),
 	Forward:    key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "inoltra")),
@@ -118,6 +120,11 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// pubblicizzarlo sarebbe mentire — come nella vista ricerca.
 		return []key.Binding{keys.Cancel}
 	default: // inbox
+		if m.connectFailed {
+			// Connect d'avvio fallito (bugfix 2026-11-22): la sola azione
+			// utile è riprovare; le letture fallirebbero comunque.
+			return []key.Binding{keys.Connect, keys.ForceQuit}
+		}
 		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Help}
 	}
 }

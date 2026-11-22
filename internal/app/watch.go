@@ -27,6 +27,7 @@ package app
 
 import (
 	"context"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -48,6 +49,17 @@ func startWatch(st mail.MailStore, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
 		ch, err := st.Watch(ctx)
 		return watchStarted{ch: ch, err: err}
+	}
+}
+
+// connectCmd chiama Store.Connect fuori dal loop UI con un budget di 30s
+// (stesso valore del wizard): l'esito torna come connResult e decide se
+// partire con load/Watch (bugfix 2026-11-22).
+func connectCmd(st mail.MailStore, ctx context.Context) tea.Cmd {
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		return connResult{err: st.Connect(c)}
 	}
 }
 

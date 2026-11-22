@@ -200,9 +200,19 @@ func TestWizardSkipSeedsDemoStore(t *testing.T) {
 	if got := m.currentView(); got != viewInbox {
 		t.Errorf("vista dopo lo skip = %v, voglio viewInbox", got)
 	}
-	// Il load parte col seed: la lista si poplia dei messaggi demo.
-	for _, c := range cmds {
-		m, _ = deliver(m, c)
+	// Il load parte col seed dopo il connect (bugfix 2026-11-22):
+	// consegno DUE generazioni di cmd (beginSession → connResult →
+	// load/watch). NON si segue oltre: il follow-up di watchStarted è
+	// waitForChange, che blocca sul canale del feed.
+	for round := 0; round < 2 && len(cmds) > 0; round++ {
+		var next []tea.Cmd
+		for _, c := range cmds {
+			var mm Model
+			mm, fc := deliver(m, c)
+			m = mm
+			next = append(next, fc...)
+		}
+		cmds = next
 	}
 	if len(m.refs) != len(mk.Msgs) {
 		t.Errorf("refs dopo il load = %d, voglio %d", len(m.refs), len(mk.Msgs))

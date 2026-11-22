@@ -84,16 +84,17 @@ type Model struct {
 	// salva. SetConfigPath lo sostituisce (seam main/test).
 	cfgPath string
 
-	view       view
-	refs       []msg.MessageRef // copia dei ref correnti (uso interno/test)
-	pendingRef msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
-	query      msg.Query        // query corrente della lista (refresh dopo op, Task 7)
-	queryRaw   string           // stringa digitata della query corrente ("" = inbox)
-	status     statusMsg        // ultimo messaggio di status (effimero)
-	startup    bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
-	pending    int              // op store in flight (>0: spinner attivo)
-	refreshing bool             // re-list silenzioso in flight (coalescing, Task 8)
-	dirty      bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
+	view          view
+	refs          []msg.MessageRef // copia dei ref correnti (uso interno/test)
+	pendingRef    msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
+	query         msg.Query        // query corrente della lista (refresh dopo op, Task 7)
+	queryRaw      string           // stringa digitata della query corrente ("" = inbox)
+	status        statusMsg        // ultimo messaggio di status (effimero)
+	startup       bool             // status d'avvio (banner demo/warning tema): sopravvive al primo load
+	pending       int              // op store in flight (>0: spinner attivo)
+	connectFailed bool             // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
+	refreshing    bool             // re-list silenzioso in flight (coalescing, Task 8)
+	dirty         bool             // cambio arrivato durante il refresh: follow-up al risultato (Task 8)
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -164,10 +165,15 @@ func (m Model) Init() tea.Cmd {
 }
 
 // beginSession è il flusso d'avvio normale (Init senza wizard, e ripartenza
-// dopo il completamento del wizard): load iniziale della lista + spinner +
-// feed Watch.
+// dopo il completamento del wizard): Connect PRIMA di qualunque lettura
+// (bugfix 2026-11-22: con lo store IMAP reale load/Watch senza Connect
+// falliscono con "non connesso"; il Mock la mascherava perché no-op),
+// poi — al connResult — load della lista + feed Watch (connResult case).
 func (m Model) beginSession() tea.Cmd {
-	return tea.Batch(loadRefs(m.store), m.spinner.Tick, startWatch(m.store, m.ctx))
+	// Builder puro della cmd d'avvio (Init in v2 restituisce solo la cmd):
+	// le mutazioni di stato (pending per il connect, reset connectFailed)
+	// le fanno i call site in Update — lì il modello può essere restituito.
+	return tea.Batch(connectCmd(m.store, m.ctx), m.spinner.Tick)
 }
 
 // Update gestisce i messaggi: risultati delle Cmd, tick dello spinner, tasti
@@ -179,6 +185,21 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// sostituisce; nessun timer.
 		m.status = ev
 		return m, nil
+
+	case connResult:
+		// Esito del Connect d'avvio (bugfix 2026-11-22). Fallito: status
+		// d'errore e NESSUN load/Watch (le letture fallirebbero comunque);
+		// `R` rilancia beginSession. Riuscito: parte il vecchio flusso
+		// (load iniziale + spinner + feed Watch).
+		m.doneOp()
+		if ev.err != nil {
+			m.connectFailed = true
+			m.status = statusMsg{text: fmt.Sprintf("connessione fallita: %v — premi R per riprovare", ev.err), isErr: true}
+			return m, nil
+		}
+		m.connectFailed = false
+		m.pending++
+		return m, tea.Batch(loadRefs(m.store), m.spinner.Tick, startWatch(m.store, m.ctx))
 
 	case msgsLoaded:
 		m.doneOp()
@@ -526,6 +547,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// routing resta identico a Task 3-8 per tutti gli altri tasti
 			// (keymap centrale in keys.go, Task 9).
 			return m, m.quitCmd()
+		}
+		if m.connectFailed && ev.String() == "R" {
+			// Bugfix 2026-11-22: Connect d'avvio fallito → R riprova la
+			// sequenza completa (connect → load → watch). Prima del routing
+			// normale: a connessione assente le altre azioni fallirebbero.
+			m.pending++ // il connect è un'op: spinner finché connResult
+			return m, m.beginSession()
 		}
 		if m.wizardActive {
 			// Wizard first-run (Piano 4, Task 5): TUTTI i tasti vanno al

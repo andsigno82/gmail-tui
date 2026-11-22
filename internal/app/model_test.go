@@ -121,19 +121,13 @@ func TestInitEmitsLoadAndSpinner(t *testing.T) {
 	m := newTestModel(t, &msg.Message{
 		Ref: msg.MessageRef{ID: msg.NewID("INBOX", 1), Subject: "prima", Date: base},
 	})
-	cmd := m.Init()
-	if cmd == nil {
-		t.Fatal("Init deve emettere una Cmd non-nil (loadRefs)")
-	}
-	res := cmd()
-	batch, ok := res.(tea.BatchMsg)
-	if !ok {
-		t.Fatalf("Init cmd = %T, voglio tea.BatchMsg", res)
-	}
+	// Bugfix 2026-11-22: l'avvio è Init → connectCmd → connResult →
+	// loadRefs; il load senza connessione fallirebbe sullo store reale.
 	var loaded bool
 	var tick bool
-	for _, c := range batch {
-		switch msg := c().(type) {
+	_, msgs := startSession(t, m)
+	for _, msg := range msgs {
+		switch msg := msg.(type) {
 		case msgsLoaded:
 			loaded = true
 			if msg.err != nil {
@@ -147,10 +141,10 @@ func TestInitEmitsLoadAndSpinner(t *testing.T) {
 		}
 	}
 	if !loaded {
-		t.Error("Init non emette loadRefs (msgsLoaded)")
+		t.Error("l'avvio non emette loadRefs (msgsLoaded)")
 	}
 	if !tick {
-		t.Error("Init non avvia lo spinner")
+		t.Error("l'avvio non arma lo spinner")
 	}
 }
 

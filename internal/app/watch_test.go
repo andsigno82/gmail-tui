@@ -84,13 +84,11 @@ func hasNil(msgs []tea.Msg) bool {
 func TestInitStartsWatch(t *testing.T) {
 	m, _ := newTestModelMock(t, mockMsgs(t)...)
 
-	cmd := m.Init()
-	if cmd == nil {
-		t.Fatal("Init: cmd nil")
-	}
+	// Bugfix 2026-11-22: Watch parte SOLO dopo il connect riuscito.
 	var ws watchStarted
 	found := false
-	for _, ms := range runCmd(cmd) {
+	_, msgs := startSession(t, m)
+	for _, ms := range msgs {
 		if s, ok := ms.(watchStarted); ok {
 			ws, found = s, true
 		}
