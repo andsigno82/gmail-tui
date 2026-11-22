@@ -130,6 +130,11 @@ const errNotConnected = "imap store non connesso"
 // isTransport riconosce gli errori di connessione: EOF, rete chiusa, errori di
 // rete (timeout inclusi) e store non connesso.
 func isTransport(err error) bool {
+	// Le scadenze del contesto del chiamante implementano net.Error ma non sono
+	// trasporto: la connessione resta viva (fix review 2).
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return false
+	}
 	var ne net.Error
 	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, net.ErrClosed) || errors.As(err, &ne) ||

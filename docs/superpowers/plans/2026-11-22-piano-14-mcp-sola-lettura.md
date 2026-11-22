@@ -225,7 +225,7 @@ Deviazioni rispetto alla FASE A, motivate:
 - **Task 7:** README (sezione "MCP server (read-only)" con i comandi `claude mcp add` verificati con `claude mcp add --help`), CHANGELOG, SECURITY, layout di AGENTS.
 - **Limite noto (review, punto 3):** la ricerca senza folder su All Mail scarica le intestazioni di tutti i risultati, perché `Search` non è paginata. Si risolve nella Wave 4 con la ricerca paginata del Piano 8.
 - **Errori di trasporto (fix review):** azzerano la connessione solo gli errori di trasporto (EOF, rete chiusa, `net.Error`, "non connesso"). Il "non connesso" dello store non ha un sentinel: si riconosce il testo, da sostituire quando il backend ne esporrà uno.
-- **Paginazione (fix review):** con troncamento per dimensione `list_recent` e `search_messages` restituiscono `returned`, `truncated` e `next_offset`.
+- **Paginazione (fix review):** con troncamento per dimensione `list_recent` e `search_messages` restituiscono `returned`, `truncated`, `has_more` e `next_offset`. `has_more` è vero se ci sono altre righe: per la ricerca in modo esatto, per `list_recent` con l'euristica "pagina piena = possibile seguito" (il backend non dice il totale).
 - **Dipendenze:** `go-sdk` v1.8.0 porta con sé `golang.org/x/oauth2`, `golang-jwt/jwt/v5` e `segmentio/asm` (indiretti). `govulncheck ./...` segnala una vulnerabilità dello stdlib, `GO-2026-6859` (`net/http`, corretta in go1.27.4), con tracce già presenti su `main` (`composer`, `cache`, `cmd/send`). Non è introdotta da questo piano; il go.mod pinna `go1.27.3`. Alzare il toolchain è una decisione di Andrea.
 
 ## Fonti

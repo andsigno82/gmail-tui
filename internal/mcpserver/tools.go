@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -66,7 +67,7 @@ func registerTools(srv *mcp.Server, s *session) {
 	}, s.listFolders)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "list_recent",
-		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo. Se truncated è true, " +
+		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo. Se has_more è true, " +
 			"usa next_offset come offset della pagina successiva." + descUntrusted,
 		Annotations: readOnly,
 	}, s.listRecent)
@@ -74,7 +75,7 @@ func registerTools(srv *mcp.Server, s *session) {
 		Name: "search_messages",
 		Description: "Cerca messaggi con una query in stile Gmail, senza corpo. Senza folder cerca in tutti i " +
 			"messaggi (cartella con ruolo all, come Gmail web); il risultato dichiara la cartella usata. " +
-			"Se truncated è true, usa next_offset come offset della pagina successiva." + descUntrusted,
+			"Se has_more è true, usa next_offset come offset della pagina successiva." + descUntrusted,
 		Annotations: readOnly,
 	}, s.search)
 	mcp.AddTool(srv, &mcp.Tool{
@@ -171,6 +172,19 @@ func fmtDate(t time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
+// checkFolder rifiuta i nomi di cartella con caratteri di controllo (NUL, CR, LF,
+// tab...). La libreria IMAP pinnata non quota mai NUL, CR e LF (imapwire,
+// encoder.go, validQuoted, v2.0.0-beta.9): un a capo nel nome romperebbe la sintassi IMAP.
+// Il controllo è più ampio di quello della libreria: nessun nome reale ne ha (fix review 3).
+func checkFolder(name string) error {
+	for _, r := range name {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("cartella non valida: caratteri di controllo non ammessi")
+		}
+	}
+	return nil
+}
+
 // slicePage applica offset e limit a un risultato non paginato dallo store.
 func slicePage(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
 	if pg.Offset >= len(refs) {
@@ -181,7 +195,7 @@ func slicePage(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
 
 // listResponse converte le righe e dichiara la cartella; se superano il limite
 // ne toglie in coda e lo dichiara con truncated.
-func listResponse(refs []msg.MessageRef, folder string, offset int) (*mcp.CallToolResult, any, error) {
+func listResponse(refs []msg.MessageRef, folder string, offset int, hasMore bool) (*mcp.CallToolResult, any, error) {
 	rows := make([]map[string]any, 0, len(refs))
 	for _, r := range refs {
 		rows = append(rows, map[string]any{
@@ -195,9 +209,11 @@ func listResponse(refs []msg.MessageRef, folder string, offset int) (*mcp.CallTo
 	}
 	truncated := false
 	for {
-		data := map[string]any{"folder": field(folder), "items": rows, "returned": len(rows), "truncated": truncated}
-		if truncated {
-			// Offset della pagina successiva, calcolato sulle righe davvero restituite (fix review 2).
+		// has_more: ci sono altre righe oltre questa pagina (per taglio di dimensione o
+		// per il limite del backend). next_offset è calcolato sulle righe restituite.
+		more := hasMore || truncated
+		data := map[string]any{"folder": field(folder), "items": rows, "returned": len(rows), "truncated": truncated, "has_more": more}
+		if more {
 			data["next_offset"] = offset + len(rows)
 		}
 		res, _, err := respond(data)
@@ -221,6 +237,9 @@ func (s *session) listRecent(ctx context.Context, _ *mcp.CallToolRequest, in rec
 	if folder == "" {
 		folder = "INBOX"
 	}
+	if err := checkFolder(folder); err != nil {
+		return nil, nil, err
+	}
 	if err := s.ensure(ctx); err != nil {
 		return nil, nil, s.fail(err)
 	}
@@ -228,7 +247,7 @@ func (s *session) listRecent(ctx context.Context, _ *mcp.CallToolRequest, in rec
 	if err != nil {
 		return nil, nil, s.fail(err)
 	}
-	return listResponse(refs, folder, pg.Offset)
+	return listResponse(refs, folder, pg.Offset, len(refs) == pg.Limit) // euristica: pagina piena = possibile seguito
 }
 
 // searchFolder sceglie la cartella di una ricerca senza folder: la mailbox con
@@ -255,6 +274,9 @@ func (s *session) search(ctx context.Context, _ *mcp.CallToolRequest, in searchI
 	if in.Folder != "" {
 		q.Label = in.Folder
 	}
+	if err := checkFolder(q.Label); err != nil {
+		return nil, nil, err
+	}
 	if err := s.ensure(ctx); err != nil {
 		return nil, nil, s.fail(err)
 	}
@@ -270,7 +292,8 @@ func (s *session) search(ctx context.Context, _ *mcp.CallToolRequest, in searchI
 		return nil, nil, s.fail(err)
 	}
 	// Search non è paginata: offset e limit si applicano al risultato.
-	return listResponse(slicePage(refs, pg), q.Label, pg.Offset)
+	page := slicePage(refs, pg)
+	return listResponse(page, q.Label, pg.Offset, pg.Offset+len(page) < len(refs))
 }
 
 // bodyLimit applica il default e il tetto di max_chars (M5).

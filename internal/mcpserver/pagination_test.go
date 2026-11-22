@@ -34,7 +34,7 @@ func TestPagingWithNextOffsetSkipsNothing(t *testing.T) {
 		if data["returned"] != float64(len(items)) {
 			t.Fatalf("returned = %v, righe = %d", data["returned"], len(items))
 		}
-		if data["truncated"] != true {
+		if data["has_more"] != true {
 			break
 		}
 		next, ok := data["next_offset"].(float64)
