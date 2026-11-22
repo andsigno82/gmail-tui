@@ -91,9 +91,9 @@ type Model struct {
 	// lastPreviewClick: ultimo click sinistro sulla colonna dell'anteprima (doppio
 	// click → thread a schermo intero, Piano 7.2, fix review).
 	lastPreviewClick time.Time
-	prevRef      msg.MessageRef
-	prevHas      bool
-	prevTok      int
+	prevRef          msg.MessageRef
+	prevHas          bool
+	prevTok          int
 
 	// Wizard first-run (Piano 4, Task 5): attivo finché CompletedMsg — tutti
 	// i tasti vanno al wizard, il load/feed partono solo al completamento
