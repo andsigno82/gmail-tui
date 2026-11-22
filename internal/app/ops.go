@@ -175,12 +175,28 @@ func (m Model) cancelLabel() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// rowRole è il ruolo della mailbox della RIGA operata (opBox), come per `a` e
+// `l` (Piano 7.1, Task 5). È noto all'app solo se è la cartella mostrata o la
+// posta in arrivo; altrove restituisce "" (ignoto): una riga cercata con label:
+// da un'altra cartella non ha ruolo noto e il backend decide.
+func (m Model) rowRole() string {
+	box := m.opBox()
+	if strings.EqualFold(box, m.folder.Name) {
+		return m.folder.Role
+	}
+	if strings.EqualFold(box, "INBOX") {
+		return "inbox"
+	}
+	return ""
+}
+
 // askTrash apre la conferma dello spostamento nel cestino (`#`, Piano 7, Task
 // 5, D4). Il messaggio è quello sotto il cursore nella lista o aperto nel
 // thread, catturato ORA: la conferma agisce su questo, non sul cursore. Nella
-// vista Cestino non si apre nulla: il messaggio è già lì.
+// mailbox del cestino della riga non si apre nulla: il messaggio è già lì
+// (Piano 7.1, Task 5: guarda la riga, non la cartella mostrata).
 func (m Model) askTrash() (Model, tea.Cmd) {
-	if m.folder.Role == "trash" {
+	if m.rowRole() == "trash" {
 		m.status = statusMsg{text: "già nel cestino"}
 		return m, nil
 	}

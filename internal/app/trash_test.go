@@ -200,3 +200,40 @@ func TestTrashCancelFromThreadStaysInThread(t *testing.T) {
 		t.Errorf("esc dal thread: view=%v open=%v, voglio thread e conferma chiusa", m.view, m.trashOpen)
 	}
 }
+
+// TestTrashRowFromInboxInTrashFolderOpensConfirmation (Piano 7.1, Task 5): in
+// vista Cestino una ricerca label:INBOX porta righe di INBOX. Il ruolo che conta
+// è quello della mailbox della riga: # apre la conferma, non dichiara il
+// messaggio già nel cestino.
+func TestTrashRowFromInboxInTrashFolderOpensConfirmation(t *testing.T) {
+	m := folderModel(t, &recorder{MailStore: folderMock(t)})
+	m.folder = mail.Mailbox{Name: "[Gmail]/Trash", Role: "trash"}
+	m.refs = []msg.MessageRef{{ID: msg.NewID("INBOX", 3), Subject: "posta in arrivo"}}
+	m.inbox.SetRefs(m.refs)
+
+	m, cmd := step(m, pressKey("#"))
+	if m.statusText() == "già nel cestino" {
+		t.Fatal("riga di INBOX dalla vista Cestino: dichiarata già nel cestino")
+	}
+	if !m.trashOpen || cmd != nil {
+		t.Fatalf("# : open=%v cmd=%v, voglio conferma aperta", m.trashOpen, cmd != nil)
+	}
+	if m.trashRef.ID != msg.NewID("INBOX", 3) {
+		t.Errorf("messaggio in conferma = %s, voglio la riga di INBOX", m.trashRef.ID)
+	}
+}
+
+// TestTrashRowFromTrashInOtherFolderOpensConfirmation (Piano 7.1, Task 5): una
+// riga del cestino vista da un'altra cartella ha ruolo ignoto all'app: la
+// conferma si apre e decide il backend (che rifiuta gli id già nel cestino).
+func TestTrashRowFromTrashInOtherFolderOpensConfirmation(t *testing.T) {
+	m := folderModel(t, &recorder{MailStore: folderMock(t)})
+	m.folder = mail.Mailbox{Name: "[Gmail]/Sent", Role: "sent"}
+	m.refs = []msg.MessageRef{{ID: msg.NewID("[Gmail]/Trash", 7), Subject: "nel cestino"}}
+	m.inbox.SetRefs(m.refs)
+
+	m, cmd := step(m, pressKey("#"))
+	if !m.trashOpen || cmd != nil || m.statusText() == "già nel cestino" {
+		t.Fatalf("# su riga del cestino da Inviati: open=%v cmd=%v status=%q, voglio conferma", m.trashOpen, cmd != nil, m.statusText())
+	}
+}
