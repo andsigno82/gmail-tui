@@ -3,6 +3,8 @@
 [![CI](https://github.com/USER/gmail-tui/actions/workflows/ci.yml/badge.svg)](https://github.com/USER/gmail-tui/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
+🌐 **[Landing page](https://USER.github.io/gmail-tui/)** — screenshots, themes showcase *(after the first push + Pages setup)*
+
 **A Gmail client for your terminal, built with Charm.**
 
 Inbox, threads, search, compose/reply/forward with attachments, labels, themes and IMAP IDLE push — no Google Cloud project, no OAuth: just an App Password.

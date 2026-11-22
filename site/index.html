@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gmail-tui — a Gmail client for your terminal</title>
+<meta name="description" content="gmail-tui: inbox, threads, search, compose with attachments and 12 themes — a Gmail client for your terminal, built with Charm.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23282a36'/%3E%3Crect x='2' y='4' width='2' height='2' fill='%23ff79c6'/%3E%3Crect x='5' y='4' width='9' height='2' fill='%23bd93f9'/%3E%3Crect x='2' y='8' width='9' height='2' fill='%23bd93f9'/%3E%3Crect x='12' y='8' width='2' height='2' fill='%23ff79c6'/%3E%3Crect x='2' y='12' width='12' height='2' fill='%2344475a'/%3E%3C/svg%3E">
+<!--
+  gmail-tui landing page — single self-contained file (inline CSS, no framework).
+  Deployed on GitHub Pages from site/ (see .github/workflows/pages.yml); the
+  artifact root is site/, so demo.gif is referenced relatively.
+  NOTE: site/demo.gif is a deliberate copy of docs/demo.gif (the tape regenerates
+  docs/; this copy exists so the page is self-contained). Keep both in sync or
+  re-copy after running `vhs docs/demo.tape`.
+-->
+<style>
+  :root {
+    /* palette generated from internal/theme/themes/dracula.toml at v0.1.0 */
+    --bg: #282a36;
+    --fg: #f8f8f2;
+    --primary: #bd93f9;
+    --accent: #ff79c6;
+    --muted: #6272a4;
+    --border: #44475a;
+    --card: #21222c;
+    --mono: "SF Mono", "Menlo", "Consolas", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  .container { max-width: 900px; margin: 0 auto; padding: 0 1.25rem; }
+  section { padding: 2.5rem 0; }
+  h1 { font-size: 3rem; margin: 0 0 .5rem; letter-spacing: -0.02em; }
+  h1 .accent { color: var(--accent); }
+  h2 {
+    color: var(--primary);
+    font-size: 1.6rem;
+    margin: 0 0 1.25rem;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: .4rem;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { color: var(--accent); text-decoration: underline; }
+  code { font-family: var(--mono); font-size: .9em; background: var(--card); border: 1px solid var(--border); border-radius: 4px; padding: .1em .35em; }
+
+  /* hero */
+  .hero { text-align: center; padding: 3.5rem 0 2.5rem; }
+  .tagline { font-size: 1.3rem; color: var(--fg); margin: 0 0 .5rem; }
+  .hero p.sub { color: var(--muted); max-width: 640px; margin: 0 auto 1.75rem; }
+  .hero img {
+    max-width: 100%; width: 720px; height: auto;
+    border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  }
+  .btn {
+    display: inline-block; margin: 0 .4rem 1.75rem; padding: .55rem 1.2rem;
+    border-radius: 6px; border: 1px solid var(--primary);
+    font-weight: 600;
+  }
+  .btn.solid { background: var(--primary); color: var(--bg); }
+  .btn.solid:hover { background: var(--accent); border-color: var(--accent); color: var(--bg); text-decoration: none; }
+  .btn.ghost:hover { background: var(--card); text-decoration: none; }
+
+  /* features */
+  .cards { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .card {
+    flex: 1 1 260px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.1rem;
+  }
+  .card h3 { margin: 0 0 .4rem; font-size: 1.05rem; color: var(--accent); }
+  .card p { margin: 0; color: var(--fg); font-size: .95rem; }
+
+  /* themes showcase — hex values generated from internal/theme/themes/*.toml at v0.1.0 */
+  .themes { display: flex; flex-wrap: wrap; gap: .75rem; }
+  .theme-strip {
+    flex: 1 1 320px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: .75rem; padding: .6rem .9rem;
+    border-radius: 8px; border: 1px solid var(--border);
+    font-family: var(--mono); font-size: .85rem;
+  }
+  .theme-strip .name { font-weight: 700; }
+  .swatches { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .swatch {
+    border-radius: 4px; padding: .2rem .5rem;
+    font-size: .72rem; border: 1px solid rgba(128,128,128,.4);
+  }
+  .swatch.t-light { color: #f8f8f2; }
+  .swatch.t-dark { color: #16161e; }
+  .swatch-label { opacity: .75; margin-right: .3em; }
+
+  /* quickstart */
+  .term {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.25rem; font-family: var(--mono); font-size: .92rem;
+  }
+  .term .line { margin: .35rem 0; }
+  .term .prompt { color: var(--accent); margin-right: .5em; }
+  .term .comment { color: var(--muted); }
+  .term .cmd { color: var(--fg); }
+
+  /* keymap */
+  table.keymap { width: 100%; border-collapse: collapse; font-size: .95rem; }
+  table.keymap th, table.keymap td {
+    text-align: left; padding: .5rem .75rem;
+    border-bottom: 1px solid var(--border);
+  }
+  table.keymap th { color: var(--primary); }
+  table.keymap td:first-child { font-family: var(--mono); white-space: nowrap; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    color: var(--muted); font-size: .9rem;
+    padding: 1.5rem 0 2.5rem; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="container">
+    <h1>gmail<span class="accent">-</span>tui</h1>
+    <p class="tagline">A Gmail client for your terminal — built with Charm.</p>
+    <p class="sub">Inbox, threads, search, compose/reply/forward with attachments, labels, themes and IMAP IDLE push — no Google Cloud project, no OAuth: just an App Password.</p>
+    <a class="btn solid" href="#quickstart">Get started</a>
+    <a class="btn ghost" href="https://github.com/USER/gmail-tui">GitHub</a>
+    <br>
+    <!-- copy of docs/demo.gif (duplicated on purpose so site/ is self-contained) -->
+    <img src="demo.gif" alt="gmail-tui terminal demo" width="720">
+  </div>
+</header>
+
+<main class="container">
+
+  <section id="features">
+    <h2>Features</h2>
+    <div class="cards">
+      <div class="card">
+        <h3>Inbox &amp; threads</h3>
+        <p>Threaded inbox with IMAP IDLE push — new mail appears without polling. Open a thread and read message by message.</p>
+      </div>
+      <div class="card">
+        <h3>Compose, reply, forward</h3>
+        <p>Markdown composer with Tab field navigation and a send confirmation, adapted from charmbracelet/pop.</p>
+      </div>
+      <div class="card">
+        <h3>Search</h3>
+        <p>Gmail-style search: <code>from:x is:unread label:Work has:attachment</code> — plain words match text.</p>
+      </div>
+      <div class="card">
+        <h3>Labels, archive &amp; stars</h3>
+        <p>Apply or remove labels, archive, star and mark read/unread without leaving the keyboard.</p>
+      </div>
+      <div class="card">
+        <h3>Attachments</h3>
+        <p>Attach files when composing, open HTML bodies in the browser, and save parts with <code>:save &lt;n&gt; [path]</code>.</p>
+      </div>
+      <div class="card">
+        <h3>12 themes</h3>
+        <p>Embedded themes switchable at runtime with <code>:theme &lt;name&gt;</code> — instant preview, persisted to config.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="themes">
+    <h2>Themes</h2>
+    <p style="color: var(--muted); margin-top: 0;">Twelve themes ship embedded. Pick one in the config, with the <code>--theme</code> flag, or live with <code>:theme &lt;name&gt;</code>.</p>
+    <!-- swatch hex values generated from internal/theme/themes/*.toml at v0.1.0 -->
+    <div class="themes">
+      <div class="theme-strip" style="background:#16161e;color:#e2e2e7;"><span class="name">default</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#16161e;"><span class="swatch-label">bg</span>#16161e</span><span class="swatch t-dark" style="background:#e2e2e7;"><span class="swatch-label">fg</span>#e2e2e7</span><span class="swatch t-light" style="background:#906cf2;"><span class="swatch-label">pri</span>#906cf2</span><span class="swatch t-light" style="background:#f778ba;"><span class="swatch-label">acc</span>#f778ba</span></span></div>
+      <div class="theme-strip" style="background:#eff1f5;color:#4c4f69;"><span class="name">catppuccin-latte</span>
+        <span class="swatches"><span class="swatch t-dark" style="background:#eff1f5;"><span class="swatch-label">bg</span>#eff1f5</span><span class="swatch t-light" style="background:#4c4f69;"><span class="swatch-label">fg</span>#4c4f69</span><span class="swatch t-light" style="background:#1e66f5;"><span class="swatch-label">pri</span>#1e66f5</span><span class="swatch t-light" style="background:#8839ef;"><span class="swatch-label">acc</span>#8839ef</span></span></div>
+      <div class="theme-strip" style="background:#303446;color:#c6d0f5;"><span class="name">catppuccin-frappe</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#303446;"><span class="swatch-label">bg</span>#303446</span><span class="swatch t-dark" style="background:#c6d0f5;"><span class="swatch-label">fg</span>#c6d0f5</span><span class="swatch t-light" style="background:#8caaee;"><span class="swatch-label">pri</span>#8caaee</span><span class="swatch t-light" style="background:#ca9ee6;"><span class="swatch-label">acc</span>#ca9ee6</span></span></div>
+      <div class="theme-strip" style="background:#24273a;color:#cad3f5;"><span class="name">catppuccin-macchiato</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#24273a;"><span class="swatch-label">bg</span>#24273a</span><span class="swatch t-dark" style="background:#cad3f5;"><span class="swatch-label">fg</span>#cad3f5</span><span class="swatch t-light" style="background:#8aadf4;"><span class="swatch-label">pri</span>#8aadf4</span><span class="swatch t-light" style="background:#c6a0f6;"><span class="swatch-label">acc</span>#c6a0f6</span></span></div>
+      <div class="theme-strip" style="background:#1e1e2e;color:#cdd6f4;"><span class="name">catppuccin-mocha</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#1e1e2e;"><span class="swatch-label">bg</span>#1e1e2e</span><span class="swatch t-dark" style="background:#cdd6f4;"><span class="swatch-label">fg</span>#cdd6f4</span><span class="swatch t-light" style="background:#89b4fa;"><span class="swatch-label">pri</span>#89b4fa</span><span class="swatch t-dark" style="background:#cba6f7;"><span class="swatch-label">acc</span>#cba6f7</span></span></div>
+      <div class="theme-strip" style="background:#282a36;color:#f8f8f2;"><span class="name">dracula</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#282a36;"><span class="swatch-label">bg</span>#282a36</span><span class="swatch t-dark" style="background:#f8f8f2;"><span class="swatch-label">fg</span>#f8f8f2</span><span class="swatch t-light" style="background:#bd93f9;"><span class="swatch-label">pri</span>#bd93f9</span><span class="swatch t-light" style="background:#ff79c6;"><span class="swatch-label">acc</span>#ff79c6</span></span></div>
+      <div class="theme-strip" style="background:#282c34;color:#abb2bf;"><span class="name">one-dark</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#282c34;"><span class="swatch-label">bg</span>#282c34</span><span class="swatch t-light" style="background:#abb2bf;"><span class="swatch-label">fg</span>#abb2bf</span><span class="swatch t-light" style="background:#61afef;"><span class="swatch-label">pri</span>#61afef</span><span class="swatch t-light" style="background:#c678dd;"><span class="swatch-label">acc</span>#c678dd</span></span></div>
+      <div class="theme-strip" style="background:#fafafa;color:#383a42;"><span class="name">one-light</span>
+        <span class="swatches"><span class="swatch t-dark" style="background:#fafafa;"><span class="swatch-label">bg</span>#fafafa</span><span class="swatch t-light" style="background:#383a42;"><span class="swatch-label">fg</span>#383a42</span><span class="swatch t-light" style="background:#4078f2;"><span class="swatch-label">pri</span>#4078f2</span><span class="swatch t-light" style="background:#a626a4;"><span class="swatch-label">acc</span>#a626a4</span></span></div>
+      <div class="theme-strip" style="background:#2e3440;color:#d8dee9;"><span class="name">nord</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#2e3440;"><span class="swatch-label">bg</span>#2e3440</span><span class="swatch t-dark" style="background:#d8dee9;"><span class="swatch-label">fg</span>#d8dee9</span><span class="swatch t-dark" style="background:#88c0d0;"><span class="swatch-label">pri</span>#88c0d0</span><span class="swatch t-light" style="background:#b48ead;"><span class="swatch-label">acc</span>#b48ead</span></span></div>
+      <div class="theme-strip" style="background:#282828;color:#ebdbb2;"><span class="name">gruvbox-dark</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#282828;"><span class="swatch-label">bg</span>#282828</span><span class="swatch t-dark" style="background:#ebdbb2;"><span class="swatch-label">fg</span>#ebdbb2</span><span class="swatch t-light" style="background:#83a598;"><span class="swatch-label">pri</span>#83a598</span><span class="swatch t-light" style="background:#d3869b;"><span class="swatch-label">acc</span>#d3869b</span></span></div>
+      <div class="theme-strip" style="background:#fbf1c7;color:#3c3836;"><span class="name">gruvbox-light</span>
+        <span class="swatches"><span class="swatch t-dark" style="background:#fbf1c7;"><span class="swatch-label">bg</span>#fbf1c7</span><span class="swatch t-light" style="background:#3c3836;"><span class="swatch-label">fg</span>#3c3836</span><span class="swatch t-light" style="background:#076678;"><span class="swatch-label">pri</span>#076678</span><span class="swatch t-light" style="background:#8f3f71;"><span class="swatch-label">acc</span>#8f3f71</span></span></div>
+      <div class="theme-strip" style="background:#1a1b26;color:#c0caf5;"><span class="name">tokyo-night</span>
+        <span class="swatches"><span class="swatch t-light" style="background:#1a1b26;"><span class="swatch-label">bg</span>#1a1b26</span><span class="swatch t-dark" style="background:#c0caf5;"><span class="swatch-label">fg</span>#c0caf5</span><span class="swatch t-light" style="background:#7aa2f7;"><span class="swatch-label">pri</span>#7aa2f7</span><span class="swatch t-light" style="background:#bb9af7;"><span class="swatch-label">acc</span>#bb9af7</span></span></div>
+    </div>
+  </section>
+
+  <section id="quickstart">
+    <h2>Quickstart</h2>
+    <div class="term">
+      <div class="line"><span class="prompt">$</span><span class="cmd">brew install USER/gmail-tui/gmail-tui</span> <span class="comment"># or: go install github.com/USER/gmail-tui/cmd/gmail-tui@latest</span></div>
+      <div class="line"><span class="prompt">$</span><span class="cmd">gmail-tui login</span> <span class="comment"># first-run wizard — App Password stored in the system keychain</span></div>
+      <div class="line"><span class="prompt">$</span><span class="cmd">gmail-tui</span> <span class="comment"># or: export GMAIL_APP_PASSWORD=xxxx first</span></div>
+    </div>
+    <p style="color: var(--muted);">Requires a Gmail account with 2-Step Verification and an <a href="https://myaccount.google.com/apppasswords">App Password</a> — regular passwords do not work with IMAP/SMTP. See the <a href="https://github.com/USER/gmail-tui#readme">full README</a>.</p>
+  </section>
+
+  <section id="keymap">
+    <h2>Keymap</h2>
+    <table class="keymap">
+      <tr><th>Key</th><th>Action</th></tr>
+      <tr><td>j / k, &uarr; / &darr;</td><td>move cursor (list) / scroll (thread)</td></tr>
+      <tr><td>Enter</td><td>open selected message</td></tr>
+      <tr><td>Esc / q, Ctrl+C</td><td>back / quit (Ctrl+C quits from anywhere)</td></tr>
+      <tr><td>/</td><td>search — <code>from:x is:unread label:Work has:attachment</code></td></tr>
+      <tr><td>r / f / c</td><td>reply / forward / compose new</td></tr>
+      <tr><td>a / s</td><td>archive / star on-off</td></tr>
+      <tr><td>l / v</td><td>apply-remove label / mark read-unread</td></tr>
+      <tr><td>?</td><td>full help overlay</td></tr>
+    </table>
+    <p style="color: var(--muted);">Mouse works too: wheel scrolls, click selects, double-click opens. <a href="https://github.com/USER/gmail-tui#keymap">Full keymap in the README</a>.</p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p>
+      MIT — <a href="https://github.com/USER/gmail-tui">github.com/USER/gmail-tui</a>
+      · <a href="https://github.com/USER/gmail-tui/blob/main/ROADMAP.md">Roadmap</a>
+      · <a href="https://github.com/USER/gmail-tui/blob/main/CONTRIBUTING.md">Contributing</a>
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>
