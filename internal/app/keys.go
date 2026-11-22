@@ -232,13 +232,15 @@ func (m Model) FullHelp() [][]key.Binding {
 // SIGINT esterna arriva come tea.InterruptMsg e NON passa da Update — in quel
 // percorso il ctx resta aperto fino all'uscita del processo.
 func (m Model) quitCmd() tea.Cmd {
-	pend, sender, st := m.undo, m.sender, m.store
+	pend, sender, st, tmp := m.undo, m.sender, m.store, m.draftTmp
 	return func() tea.Msg {
 		if pend != nil && pend.claim() {
 			// Piano 9, Task 9 (D9-I): l'invio in attesa parte prima dell'uscita,
 			// con il budget SendTimeout (deliverSend).
 			_ = deliverSend(sender, st, pend)
+			removeTmp(pend.tmp)
 		}
+		removeTmp(tmp) // uscita: nessuna directory di allegati lasciata sul disco
 		m.cancel()
 		return tea.QuitMsg{}
 	}

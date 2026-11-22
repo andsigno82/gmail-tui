@@ -27,7 +27,9 @@ type pendingSend struct {
 	out     msg.Outgoing
 	draftID msg.MessageID
 	comp    composer.Model
-	back    view // vista di provenienza del composer (ritorno dopo l'annullamento)
+	back    view   // vista di provenienza del composer (ritorno dopo l'annullamento)
+	tmp     string // directory degli allegati della bozza ripresa (fix review)
+	keep    bool
 	taken   atomic.Bool
 }
 
@@ -46,7 +48,7 @@ func undoTimer(seq int) tea.Cmd {
 // vista di provenienza), toast e timer. m.draft è la bozza normalizzata.
 func (m *Model) startUndo() tea.Cmd {
 	m.undoSeq++
-	p := &pendingSend{seq: m.undoSeq, out: m.draft, draftID: m.draftID, comp: m.composer, back: m.composeBack}
+	p := &pendingSend{seq: m.undoSeq, out: m.draft, draftID: m.draftID, comp: m.composer, back: m.composeBack, tmp: m.draftTmp, keep: m.draftKeep}
 	m.undo = p
 	m.draft = msg.Outgoing{}
 	m.closeComposer()
@@ -73,6 +75,8 @@ func (m *Model) reopenPending(p *pendingSend) {
 	m.composer = p.comp
 	m.composeBack = p.back
 	m.draftID = p.draftID
+	m.draftTmp = p.tmp
+	m.draftKeep = p.keep
 	m.draftBusy = false
 	m.discardOpen = false
 	m.view = viewComposer

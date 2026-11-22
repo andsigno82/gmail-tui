@@ -172,20 +172,6 @@ func TestResumeStripsSignature(t *testing.T) {
 	}
 }
 
-// TestResumeWarnsAboutAttachments: allegati non ricostruibili → toast d'avviso (D9-D).
-func TestResumeWarnsAboutAttachments(t *testing.T) {
-	bozza := draftMsg(1, []string{"anna@example.dev"}, "ciao", "testo")
-	bozza.Attachments = []msg.Attachment{{PartIndex: 0, Filename: "report.pdf", ContentType: "application/pdf"}}
-	m, _ := composerModel(t, bozza)
-	mm, _ := step(m, teaSize())
-	mm.folder = mail.Mailbox{Name: "[Gmail]/Drafts", Role: "drafts"}
-	mm, cmd := step(mm, inboxSelected(bozza.Ref))
-	mm = drainOp(t, mm, cmd)
-	if !strings.Contains(toastText(mm), "allegati non ripresi") || !strings.Contains(toastText(mm), "report.pdf") {
-		t.Errorf("toast = %q, voglio avviso allegati non ripresi con report.pdf", toastText(mm))
-	}
-}
-
 // TestResavePreservesSingleCopy: riprendere e esc → in Bozze resta una sola bozza (la nuova).
 func TestResavePreservesSingleCopy(t *testing.T) {
 	m, mk := composerModel(t, draftMsg(1, []string{"anna@example.dev"}, "ciao", "testo"))

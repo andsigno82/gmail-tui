@@ -6,6 +6,10 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -81,16 +85,17 @@ func (m *Model) handleComposerCancel() tea.Cmd {
 		return nil
 	}
 	if m.composer.Empty() {
-		id := m.draftID
+		id, keep := m.draftID, m.draftKeep
+		removeTmp(m.draftTmp)
 		m.closeComposer()
-		if id != "" {
+		if id != "" && !keep {
 			return deleteDraftCmd(m.store, id, false)
 		}
 		return nil
 	}
 	m.draftBusy = true
 	var replace []msg.MessageID
-	if m.draftID != "" {
+	if m.draftID != "" && !m.draftKeep {
 		replace = []msg.MessageID{m.draftID}
 	}
 	return saveDraftCmd(m.store, m.composer.Draft(), replace)
@@ -111,6 +116,7 @@ func (m Model) requestDiscard() (Model, tea.Cmd) {
 // già in Bozze, la rimuove da lì (stessa rimozione per UID del risalvataggio).
 func (m *Model) discardDraft() tea.Cmd {
 	id := m.draftID
+	removeTmp(m.draftTmp)
 	m.closeComposer()
 	if id != "" {
 		return deleteDraftCmd(m.store, id, true)
@@ -119,30 +125,88 @@ func (m *Model) discardDraft() tea.Cmd {
 	return cmd
 }
 
-// resumeDraft riapre una bozza di Bozze nel composer (Piano 9, Task 6, D9-D):
-// destinatari (A, Cc, Ccn), oggetto e corpo. La firma salvata in coda al corpo
-// si toglie: la riaggiunge il composer. Gli allegati non sono ricostruibili da
-// file locali: un toast d'avviso li elenca. draftID = ID della bozza ripresa.
-func (m *Model) resumeDraft(ref msg.MessageRef, full *msg.Message) tea.Cmd {
+// draftAttachments è l'esito del download degli allegati di una bozza ripresa
+// (fix review): dir è la directory privata con i file (vuota se fallisce).
+type draftAttachments struct {
+	ref   msg.MessageRef
+	m     *msg.Message
+	dir   string
+	paths []string
+	err   error
+}
+
+// downloadDraftCmd scarica gli allegati della bozza in una directory privata
+// (os.MkdirTemp: 0700), un sottodirectory per allegato così i nomi originali
+// restano. Un download che fallisce elimina tutto e riporta l'errore.
+func downloadDraftCmd(st mail.MailStore, ref msg.MessageRef, full *msg.Message) tea.Cmd {
+	return func() tea.Msg {
+		dir, err := os.MkdirTemp("", "gmail-tui-bozza-")
+		if err != nil {
+			return draftAttachments{ref: ref, m: full, err: fmt.Errorf("directory temporanea: %w", err)}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
+		defer cancel()
+		var paths []string
+		for i, a := range full.Attachments {
+			sub := filepath.Join(dir, strconv.Itoa(i))
+			p := filepath.Join(sub, safeFilename(a.Filename, i))
+			if err := os.Mkdir(sub, 0o700); err != nil {
+				removeTmp(dir)
+				return draftAttachments{ref: ref, m: full, err: fmt.Errorf("directory allegato: %w", err)}
+			}
+			if err := st.SaveAttachment(ctx, ref.ID, a.PartIndex, p); err != nil {
+				removeTmp(dir)
+				return draftAttachments{ref: ref, m: full, err: fmt.Errorf("allegato %q: %w", a.Filename, err)}
+			}
+			paths = append(paths, p)
+		}
+		return draftAttachments{ref: ref, m: full, dir: dir, paths: paths}
+	}
+}
+
+// safeFilename è il nome del file dell'allegato: solo il nome base (niente
+// percorsi dal messaggio); senza nome utile ne serve uno generico.
+func safeFilename(name string, i int) string {
+	b := filepath.Base(name)
+	if b == "" || b == "." || b == string(filepath.Separator) {
+		return fmt.Sprintf("allegato-%d", i+1)
+	}
+	return b
+}
+
+// removeTmp elimina la directory degli allegati di una bozza ripresa ("" = nulla).
+func removeTmp(dir string) {
+	if dir != "" {
+		_ = os.RemoveAll(dir)
+	}
+}
+
+// openResumed apre il composer con una bozza di Bozze: destinatari (con il nome),
+// oggetto, corpo (firma tolta), allegati scaricati. keep: la bozza è ripresa senza
+// allegati, quindi il risalvataggio non sostituisce l'originale (nessuna perdita).
+func (m *Model) openResumed(ref msg.MessageRef, full *msg.Message, paths []string, dir string, keep bool) {
 	body := full.BodyText
 	if m.signature != "" {
 		body = strings.TrimSuffix(body, "\n\n--\n"+m.signature)
 	}
 	m.openComposer(composer.ComposerConfig{
-		To:      strings.Join(full.To, ", "),
-		Cc:      strings.Join(full.Cc, ", "),
-		Bcc:     strings.Join(full.Bcc, ", "),
-		Subject: full.Ref.Subject,
-		Body:    body,
+		To:          strings.Join(displayOr(full.ToDisplay, full.To), ", "),
+		Cc:          strings.Join(displayOr(full.CcDisplay, full.Cc), ", "),
+		Bcc:         strings.Join(displayOr(full.BccDisplay, full.Bcc), ", "),
+		Subject:     full.Ref.Subject,
+		Body:        body,
+		Attachments: paths,
 	})
 	m.draftID = ref.ID
-	if len(full.Attachments) == 0 {
-		return nil
+	m.draftTmp = dir
+	m.draftKeep = keep
+}
+
+// displayOr usa la forma "Nome <indirizzo>" se c'è, altrimenti gli indirizzi nudi
+// (messaggi costruiti senza msg.Parse, es. nel Mock).
+func displayOr(display, bare []string) []string {
+	if len(display) > 0 {
+		return display
 	}
-	names := make([]string, 0, len(full.Attachments))
-	for _, a := range full.Attachments {
-		names = append(names, a.Filename)
-	}
-	cmd := m.toast.Push(toast.Info, "allegati non ripresi: "+strings.Join(names, ", "))
-	return cmd
+	return bare
 }

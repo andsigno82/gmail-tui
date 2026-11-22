@@ -79,6 +79,8 @@ type Model struct {
 	sending     bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
 	draftID     msg.MessageID
 	draftBusy   bool
+	draftTmp    string // directory privata con gli allegati della bozza ripresa (fix review)
+	draftKeep   bool   // bozza ripresa senza allegati: il risalvataggio non sostituisce l'originale
 	undo        *pendingSend
 	undoSeq     int
 
@@ -792,6 +794,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata: %v", ev.err))
 			return m, cmd
 		}
+		removeTmp(m.draftTmp) // la copia è in Bozze con gli allegati: la directory non serve più
 		m.closeComposer()
 		cmd := m.toast.Push(toast.Success, "bozza salvata")
 		return m, cmd
@@ -819,8 +822,23 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, "bozza: risposta vuota dallo store")
 			return m, cmd
 		}
-		cmd := m.resumeDraft(ev.ref, ev.m)
-		return m, cmd
+		if len(ev.m.Attachments) > 0 {
+			// Allegati: si scaricano fuori dal loop UI, poi si apre il composer (fix review).
+			return m, downloadDraftCmd(m.store, ev.ref, ev.m)
+		}
+		m.openResumed(ev.ref, ev.m, nil, "", false)
+		return m, nil
+
+	case draftAttachments:
+		// Esito del download degli allegati: errore → composer senza allegati e la
+		// bozza originale non viene sostituita (keep); toast d'errore.
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("allegati della bozza non scaricati: %v — la bozza originale resta in Bozze", ev.err))
+			m.openResumed(ev.ref, ev.m, nil, "", true)
+			return m, cmd
+		}
+		m.openResumed(ev.ref, ev.m, ev.paths, ev.dir, false)
+		return m, nil
 
 	case undoDueMsg:
 		// Piano 9, Task 9 (D9-I): scaduta la finestra, l'invio parte (se non annullato).

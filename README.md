@@ -51,7 +51,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `Ctrl+C` | quit from anywhere |
 | `/` | search — on Gmail accounts the query goes verbatim to Gmail (`older_than:7d`, `in:`, `-label:`, `from:x is:unread label:Work has:attachment`); without Gmail, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
-| `m` then `Enter` in Drafts | resume a draft in the composer (recipients, subject, body; attachments are not restored) |
+| `m` then `Enter` in Drafts | resume a draft in the composer (recipients with names, subject, body, attachments) |
 | `a` | archive the conversation in the current folder (Inbox only) |
 | `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
 | `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |

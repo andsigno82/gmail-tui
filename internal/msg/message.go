@@ -62,8 +62,11 @@ type Message struct {
 	To, Cc []string
 	// Bcc (Piano 9, Task 4): presente solo nelle bozze salvate dall'app (la
 	// Bozze conserva l'intestazione); l'invio non la scrive mai.
-	Bcc      []string
-	BodyText string
+	Bcc []string
+	// ToDisplay, CcDisplay, BccDisplay: stessi destinatari nella forma "Nome <indirizzo>"
+	// (ripresa delle bozze, fix review). To/Cc/Bcc restano indirizzi nudi.
+	ToDisplay, CcDisplay, BccDisplay []string
+	BodyText                         string
 	// BodyHTML contiene l'HTML originale se presente (anche per messaggi con
 	// parte testuale); HasHTML resta true solo per messaggi SOLO HTML.
 	// Serve alla TUI per "apri nel browser" (Piano 3, Task 5).

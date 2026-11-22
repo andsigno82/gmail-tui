@@ -34,6 +34,9 @@ func Parse(id MessageID, raw io.Reader) (*Message, error) {
 	m.To = addrList(env, "To")
 	m.Cc = addrList(env, "Cc")
 	m.Bcc = addrList(env, "Bcc") // Piano 9, Task 4: solo nelle bozze
+	m.ToDisplay = displayList(env, "To")
+	m.CcDisplay = displayList(env, "Cc")
+	m.BccDisplay = displayList(env, "Bcc")
 	if d, err := mail.ParseDate(env.GetHeader("Date")); err == nil {
 		m.Ref.Date = d
 	}
@@ -90,6 +93,28 @@ func addrList(env *enmime.Envelope, header string) []string {
 	out := make([]string, 0, len(addrs))
 	for _, a := range addrs {
 		out = append(out, a.Address)
+	}
+	return out
+}
+
+// displayList rende gli indirizzi di un header nella forma "Nome <indirizzo>"
+// (Fix review, ripresa bozze); il nome con caratteri speciali è quotato come da
+// RFC 5322. Senza nome resta l'indirizzo nudo.
+func displayList(env *enmime.Envelope, header string) []string {
+	addrs, err := env.AddressList(header)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(addrs))
+	for _, a := range addrs {
+		switch {
+		case a.Name == "":
+			out = append(out, a.Address)
+		case strings.ContainsAny(a.Name, `,;:"<>()[]@\`):
+			out = append(out, (&mail.Address{Name: a.Name, Address: a.Address}).String())
+		default:
+			out = append(out, a.Name+" <"+a.Address+">")
+		}
 	}
 	return out
 }

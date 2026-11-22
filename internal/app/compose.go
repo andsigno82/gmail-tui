@@ -154,6 +154,7 @@ func (m *Model) openComposer(cfg composer.ComposerConfig) {
 	m.draft = msg.Outgoing{}
 	m.draftID = "" // nuova bozza: nessuna copia in Bozze (Piano 9)
 	m.draftBusy = false
+	m.draftTmp, m.draftKeep = "", false
 	m.view = viewComposer
 	if m.width > 0 {
 		m.composer.SetSize(m.width, max(0, m.height-1))
@@ -166,6 +167,8 @@ func (m *Model) closeComposer() {
 	m.discardOpen = false
 	m.draftID = ""
 	m.draftBusy = false
+	m.draftTmp = ""
+	m.draftKeep = false
 	m.view = m.composeBack
 }
 
@@ -262,6 +265,7 @@ func deliverSend(sender Sender, st mail.MailStore, p *pendingSend) opDone {
 	if err := sender.Send(ctx, p.out); err != nil {
 		return opDone{label: "invio", err: err, send: true, retry: p}
 	}
+	removeTmp(p.tmp) // inviato: gli allegati scaricati non servono più
 	res := opDone{label: "inviato", refresh: true, send: true, observed: addresses(p.out.To, p.out.Cc, p.out.Bcc)}
 	if p.draftID != "" {
 		dctx, dcancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
