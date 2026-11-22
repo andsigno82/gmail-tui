@@ -164,6 +164,9 @@ Use a wrapper script that appends `$GMAIL_TUI_FROM`, `$GMAIL_TUI_SUBJECT` and `$
 - [ ] Send three messages in quick succession: the lines in the file add up to three, and a batch shows a `COUNT` greater than 1. Record how the batches were split.
 - [ ] A subject with ANSI escape codes or over 200 characters: the file shows no escape codes and the subject is cut with `…`.
 - [ ] Make the wrapper exit 1 (or point `notify_command` to `false`): one error toast `notifica desktop: …`; the next new message does not show it again.
+- [ ] Mark a new message as read from Gmail web before the notification window: no line is written for it (only unread messages count).
+- [ ] Set `notify_command = ["./notify.sh"]`: gmail-tui refuses the config with a clear error (relative path); the notifications stay off.
+- [ ] Make the wrapper sleep 30 s, then send two messages: one command runs at a time; the second message arrives as one summary line once the first run ends.
 - [ ] Settings `,`: the row "Notifiche desktop" reads "comando configurato"; without the key it reads "non configurate (vedi README)".
 - [ ] macOS: the `osascript` example from the README shows a banner, which confirms that `system attribute` works on this macOS version.
 - [ ] Linux, if available: the `notify-send -- ...` wrapper shows a notification. This path is not verified in the repo.

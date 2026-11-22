@@ -166,6 +166,21 @@ Modificati:
 - **Demo:** nessuna posta simulata, quindi la demo non notifica da sola (D11-11).
 - **Linux non verificato nel repo:** l'esempio `notify-send` si prova solo a mano (smoke di Andrea su Linux, se disponibile): dichiarato nel README e nel report.
 
+## Revisione indipendente (review del coordinatore)
+
+Decisioni prese dopo la review indipendente di `feat/piano-11` (punti numerati come nel report di review):
+
+| ID | Decisione | Motivazione |
+|---|---|---|
+| D11-12 (review 3) | Conteggio e notifica sui soli NON letti | `Change.Unread` = messaggi nuovi senza `\Seen` (`UID SEARCH NOT SEEN`). Dopo una riconnessione con posta arrivata offline parte UNA notifica riassuntiva; se i nuovi sono tutti letti (letti da un altro client) non parte nulla. Lo stesso vale per il Watch in regime. |
+| D11-13 (review 7) | Un processo di notifica alla volta | Se un comando è in corso, gli eventi successivi accumulano non letti e mittente dell'ultimo evento; il riepilogo parte alla fine del processo precedente. Evita una raffica di processi con un comando lento. |
+| D11-14 (review 2) | Intestazioni solo degli ultimi 5 UID | `fetchRefs` su tutti i nuovi UID teneva il gate per molto tempo dopo posta offline. Si leggono le intestazioni dei 5 UID più alti; il conteggio resta reale. |
+| D11-15 (review 1) | Ambiente filtrato | Il comando non riceve `GMAIL_APP_PASSWORD` né le `GMAIL_TUI_*` preesistenti. Le sole variabili GMAIL_TUI_* del comando sono quelle del messaggio. |
+| D11-16 (review 4) | Timeout sull'intero gruppo di processi | Su unix il comando gira in un proprio gruppo (`Setpgid`) e il timeout uccide il gruppo: nessun figlio sopravvive. Su Windows resta il solo processo diretto (limite documentato). |
+| D11-17 (review 5) | Eseguibile: percorso assoluto o nome nel PATH | `./x` e `scripts/x` sono rifiutati in `Validate` con errore chiaro: il comando dipenderebbe dalla cartella di lavoro. |
+| D11-18 (review 6) | Armamento solo dal load della INBOX | Il primo load riuscito di una cartella diversa (es. Lavoro) non arma le notifiche: il Watch osserva INBOX (D11-2). |
+| D11-19 (review 9) | CSI C1 U+009B come ESC [ | Il corpo della sequenza viene rimosso insieme all'introduttore, come per ESC [. |
+
 ## Alternative scartate
 
 - **Stringa comando interpretata da `sh -c`:** scartata da D11-3. Il contenuto dell'email finirebbe nella shell.

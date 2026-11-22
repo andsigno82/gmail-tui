@@ -94,7 +94,7 @@ A value the app does not accept (for example `layout = "wide"`) is reset to its 
 
 ## Desktop notifications
 
-When new mail arrives in INBOX, gmail-tui runs a command you choose. Set `notify_command` in `config.toml` as a list of arguments: the first item is the program, the rest are fixed arguments. **No shell is involved.** Without the key (the default) nothing runs.
+When new mail arrives in INBOX, gmail-tui runs a command you choose. Set `notify_command` in `config.toml` as a list of arguments: the first item is the program, the rest are fixed arguments. **No shell is involved.** The program must be an absolute path (`/usr/local/bin/notify`) or a command name found in `PATH` (`notify-send`); a relative path such as `./notify.sh` is refused at startup. Without the key (the default) nothing runs.
 
 ```toml
 notify_command = ["osascript", "-e", "display notification (system attribute \"GMAIL_TUI_SUBJECT\") with title (system attribute \"GMAIL_TUI_FROM\")"]
@@ -123,7 +123,7 @@ terminal-notifier -title "$GMAIL_TUI_FROM" -message "$GMAIL_TUI_SUBJECT"
 notify-send -- "$GMAIL_TUI_FROM" "$GMAIL_TUI_SUBJECT"
 ```
 
-Set `notify_command = ["/path/to/wrapper"]` to use one. Behaviour: the command runs once per batch of new messages (`GMAIL_TUI_COUNT` says how many), never for mail already present at startup or during the first load, and only for INBOX. It is killed after 5 seconds. A failing command shows one error toast per session. The settings menu (`,`) shows whether a command is configured; it is read-only, because the command is a list and cannot be edited as text. Demo mode generates no new mail, so the command runs there only when real mail arrives.
+Set `notify_command = ["/path/to/wrapper"]` to use one. Behaviour: the command runs once per batch of new messages, counting only the new messages that are still unread (`GMAIL_TUI_COUNT`); mail already read elsewhere does not notify. Only the five newest messages of a batch are read for sender and subject. At most one command runs at a time: messages that arrive meanwhile are merged into one summary, sent when the running command ends. Mail present at startup or during the first load never notifies, and only INBOX is watched. The command is killed after 5 seconds, with its whole process group on Unix (on Windows only the direct process is killed). A failing command shows one error toast per session. `GMAIL_APP_PASSWORD` and any `GMAIL_TUI_*` variables from your own environment are never passed to the command. The settings menu (`,`) shows whether a command is configured; it is read-only, because the command is a list and cannot be edited as text. Demo mode generates no new mail, so the command runs there only when real mail arrives.
 
 ## CLI
 
