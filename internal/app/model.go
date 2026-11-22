@@ -153,6 +153,12 @@ type Model struct {
 	notifyRun      notifyRunner
 	notifyArmed    bool
 	notifyErrShown bool
+	// notifyBusy: un processo di notifica è in corso (D11-13, un processo alla volta);
+	// notifyPending accumula i non letti degli eventi arrivati nel frattempo, con i
+	// mittenti dell'ultimo evento: il riepilogo parte alla fine del processo in corso.
+	notifyBusy        bool
+	notifyPending     int
+	notifyPendingRefs []msg.MessageRef
 
 	width  int
 	height int
@@ -317,7 +323,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Piano 11, Task 4: il primo load riuscito arma le notifiche (gli eventi
 		// arrivati prima non notificano: sono la posta già presente all'avvio).
-		m.notifyArmed = true
+		// Piano 11, review punto 6: solo il load riuscito della INBOX arma le notifiche.
+		if m.folder.Name == "" && ev.query == "" {
+			m.notifyArmed = true
+		}
 		// L'indicatore di riconnessione (Task 8) si spegne al primo msgsLoaded
 		// riuscito che non lo abbia già sostituito (op, badge di ricerca): la
 		// riconnessione è andata a buon fine e la lista è fresca.
@@ -552,13 +561,22 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(toastCmd, localCmd)
 
 	case notifyResult:
-		// Piano 11, Task 4: errore del comando di notifica, toast una sola volta.
+		// Piano 11, Task 4 e review punti 1, 7: il processo è finito (si libera il
+		// flag), l'errore va in toast una sola volta e, se il riepilogo accumulato non
+		// è vuoto, parte il comando successivo.
+		m.notifyBusy = false
+		var cmds []tea.Cmd
 		if ev.err != nil && !m.notifyErrShown {
 			m.notifyErrShown = true
-			cmd := m.toast.Push(toast.Error, fmt.Sprintf("notifica desktop: %v", ev.err))
-			return m, cmd
+			cmds = append(cmds, m.toast.Push(toast.Error, fmt.Sprintf("notifica desktop: %v", ev.err)))
 		}
-		return m, nil
+		if m.notifyPending > 0 {
+			n, refs := m.notifyPending, m.notifyPendingRefs
+			m.notifyPending, m.notifyPendingRefs = 0, nil
+			m.notifyBusy = true
+			cmds = append(cmds, m.notifyRunCmd(n, refs))
+		}
+		return m, tea.Batch(cmds...)
 
 	case watchStarted:
 		// Apertura del feed Watch (Task 8): si custodisce il canale e si

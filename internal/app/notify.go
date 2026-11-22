@@ -199,20 +199,33 @@ func (m *Model) SetNotify(argv []string) {
 	m.notifyArgv = slices.Clone(argv)
 }
 
-// notifyCmd prepara il comando di notifica per un ChangeNewMail (Piano 11, Task 4):
-// nil se il comando non è configurato, il primo load non è ancora avvenuto o
-// l'evento non ha ID. Il comando gira in un tea.Cmd (fuori dal loop UI) e torna
-// come notifyResult. Un solo processo per evento: COUNT è il numero di ID dell'evento.
-func (m Model) notifyCmd(c mail.Change) tea.Cmd {
-	if len(m.notifyArgv) == 0 || !m.notifyArmed || len(c.IDs) == 0 {
-		return nil
+// notifyFor decide la notifica per un ChangeNewMail (Piano 11, Task 4 e review
+// punti 3, 7). Nessuna notifica se il comando non è configurato, il primo load
+// INBOX non è riuscito, o non ci sono non letti tra i nuovi (D11-12). Un solo
+// processo alla volta (D11-13): se ne è in corso uno, il conteggio si accumula e il
+// riepilogo parte alla fine di quello (notifyResult).
+func (m Model) notifyFor(c mail.Change) (Model, tea.Cmd) {
+	if len(m.notifyArgv) == 0 || !m.notifyArmed || len(c.IDs) == 0 || c.Unread <= 0 {
+		return m, nil
 	}
+	if m.notifyBusy {
+		m.notifyPending += c.Unread
+		m.notifyPendingRefs = slices.Clone(c.Refs)
+		return m, nil
+	}
+	m.notifyBusy = true
+	return m, m.notifyRunCmd(c.Unread, c.Refs)
+}
+
+// notifyRunCmd costruisce il cmd che esegue il comando con COUNT e mittente dati.
+// Gira in un tea.Cmd, fuori dal loop UI, e torna come notifyResult.
+func (m Model) notifyRunCmd(count int, refs []msg.MessageRef) tea.Cmd {
 	run := m.notifyRun
 	if run == nil {
 		run = runNotify
 	}
 	argv := slices.Clone(m.notifyArgv)
-	env := notifyEnv(c.Refs, len(c.IDs))
+	env := notifyEnv(refs, count)
 	ctx := m.ctx
 	return func() tea.Msg { return notifyResult{err: run(ctx, argv, env)} }
 }

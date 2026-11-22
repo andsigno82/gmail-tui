@@ -57,7 +57,7 @@ func bareNotify(tb testing.TB, argv []string, rec *notifyRec) Model {
 // newMailChange costruisce un ChangeNewMail con n ID e le intestazioni date
 // (Refs dal più recente, come il Watch).
 func newMailChange(n int, refs ...msg.MessageRef) mail.Change {
-	c := mail.Change{Kind: mail.ChangeNewMail, Refs: refs}
+	c := mail.Change{Kind: mail.ChangeNewMail, Refs: refs, Unread: n}
 	for i := 0; i < n; i++ {
 		c.IDs = append(c.IDs, msg.NewID("INBOX", uint32(100+i)))
 	}
@@ -113,6 +113,62 @@ func TestNotifyRunsOnceWithCountAndNewestSender(t *testing.T) {
 		if got, _ := envValue(rec.envs[0], k); got != v {
 			t.Errorf("%s = %q, voglio %q", k, got, v)
 		}
+	}
+}
+
+// Piano 11, review punto 3: nessun non letto tra i nuovi → nessuna notifica.
+func TestNotifySkippedWhenNoUnread(t *testing.T) {
+	var rec notifyRec
+	m := notifyLoaded(t, []string{"notify-cmd"}, &rec)
+	c := newMailChange(1, msg.MessageRef{From: "Ada", Subject: "Letta"})
+	c.Unread = 0
+	feedChange(t, m, c)
+	if len(rec.argvs) != 0 {
+		t.Fatalf("nessun non letto: %d esecuzioni, voglio 0", len(rec.argvs))
+	}
+}
+
+// Piano 11, review punto 6: solo il load della INBOX arma le notifiche; una
+// cartella diversa (es. Lavoro) non arma.
+func TestNotifyArmedOnlyByInboxLoad(t *testing.T) {
+	var rec notifyRec
+	m := bareNotify(t, []string{"notify-cmd"}, &rec)
+	m.folder = mail.Mailbox{Name: "Lavoro"}
+	m, _ = step(m, msgsLoaded{refs: opsRefs(t), mailbox: "Lavoro"})
+	feedChange(t, m, newMailChange(1, msg.MessageRef{From: "Ada", Subject: "Ciao"}))
+	if len(rec.argvs) != 0 {
+		t.Fatalf("load di una cartella diversa da INBOX ha armato le notifiche: %d esecuzioni", len(rec.argvs))
+	}
+}
+
+// Piano 11, review punto 7: con un processo in corso gli eventi successivi si
+// accumulano in un unico riepilogo, lanciato quando il precedente termina.
+func TestNotifyBusyAccumulatesIntoOneSummary(t *testing.T) {
+	var rec notifyRec
+	m := notifyLoaded(t, []string{"notify-cmd"}, &rec)
+	m, first := m.notifyFor(newMailChange(1, msg.MessageRef{From: "Ada", Subject: "Uno"}))
+	if first == nil {
+		t.Fatal("primo evento: atteso un comando")
+	}
+	m, second := m.notifyFor(newMailChange(2,
+		msg.MessageRef{From: "Bob", Subject: "Due"},
+		msg.MessageRef{From: "Carla", Subject: "Tre"},
+	))
+	if second != nil {
+		t.Fatal("con un processo in corso non deve partirne un altro")
+	}
+	m, flush := step(m, first())
+	for _, ms := range runCmd(flush) {
+		m, _ = step(m, ms)
+	}
+	if len(rec.argvs) != 2 {
+		t.Fatalf("esecuzioni = %d, voglio 2 (il primo e il riepilogo)", len(rec.argvs))
+	}
+	if v, _ := envValue(rec.envs[1], "GMAIL_TUI_COUNT"); v != "2" {
+		t.Errorf("riepilogo COUNT = %q, voglio 2 (i messaggi accumulati)", v)
+	}
+	if v, _ := envValue(rec.envs[1], "GMAIL_TUI_FROM"); v != "Bob" {
+		t.Errorf("riepilogo FROM = %q, voglio il mittente più recente \"Bob\"", v)
 	}
 }
 
