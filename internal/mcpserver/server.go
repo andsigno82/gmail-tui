@@ -2,7 +2,11 @@ package mcpserver
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -105,11 +109,29 @@ func (s *session) connect(round *connRound) {
 	close(round.done)
 }
 
-// fail redige i segreti e azzera lo stato di connessione: il prossimo tool
-// riconnette (Piano 14, fix review 1).
+// fail redige i segreti. Solo gli errori di trasporto azzerano lo stato di
+// connessione (il prossimo tool riconnette): un errore logico (ID inesistente,
+// mailbox assente) non deve farlo, perché Connect chiude il client attivo e
+// farebbe fallire le altre chiamate in volo (Piano 14, fix review 1).
 func (s *session) fail(err error) error {
-	s.mu.Lock()
-	s.ready = false
-	s.mu.Unlock()
+	if isTransport(err) {
+		s.mu.Lock()
+		s.ready = false
+		s.mu.Unlock()
+	}
 	return Redact(err, s.secrets...)
+}
+
+// errNotConnected è il messaggio dello store IMAP senza client. Non esiste un
+// sentinel: si riconosce il testo, da sostituire con errors.Is quando il backend
+// ne esporrà uno.
+const errNotConnected = "imap store non connesso"
+
+// isTransport riconosce gli errori di connessione: EOF, rete chiusa, errori di
+// rete (timeout inclusi) e store non connesso.
+func isTransport(err error) bool {
+	var ne net.Error
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, net.ErrClosed) || errors.As(err, &ne) ||
+		strings.Contains(err.Error(), errNotConnected)
 }

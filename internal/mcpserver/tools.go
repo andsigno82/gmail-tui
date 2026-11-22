@@ -65,14 +65,16 @@ func registerTools(srv *mcp.Server, s *session) {
 		Annotations: readOnly,
 	}, s.listFolders)
 	mcp.AddTool(srv, &mcp.Tool{
-		Name:        "list_recent",
-		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo." + descUntrusted,
+		Name: "list_recent",
+		Description: "Elenca i messaggi più recenti di una cartella (default INBOX), senza corpo. Se truncated è true, " +
+			"usa next_offset come offset della pagina successiva." + descUntrusted,
 		Annotations: readOnly,
 	}, s.listRecent)
 	mcp.AddTool(srv, &mcp.Tool{
 		Name: "search_messages",
 		Description: "Cerca messaggi con una query in stile Gmail, senza corpo. Senza folder cerca in tutti i " +
-			"messaggi (cartella con ruolo all, come Gmail web); il risultato dichiara la cartella usata." + descUntrusted,
+			"messaggi (cartella con ruolo all, come Gmail web); il risultato dichiara la cartella usata. " +
+			"Se truncated è true, usa next_offset come offset della pagina successiva." + descUntrusted,
 		Annotations: readOnly,
 	}, s.search)
 	mcp.AddTool(srv, &mcp.Tool{
@@ -179,7 +181,7 @@ func slicePage(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
 
 // listResponse converte le righe e dichiara la cartella; se superano il limite
 // ne toglie in coda e lo dichiara con truncated.
-func listResponse(refs []msg.MessageRef, folder string) (*mcp.CallToolResult, any, error) {
+func listResponse(refs []msg.MessageRef, folder string, offset int) (*mcp.CallToolResult, any, error) {
 	rows := make([]map[string]any, 0, len(refs))
 	for _, r := range refs {
 		rows = append(rows, map[string]any{
@@ -193,7 +195,12 @@ func listResponse(refs []msg.MessageRef, folder string) (*mcp.CallToolResult, an
 	}
 	truncated := false
 	for {
-		res, _, err := respond(map[string]any{"folder": field(folder), "items": rows, "truncated": truncated})
+		data := map[string]any{"folder": field(folder), "items": rows, "returned": len(rows), "truncated": truncated}
+		if truncated {
+			// Offset della pagina successiva, calcolato sulle righe davvero restituite (fix review 2).
+			data["next_offset"] = offset + len(rows)
+		}
+		res, _, err := respond(data)
 		if err == nil {
 			return res, nil, nil
 		}
@@ -221,7 +228,7 @@ func (s *session) listRecent(ctx context.Context, _ *mcp.CallToolRequest, in rec
 	if err != nil {
 		return nil, nil, s.fail(err)
 	}
-	return listResponse(refs, folder)
+	return listResponse(refs, folder, pg.Offset)
 }
 
 // searchFolder sceglie la cartella di una ricerca senza folder: la mailbox con
@@ -263,7 +270,7 @@ func (s *session) search(ctx context.Context, _ *mcp.CallToolRequest, in searchI
 		return nil, nil, s.fail(err)
 	}
 	// Search non è paginata: offset e limit si applicano al risultato.
-	return listResponse(slicePage(refs, pg), q.Label)
+	return listResponse(slicePage(refs, pg), q.Label, pg.Offset)
 }
 
 // bodyLimit applica il default e il tetto di max_chars (M5).

@@ -3,6 +3,9 @@ package mcpserver
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net"
 	"testing"
 	"time"
 
@@ -15,7 +18,7 @@ import (
 type countingReader struct {
 	Reader
 	connects int
-	failOps  bool
+	opErr    error // errore di ListMailboxes, se non nil
 }
 
 func (c *countingReader) Connect(ctx context.Context) error {
@@ -24,8 +27,8 @@ func (c *countingReader) Connect(ctx context.Context) error {
 }
 
 func (c *countingReader) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
-	if c.failOps {
-		return nil, errors.New("rete caduta")
+	if c.opErr != nil {
+		return nil, c.opErr
 	}
 	return c.Reader.ListMailboxes(ctx)
 }
@@ -39,16 +42,58 @@ func TestReconnectsAfterStoreError(t *testing.T) {
 	if res := call(t, cs, "list_folders", nil); res.IsError {
 		t.Fatalf("prima chiamata: %s", resultText(res))
 	}
-	cr.failOps = true
+	cr.opErr = io.EOF // errore di trasporto: azzera la sessione
 	if res := call(t, cs, "list_folders", nil); !res.IsError {
 		t.Fatal("con operazione in errore atteso IsError")
 	}
-	cr.failOps = false
+	cr.opErr = nil
 	if res := call(t, cs, "list_folders", nil); res.IsError {
 		t.Fatalf("dopo il ripristino la chiamata deve riuscire: %s", resultText(res))
 	}
 	if cr.connects != 2 {
 		t.Fatalf("Connect chiamate = %d, attese 2 (una per sessione)", cr.connects)
+	}
+}
+
+// Piano 14, fix review (1): un errore logico (mailbox assente, ID inesistente)
+// non chiude la connessione: nessuna Connect in più.
+func TestLogicalErrorKeepsConnection(t *testing.T) {
+	cr := &countingReader{Reader: &mail.Mock{}}
+	cs := connect(t, cr, Options{Version: "test"})
+	call(t, cs, "list_folders", nil)
+
+	cr.opErr = errors.New("mailbox assente")
+	if res := call(t, cs, "list_folders", nil); !res.IsError {
+		t.Fatal("con errore logico atteso IsError")
+	}
+	cr.opErr = nil
+	call(t, cs, "list_folders", nil)
+	if cr.connects != 1 {
+		t.Fatalf("Connect chiamate = %d, attese 1: un errore logico non deve riconnettere", cr.connects)
+	}
+}
+
+// Piano 14, fix review (1): gli errori di trasporto, anche avvolti, azzerano la
+// sessione; "non connesso" dello store è trattato come trasporto.
+func TestTransportErrorsResetSession(t *testing.T) {
+	cases := []error{
+		io.EOF,
+		fmt.Errorf("lettura: %w", io.ErrUnexpectedEOF),
+		net.ErrClosed,
+		&net.OpError{Op: "read", Err: errors.New("reset")},
+		errors.New("imap store non connesso: chiamare Connect prima di questa operazione"),
+	}
+	for _, e := range cases {
+		cr := &countingReader{Reader: &mail.Mock{}}
+		cs := connect(t, cr, Options{Version: "test"})
+		call(t, cs, "list_folders", nil)
+		cr.opErr = e
+		call(t, cs, "list_folders", nil)
+		cr.opErr = nil
+		call(t, cs, "list_folders", nil)
+		if cr.connects != 2 {
+			t.Errorf("%v: Connect chiamate = %d, attese 2", e, cr.connects)
+		}
 	}
 }
 
