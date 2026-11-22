@@ -1,26 +1,38 @@
 # gmail-tui — Riepilogo completo del lavoro
 
-> Report generato il 2026-11-22. Il progetto è un **client Gmail completo per il
+> Report generato il 2026-11-22, aggiornato a fine giornata con la
+> **pubblicazione su GitHub**. Il progetto è un **client Gmail completo per il
 > terminale** scritto in Go con l'ecosistema Charm, open-source (MIT), pensato
 > per la community.
 
+## 🚀 PUBBLICATO: github.com/andsigno82/gmail-tui
+
+- **Release v0.1.0 LIVE** con 5 binari (darwin/linux amd64+arm64, windows zip)
+  + checksums → https://github.com/andsigno82/gmail-tui/releases/tag/v0.1.0
+- **Landing page LIVE** → https://andsigno82.github.io/gmail-tui/ (Pages,
+  deploy workflow checkout@v7/upload@v5/deploy@v5 tutti verdi)
+- **CI verde** su main (lint, test race, build matrix, **govulncheck: 0
+  vulnerabilità code-reaching**)
+- Repo metadata via gh: description, homepage (URL landing), 9 topics
+- Module Go = `github.com/andsigno82/gmail-tui` (placeholder USER sostituiti
+  ovunque; blocco rename obsoleto rimosso dal README)
+- Force-push con sostituzione dell'Initial commit GPLv3 di GitHub con il MIT
+  del progetto (copia di soccorso nel branch locale `gplv3-initial-rescue`)
+- **Security pass**: aggiunto job govulncheck alla CI + dependabot
+  (gomod+actions); trovate e corrette **12 vulnerabilità code-reaching**
+  (x/net v0.23→v0.38+ via enmime/html.Parse su contenuto email non fidato;
+  stdlib crypto/tls+x509 → toolchain go1.27.3); CI go-version 1.27; pins
+  checkout/setup-go aggiornati (fix deprecation Node20)
+- Contatti SECURITY/COC riscritti su canali GitHub-only (niente email placeholder)
+
 ## Cosa c'è ora nel repo (main)
-
-App TUI **funzionante e completa per tutte le feature v1 della spec**
-(`docs/superpowers/specs/2026-11-20-gmail-tui-design.md`) + tutto il pacchetto
-community per la pubblicazione su GitHub.
-
-- **16 package Go · 375+ test · `go test -race` tutto verde · `golangci-lint`
-  0 issues · `go vet` pulito · build CGO_ENABLED=0**
-- Verificato end-to-end con smoke in pty reale (10/10: wizard → demo →
-  composer → invio → r/f → `:theme` → `:save` → quit)
-- CI GitHub Actions: lint + test race + build matrix macOS/Linux/Windows
-- 58 commit su `main`, uno per task, workflow subagent-driven con review per
-  task e review finale per piano (6 piani, tutti mergiati)
 
 ## Come provarlo
 
 ```bash
+# install (binari della release o da sorgente)
+go install github.com/andsigno82/gmail-tui/cmd/gmail-tui@v0.1.0
+
 go run ./cmd/gmail-tui          # wizard → premi "s" per la demo (6 msg esempio)
 export GMAIL_APP_PASSWORD="…"   # App Password da myaccount.google.com/apppasswords
 go run ./cmd/gmail-tui          # sessione reale (IDLE, inbox live)
@@ -116,6 +128,8 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Test nuovi: catena connect→load con store che replica il contratto reale,
   fallimento+retry; TestInit/Watch/WizardSkip adattati; bug reale trovato dal
   lint (SA4005: mutazioni su receiver valore) e corretto
+- Raffinamento successivo (962011f): retry senza Connect concorrenti
+  (`connectFailed` spento al dispatch, `pending` risale)
 
 ## Processo
 
@@ -126,17 +140,20 @@ review finale whole-branch → merge su main. Ledger di progresso in
 
 ## Passi manuali rimasti (solo tu puoi)
 
-1. ~~Crea il repo GitHub~~ ✅ fatto (github.com/andsigno82/gmail-tui)
-2. ~~Sostituisci `USER` e rinomina il module~~ ✅ fatto (2026-11-22,
-   module = `github.com/andsigno82/gmail-tui`)
-3. `git push origin main` + `git tag v0.1.0 && git push origin v0.1.0` → la
-   release workflow pubblica i binari
-4. Settings → Pages → Source: **GitHub Actions** → la landing page va live
-5. (Opzionale) tap Homebrew `homebrew-gmail-tui` + decommenta la sezione brew
-   in `.goreleaser.yaml`; FUNDING; description/topics/social preview del repo
-6. Imposta una vera email di contatto in SECURITY.md / CODE_OF_CONDUCT.md
-   (oggi: placeholder `USER@example.com`)
-7. Smoke con credenziali reali seguendo `docs/smoke-checklist.md`
+1. ~~Crea il repo GitHub~~ ✅ (github.com/andsigno82/gmail-tui)
+2. ~~Sostituisci `USER` e rinomina il module~~ ✅
+3. ~~Push main + tag v0.1.0 → release~~ ✅ (5 binari pubblicati)
+4. ~~Landing page live~~ ✅ (https://andsigno82.github.io/gmail-tui/)
+5. ~~Metadata repo (description/homepage/topics)~~ ✅ (via gh)
+6. **Social preview** — l'API non esiste (verificato): l'immagine 1280×640 è
+   pronta in `.superpowers/sdd/social-preview.png` → Settings → General →
+   Social preview → Upload an image
+7. **PR #1 di dependabot** (golangci-lint-action 7→9): rebase richiesto —
+   verifica i check e mergia
+8. (Opzionale) tap Homebrew `homebrew-gmail-tui` + decommenta la sezione brew
+   in `.goreleaser.yaml` (serve PAT `TAP_GITHUB_TOKEN`); FUNDING
+9. Ripeti lo smoke con credenziali reali seguendo `docs/smoke-checklist.md`
+   (il primo test reale ha già trovato e corretto il bug connect)
 
 ## Roadmap v1.1 (già documentata in ROADMAP.md)
 
