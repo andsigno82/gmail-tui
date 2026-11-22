@@ -209,6 +209,25 @@ func TestWizardSkipSeedsDemoStore(t *testing.T) {
 	}
 }
 
+// TestWizardSkipSetsIdentity: dopo lo skip l'identity del radice è il
+// destinatario dei seed demo ("tu@example.com") — `c` apre il composer col
+// campo Da precompilato (non vuoto).
+func TestWizardSkipSetsIdentity(t *testing.T) {
+	m, _ := newWizardTestModel(t, wizard.Deps{})
+	m, cmd := step(m, pressKey("s"))
+	m, _ = deliver(m, cmd)
+	if m.from != "tu@example.com" {
+		t.Errorf("identity dopo lo skip = %q, voglio tu@example.com (destinatario del seed demo)", m.from)
+	}
+	mm, _ := step(m, pressKey("c"))
+	if mm.currentView() != viewComposer {
+		t.Fatalf("vista dopo c = %v, voglio viewComposer", mm.currentView())
+	}
+	if got := mm.composer.Draft().From; got != "tu@example.com" {
+		t.Errorf("Draft.From = %q, voglio tu@example.com", got)
+	}
+}
+
 // --- successo → backend reali ----------------------------------------------------
 
 // wizardToTesting porta il wizard del radice al passo testing con credenziali

@@ -132,10 +132,10 @@ type SendRequestedMsg struct{ Out msg.Outgoing }
 
 ## Verifica finale del piano
 
-- [ ] `go vet ./... && go test -race ./... && golangci-lint run ./...` verdi
-- [ ] `go run ./cmd/gmail-tui` demo mode: c→composer→invio (Mock.Sent), r/f precompilati, `:theme dracula` cambia tema e persiste, `:save 1` su messaggio con allegato
-- [ ] `go run ./cmd/gmail-tui login` parte il wizard; con credenziali vere: connessione reale e config scritta (smoke opzionale documentato)
-- [ ] Conformance: composer usa SOLO msg.Outgoing + Sender interface (nessun import smtp in app/ui)
+- [x] `go vet ./... && go test -race ./... && golangci-lint run ./...` verdi — verificato alla merge-gate wave (2026-11-22): `go vet` OK, `go test ./... -race -count=1` OK su 16 package, `golangci-lint run ./...` (v2.15.0) → **0 issues**
+- [x] `go run ./cmd/gmail-tui` demo mode: c→composer→invio (Mock.Sent), r/f precompilati, `:theme dracula` cambia tema e persiste, `:save 1` su messaggio con allegato — verificato con smoke pty scripted (binario reale, HOME isolato in temp dir): welcome → `s` → banner demo → `c` con "Da: tu@example.com" (fix identity dello skip) → invio confermato con status "inviato" (Mock.Sent) → `r`/`f` precompilati ("Re: Benvenuto…", "Fwd: report spese…") → `:theme dracula` applicato e persistito nella config → `:save 1` scritto il PDF dell'allegato seed
+- [x] `go run ./cmd/gmail-tui login` parte il wizard; con credenziali vere: connessione reale e config scritta (smoke opzionale documentato) — il wizard parte verificato nello stesso smoke pty (welcome mostrato con config assente, skip → demo); il percorso "credenziali vere" resta smoke opzionale documentato: non eseguibile senza credenziali reali, coperto dai test (TestWizardSuccessBuildsRealBackends: factory con credenziali verificate, config+keyring fake, identity impostata)
+- [x] Conformance: composer usa SOLO msg.Outgoing + Sender interface (nessun import smtp in app/ui) — verificato via grep: nessun import di `internal/mail/smtp` in `internal/app` e `internal/ui` (solo menzioni nei commenti di wizard.go sul wiring del main)
 
 ## Prossimo piano
 

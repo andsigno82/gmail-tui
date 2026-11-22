@@ -3,7 +3,7 @@
 // risolvibile, o `gmail-tui login`). Il radice delega TUTTI i tasti al wizard
 // e NON avvia load/feed finché il wizard non completa (CompletedMsg):
 //   - skip (`s`) → demo mode con il seed di app.DemoStore() (store E sender
-//     un solo oggetto) e banner;
+//     un solo oggetto), identity mittente demo e banner;
 //   - successo → la factory (BackendFactory, iniettata dal main: imap+smtp
 //     preset Gmail) costruisce i backend reali con le credenziali VERIFICATE
 //     dal wizard, l'identity viene impostata (firma vuota al primo setup) e
@@ -60,9 +60,12 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 
 	if ev.Skipped {
 		// Demo mode col seed (Piano 4, Task 5): store e sender sono UN solo
-		// Mock popolato — chi clona il repo vede l'app viva.
+		// Mock popolato — chi clona il repo vede l'app viva. L'identity è il
+		// destinatario dei seed ("tu@example.com"): senza SetIdentity il
+		// composer aperto col primo `c` nasce col campo Da vuoto.
 		mk := DemoStore()
 		m.store, m.sender = mk, mk
+		m.SetIdentity("tu@example.com", "")
 		m.SetDemoBanner()
 	} else {
 		// Setup riuscito: backend reali con le credenziali verificate. La
