@@ -232,12 +232,23 @@ func (m Model) FullHelp() [][]key.Binding {
 // SIGINT esterna arriva come tea.InterruptMsg e NON passa da Update — in quel
 // percorso il ctx resta aperto fino all'uscita del processo.
 func (m Model) quitCmd() tea.Cmd {
-	pend, sender, st, tmp := m.undo, m.sender, m.store, m.draftTmp
+	pend, sender, st, tmp, exit := m.undo, m.sender, m.store, m.draftTmp, m.exit
 	return func() tea.Msg {
 		if pend != nil && pend.claim() {
 			// Piano 9, Task 9 (D9-I): l'invio in attesa parte prima dell'uscita,
-			// con il budget SendTimeout (deliverSend).
-			_ = deliverSend(sender, st, pend)
+			// con il budget SendTimeout (deliverSend). Review A: l'esito va su stderr
+			// dopo la chiusura della TUI (runProgram); il messaggio resta in Bozze.
+			res := deliverSend(sender, st, pend)
+			if res.err != nil {
+				note := "invio non riuscito: " + res.err.Error()
+				if res.retry != nil && res.retry.draftID != "" {
+					note += " — messaggio rimasto in Bozze"
+				}
+				exit.add(note)
+			}
+			if res.draftErr != nil {
+				exit.add("bozza non rimossa da Bozze: " + res.draftErr.Error())
+			}
 			removeTmp(pend.tmp)
 		}
 		removeTmp(tmp) // uscita: nessuna directory di allegati lasciata sul disco

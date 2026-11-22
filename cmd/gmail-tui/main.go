@@ -174,9 +174,16 @@ func runTUI(args []string, forceWizard bool) int {
 // necessario.
 func runProgram(m tea.Model) int {
 	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
+	final, err := p.Run()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		return 1
+	}
+	// Piano 9, review A: esiti dell'invio in uscita (il messaggio resta in Bozze se fallito).
+	if fm, ok := final.(interface{ ExitMessages() []string }); ok {
+		for _, note := range fm.ExitMessages() {
+			fmt.Fprintln(os.Stderr, note)
+		}
 	}
 	return 0
 }

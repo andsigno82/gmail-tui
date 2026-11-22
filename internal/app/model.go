@@ -90,7 +90,8 @@ type Model struct {
 	book       *contacts.Book
 	addrCmd    []string
 	addrWarned bool
-	suggestSeq int // ultima query del composer: il debounce del comando esterno (review G)
+	suggestSeq int      // ultima query del composer: il debounce del comando esterno (review G)
+	exit       *exitLog // esiti in uscita da stampare su stderr dopo la TUI (review A)
 	clock      func() time.Time
 
 	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
@@ -193,6 +194,7 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	}
 	memBook, _ := contacts.Open("") // Piano 9: rubrica in memoria; il main la collega al file
 	return Model{
+		exit: &exitLog{},
 		book: memBook, clock: time.Now,
 		store:      store,
 		sender:     sender,
@@ -533,13 +535,19 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// (ctrl+s dopo un errore riapre la conferma).
 			m.sending = false
 		}
-		if ev.err != nil && ev.retry != nil && m.view != viewComposer {
-			// Piano 9, Task 9 (D9-I): invio fallito dopo la finestra: il composer torna
-			// con la bozza, così il messaggio non va perso.
-			m.reopenPending(ev.retry)
-		}
 		if ev.err != nil {
-			cmd := m.toast.Push(toast.Error, fmt.Sprintf("%s: %v", ev.label, ev.err))
+			text := fmt.Sprintf("%s: %v", ev.label, ev.err)
+			if ev.retry != nil {
+				// Piano 9, Task 9 (D9-I) e review A: invio fallito dopo la finestra. Il
+				// composer torna con la bozza (copia in Bozze). Se nel frattempo ne è
+				// stato aperto uno nuovo, non lo si sovrascrive: il messaggio resta in Bozze.
+				if m.view != viewComposer {
+					m.reopenPending(ev.retry)
+				} else if ev.retry.draftID != "" {
+					text += " — messaggio rimasto in Bozze"
+				}
+			}
+			cmd := m.toast.Push(toast.Error, text)
 			return m, cmd
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
@@ -790,6 +798,20 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.openComposer(cfg)
 		return m, nil
+
+	case sendSaved:
+		// Piano 9, review A: il messaggio è in Bozze (o il salvataggio è fallito e
+		// l'invio resta possibile): parte la finestra di annullamento.
+		p := m.undo
+		if p == nil || p.seq != ev.seq {
+			return m, nil
+		}
+		armCmd := m.armUndo(p)
+		if ev.err != nil {
+			warn := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata in Bozze: %v — invio comunque possibile", ev.err))
+			return m, tea.Batch(armCmd, warn)
+		}
+		return m, armCmd
 
 	case draftSaved:
 		// Piano 9, Task 5 (D9-A): bozza salvata → composer chiuso, torna la vista

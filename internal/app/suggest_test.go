@@ -98,7 +98,7 @@ func TestSentMessageBumpsRecipients(t *testing.T) {
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "anna@x.dev", Cc: "carlo@x.dev", Subject: "s", Body: "c"}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, done := flushUndo(t, mm)
 	mm, _ = step(mm, done)
 	if got := mm.book.Suggest("anna@x.dev", 5); len(got) != 1 || got[0].Count != 1 {

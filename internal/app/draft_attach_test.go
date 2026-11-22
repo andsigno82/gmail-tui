@@ -185,7 +185,7 @@ func TestSendAfterFailedDownloadKeepsOriginal(t *testing.T) {
 	m, mk, ref := attachedDraftMock(t, false)
 	mm := resumeFlow(t, m, ref)
 	mm = sendRequested(t, mm)
-	mm, _ = step(mm, pressKey("s"))
+	mm, _ = step(mm, pressKey("s")) // nessun salvataggio con keep: la finestra parte subito
 	mm, done := flushUndo(t, mm)
 	mm, _ = step(mm, done)
 	if !done.draftKept {

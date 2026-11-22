@@ -260,6 +260,11 @@ func sendCmd(sender Sender, st mail.MailStore, p *pendingSend) tea.Cmd {
 // rimozione non annulla l'invio: torna in draftErr (D9-E). Usata da sendCmd e dal
 // flush in uscita (quitCmd).
 func deliverSend(sender Sender, st mail.MailStore, p *pendingSend) opDone {
+	if !awaitSave(p) {
+		// Piano 9, review A: senza il salvataggio confermato non si invia e non si
+		// tocca Bozze (draftID non è sicuro): nessun retry, nessun duplicato.
+		return opDone{label: "invio", err: errSaveUnconfirmed, send: true}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
 	defer cancel()
 	if err := sender.Send(ctx, p.out); err != nil {

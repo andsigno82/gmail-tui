@@ -721,7 +721,7 @@ func TestSendConfirmSendsExactOutgoing(t *testing.T) {
 		To: "anna@x.dev, bob@y.dev", Cc: "cc@x.dev", Subject: "oggetto", Body: "corpo",
 		Attachments: []string{"/tmp/a.pdf", "/tmp/b.pdf"},
 	}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if len(rec.calls) != 0 {
 		t.Fatalf("invio durante la finestra di annullamento: %d chiamate, voglio 0", len(rec.calls))
 	}
@@ -779,7 +779,7 @@ func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "anna@x.dev", Subject: "s", Body: "c"}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, done := flushUndo(t, mm)
 	mm, cmd2 := step(mm, done)
 	if cmd2 == nil {
@@ -813,7 +813,7 @@ func TestSendErrorStaysInComposerWithErrorToast(t *testing.T) {
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 	}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, done := flushUndo(t, mm)
 	mm, cmd2 := step(mm, done)
 	if cmd2 != nil {
@@ -880,7 +880,7 @@ func TestSendDemoMockRecordsSent(t *testing.T) {
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 		Attachments: []string{"/tmp/a.pdf"},
 	}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, _ = flushUndo(t, mm)
 	if len(mk.Sent) != 1 {
 		t.Fatalf("Mock.Sent = %d messaggi, voglio 1", len(mk.Sent))
@@ -925,7 +925,7 @@ func TestSendInFlightCtrlSDropped(t *testing.T) {
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 	}))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if mm.undo == nil {
 		t.Fatal("s: nessun invio in attesa della finestra")
 	}
@@ -960,7 +960,7 @@ func TestSendInFlightCtrlSDropped(t *testing.T) {
 		t.Errorf("pending dopo ctrl+s = %d, voglio 1 (l'invio resta l'unico)", mm.pending)
 	}
 	// Un secondo `s` (ora testo nel campo, conferma mai aperta) non invia.
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if len(rec.calls) != 1 {
 		t.Errorf("sender dopo ctrl+s + s = %d chiamate, voglio 1 (no doppia email)", len(rec.calls))
 	}
@@ -1027,7 +1027,7 @@ func TestSendRequestedDiscardOpenDropped(t *testing.T) {
 		t.Error("il modale discard deve restare aperto (messaggio scartato)")
 	}
 	// `s` scarta la bozza: back alla vista di provenienza (inbox).
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if mm.currentView() != viewInbox {
 		t.Errorf("vista dopo lo scarto = %v, voglio inbox", mm.currentView())
 	}
@@ -1035,7 +1035,7 @@ func TestSendRequestedDiscardOpenDropped(t *testing.T) {
 		t.Error("confirmSend deve restare false dopo lo scarto")
 	}
 	// I tasti dell'inbox funzionano normalmente: `s` è stella, NON invia.
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if mm.confirmSend || mm.currentView() != viewInbox {
 		t.Errorf("s nell'inbox dopo lo scarto: confirm=%v vista=%v, voglio false/inbox", mm.confirmSend, mm.currentView())
 	}

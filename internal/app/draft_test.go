@@ -200,7 +200,7 @@ func TestSendFromResumedDraftRemovesFromDrafts(t *testing.T) {
 	mm, cmd := step(mm, inboxSelected(draftMsg(1, nil, "", "").Ref))
 	mm = drainOp(t, mm, cmd)
 	mm = sendRequested(t, mm)
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, _ = flushUndo(t, mm)
 	if len(rec.calls) != 1 {
 		t.Fatalf("invii = %d, voglio 1", len(rec.calls))
@@ -219,7 +219,7 @@ func TestSendFailureKeepsDraft(t *testing.T) {
 	mm, cmd := step(mm, inboxSelected(draftMsg(1, nil, "", "").Ref))
 	mm = drainOp(t, mm, cmd)
 	mm = sendRequested(t, mm)
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	mm, _ = flushUndo(t, mm)
 	if got := inDrafts(mk); len(got) != 1 {
 		t.Errorf("bozze dopo invio fallito = %v, voglio la bozza intatta", got)
@@ -234,7 +234,7 @@ func confirmSendAndUndoWindow(t *testing.T, sender Sender) (Model, *mail.Mock) {
 	m, mk := senderModel(t, sender)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, writing(mm))
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	return mm, mk
 }
 
