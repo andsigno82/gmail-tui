@@ -13,3 +13,8 @@ linters:
         - fmt.Fprint
         - fmt.Fprintf
         - fmt.Fprintln
+  exclusions:
+    # Piano 8, Task 1 (D8-1): copia in-tree di go-imap, da non lintare.
+    # Elenco patch e procedura di riallineamento: third_party/go-imap/PATCHES.md.
+    paths:
+      - third_party

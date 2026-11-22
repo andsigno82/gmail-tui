@@ -47,3 +47,7 @@ require (
 	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
 )
+
+// Piano 8, Task 1 (D8-1): copia in-tree di go-imap con patch Gmail X-GM-EXT-1.
+// Procedura e elenco patch: third_party/go-imap/PATCHES.md.
+replace github.com/emersion/go-imap/v2 => ./third_party/go-imap

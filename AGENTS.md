@@ -46,6 +46,10 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
    ```sh
    grep -rn "go-imap" internal --include="*.go" -l | grep -v internal/mail/imap   # must print nothing
    ```
+   Eccezione dichiarata (Piano 8, D8-1): `third_party/go-imap/` è la copia in-tree
+   patchata di go-imap, agganciata con `replace` in `go.mod`. È fuori da `internal/`,
+   quindi la grep non la vede; è esclusa dal lint (`.golangci.yml`). Resta identica a
+   upstream salvo i file elencati in `third_party/go-imap/PATCHES.md`.
 2. **MailStore ops are serialized** (one at a time, single IMAP connection).
    The IMAP backend queues ops through its `idleGate` (interrupts IDLE safely).
    Read the contract comments in `store.go` before changing `Watch`, `Archive`,
