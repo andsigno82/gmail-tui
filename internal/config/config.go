@@ -51,6 +51,9 @@ type Config struct {
 	Theme           string `toml:"theme"`
 	Layout          string `toml:"layout"`
 	PreviewMarkRead string `toml:"preview_mark_read"`
+	// AddressBookCmd (Piano 9, Task 10, D9-G): comando esterno dei contatti per
+	// l'autocompletamento di A/Cc, eseguito senza shell; "%s" = la query.
+	AddressBookCmd []string `toml:"address_book_cmd"`
 }
 
 // Default restituisce la configurazione di fabbrica (Piano 7.2, Task 2: layout

@@ -159,7 +159,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestLookupPassesQueryAsArgument` (helper process: l'argomento arriva intatto, anche con spazi e `;`); `TestLookupParsesTabSeparated`; `TestLookupTimeoutKillsProcess`; `TestLookupNonZeroExitIsError`.
 
-- [ ] RED, implementazione, commit `feat(contacts): comando esterno address_book_cmd senza shell (Piano 9, Task 10)`.
+- [x] RED, implementazione, commit `feat(contacts): comando esterno address_book_cmd senza shell (Piano 9, Task 10)`.
 
 ## Task 11: suggerimenti nel composer (UI)
 
