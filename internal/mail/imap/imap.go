@@ -312,6 +312,29 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		return nil, err
 	}
 
+	if q.HasAttachment {
+		// Piano 14, Wave 4 review (punto 2): post-filtro best-effort come Search (contratto
+		// mail.MailStore), prima della paginazione. Il gate è già detenuto:
+		// filterWithAttachment usa fetchMessage(heldGate=true).
+		refs, err := s.fetchRefs(mailbox, uids)
+		if err != nil {
+			return nil, err
+		}
+		refs, err = s.filterWithAttachment(ctx, refs)
+		if err != nil {
+			return nil, err
+		}
+		limit := pg.Limit
+		if limit == 0 {
+			limit = defaultPageLimit
+		}
+		start, end := pageWindow(len(refs), pg.Offset, limit)
+		if start >= end {
+			return nil, nil
+		}
+		return refs[start:end], nil
+	}
+
 	limit := pg.Limit
 	if limit == 0 {
 		limit = defaultPageLimit

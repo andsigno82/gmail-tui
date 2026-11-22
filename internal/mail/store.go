@@ -9,13 +9,17 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
-// ErrScanLimit segnala che ListConversations ha raggiunto il tetto di messaggi letti
-// prima di riempire la pagina, con altri messaggi da leggere: le righe restituite
-// sono valide ma la lista è limitata, non esaurita (Piano 8, review punto 3).
 // ErrNotConnected segnala un'operazione su uno store senza connessione (Piano 14,
 // Wave 4): il MCP lo riconosce con errors.Is per azzerare la sessione.
 var ErrNotConnected = errors.New("store non connesso")
 
+// ErrMessageNotFound è wrappato quando un messaggio non esiste più (uid assente
+// o sparito tra SEARCH e FETCH). Piano 14, Wave 4 review: condiviso con il MCP.
+var ErrMessageNotFound = errors.New("messaggio inesistente")
+
+// ErrScanLimit segnala che ListConversations ha raggiunto il tetto di messaggi letti
+// prima di riempire la pagina, con altri messaggi da leggere: le righe restituite
+// sono valide ma la lista è limitata, non esaurita (Piano 8, review punto 3).
 var ErrScanLimit = errors.New("lista limitata: scansione interrotta al tetto di messaggi")
 
 // Page è la paginazione di ListMessages (Limit 0 = default 50).

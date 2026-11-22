@@ -37,6 +37,9 @@ const (
 	maxThreadMessages = 20
 	// maxLabels limita le label utente di un messaggio o di una conversazione.
 	maxLabels = 20
+	// messageOverhead riserva i byte JSON di ogni messaggio (chiavi, indentazione):
+	// non contati, con 20 messaggi superavano 64 KB (Wave 4 review, punto 1).
+	messageOverhead = 1024
 )
 
 // preamble spiega all'agente come trattare il blocco (Piano 14, Task 4).
@@ -166,14 +169,15 @@ func idStr(v uint64) string {
 	return strconv.FormatUint(v, 10)
 }
 
-// labelList limita e sanifica le label utente (Piano 14, Wave 4).
-func labelList(xs []string) []string {
+// labelSet limita e sanifica le label utente a maxLabels e restituisce quante
+// ne ha omesse (labels_omitted), ovunque compaiano (Wave 4 review, punto 3).
+func labelSet(xs []string) ([]string, int) {
 	n := min(len(xs), maxLabels)
 	out := make([]string, 0, n)
 	for _, x := range xs[:n] {
 		out = append(out, field(x))
 	}
-	return out
+	return out, len(xs) - n
 }
 
 // takeFields aggiunge al budget i campi (destinatari, label) finché ci stanno; il
@@ -209,10 +213,13 @@ func takeAttachments(atts []msg.Attachment, b *budget) (out []map[string]any, om
 func messageFields(m *msg.Message, b *budget) (map[string]any, bool) {
 	idF, fromF, subjF, dateF := field(string(m.Ref.ID)), field(m.Ref.From), field(m.Ref.Subject), fmtDate(m.Ref.Date)
 	gmailID, threadID := idStr(m.Ref.GmailID), idStr(m.Ref.ThreadID)
+	b.spend(messageOverhead)
 	for _, v := range []string{idF, fromF, subjF, dateF, gmailID, threadID} {
 		b.spend(jsonLen(v))
 	}
-	labels, labOmit := takeFields(m.Ref.Labels, b)
+	labels, labCap := labelSet(m.Ref.Labels)
+	labels, labOmit := takeFields(labels, b)
+	labOmit += labCap
 	to, toOmit := takeFields(m.To, b)
 	cc, ccOmit := takeFields(m.Cc, b)
 	atts, attOmit := takeAttachments(m.Attachments, b)
@@ -230,6 +237,7 @@ func messageFields(m *msg.Message, b *budget) (map[string]any, bool) {
 		"attachments_omitted": attOmit,
 		"recipients_omitted":  toOmit + ccOmit,
 	}
+	item["labels_omitted"] = labOmit
 	return item, labOmit+toOmit+ccOmit+attOmit > 0
 }
 
@@ -288,36 +296,40 @@ func gmailMode(r Reader) bool {
 
 // msgRow è la riga di lista di un messaggio (Piano 14, Wave 4: ID e label).
 func msgRow(r msg.MessageRef) map[string]any {
+	labels, lo := labelSet(r.Labels)
 	return map[string]any{
-		"id":        field(string(r.ID)),
-		"gmail_id":  idStr(r.GmailID),
-		"thread_id": idStr(r.ThreadID),
-		"from":      field(r.From),
-		"subject":   field(r.Subject),
-		"date":      fmtDate(r.Date),
-		"unread":    r.Unread,
-		"starred":   r.Starred,
-		"labels":    labelList(r.Labels),
+		"id":             field(string(r.ID)),
+		"gmail_id":       idStr(r.GmailID),
+		"thread_id":      idStr(r.ThreadID),
+		"from":           field(r.From),
+		"subject":        field(r.Subject),
+		"date":           fmtDate(r.Date),
+		"unread":         r.Unread,
+		"starred":        r.Starred,
+		"labels":         labels,
+		"labels_omitted": lo,
 	}
 }
 
 // convRow è la riga di una conversazione: il messaggio più recente più conteggio e stato.
 func convRow(c mail.Conversation) map[string]any {
+	labels, lo := labelSet(c.Labels)
 	r := c.Latest
 	tid := c.ThreadID
 	if tid == 0 {
 		tid = r.ThreadID
 	}
 	return map[string]any{
-		"id":        field(string(r.ID)),
-		"gmail_id":  idStr(r.GmailID),
-		"thread_id": idStr(tid),
-		"count":     c.Count,
-		"from":      field(r.From),
-		"subject":   field(r.Subject),
-		"date":      fmtDate(r.Date),
-		"unread":    c.Unread,
-		"labels":    labelList(c.Labels),
+		"id":             field(string(r.ID)),
+		"gmail_id":       idStr(r.GmailID),
+		"thread_id":      idStr(tid),
+		"count":          c.Count,
+		"from":           field(r.From),
+		"subject":        field(r.Subject),
+		"date":           fmtDate(r.Date),
+		"unread":         c.Unread,
+		"labels":         labels,
+		"labels_omitted": lo,
 	}
 }
 
@@ -509,6 +521,12 @@ func (s *session) readThread(ctx context.Context, _ *mcp.CallToolRequest, in thr
 	msgs := make([]map[string]any, 0, len(refs))
 	for i, ref := range refs {
 		m, err := s.r.FetchMessage(ctx, ref.ID)
+		if errors.Is(err, mail.ErrMessageNotFound) {
+			// Sparito tra ThreadMessages e FetchMessage: saltato e contato (Wave 4 review, punto 5).
+			omitted++
+			truncated = true
+			continue
+		}
 		if err != nil {
 			return nil, nil, s.fail(err)
 		}
@@ -524,10 +542,23 @@ func (s *session) readThread(ctx context.Context, _ *mcp.CallToolRequest, in thr
 		}
 		msgs = append(msgs, item)
 	}
-	return respond(map[string]any{
-		"thread_id":        idStr(tid),
-		"messages":         msgs,
-		"messages_omitted": omitted,
-		"truncated":        truncated,
-	})
+	for {
+		res, _, err := respond(map[string]any{
+			"thread_id":        idStr(tid),
+			"messages":         msgs,
+			"messages_omitted": omitted,
+			"truncated":        truncated,
+		})
+		if err == nil {
+			return res, nil, nil
+		}
+		if len(msgs) == 0 {
+			return nil, nil, err
+		}
+		// Rete di sicurezza (Wave 4 review, punto 1): scarta il messaggio più vecchio
+		// e lo dichiara, invece di far fallire la lettura del thread.
+		msgs = msgs[1:]
+		omitted++
+		truncated = true
+	}
 }

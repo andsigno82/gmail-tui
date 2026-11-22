@@ -5,7 +5,6 @@ package imap
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"os"
 
@@ -13,12 +12,13 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/jhillyerd/enmime"
 
+	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // ErrMessageNotFound è wrappato nell'errore ritornato quando il fetch di un
 // messaggio non produce dati (uid inesistente nella mailbox).
-var ErrMessageNotFound = errors.New("messaggio inesistente")
+var ErrMessageNotFound = mail.ErrMessageNotFound // sentinel del contratto (Piano 14, Wave 4 review)
 
 // FetchMessage restituisce il messaggio completo, cache-first:
 //  1. id.Split() → mailbox+uid;

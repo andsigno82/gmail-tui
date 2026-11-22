@@ -110,7 +110,7 @@ func (m *Mock) FetchMessage(_ context.Context, id msg.MessageID) (*msg.Message, 
 			return &cp, nil
 		}
 	}
-	return nil, fmt.Errorf("messaggio %s non trovato", id)
+	return nil, fmt.Errorf("messaggio %s non trovato: %w", id, ErrMessageNotFound)
 }
 
 // Search implementa MailStore: stesso filtro di ListMessages, senza pagine.
@@ -266,7 +266,7 @@ func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) error {
 		}
 		mm := m.find(id)
 		if mm == nil {
-			return fmt.Errorf("messaggio %s non trovato", id)
+			return fmt.Errorf("messaggio %s non trovato: %w", id, ErrMessageNotFound)
 		}
 		targets = append(targets, mm)
 	}
