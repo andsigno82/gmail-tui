@@ -302,13 +302,14 @@ func TestDraftMarkdown(t *testing.T) {
 	}
 }
 
-// TestDraftCcOnlyWhenVisible: Cc nascosto NON finisce nella bozza (l'utente
-// non lo vede → non va in invio silenziosamente); mostrato, sì.
-func TestDraftCcOnlyWhenVisible(t *testing.T) {
+// TestDraftCarriesCcEvenWhenHidden (Piano 9, review D): un Cc compilato va nella
+// bozza anche con il campo nascosto (ctrl+e): la conferma d'invio lo elenca, e
+// il destinatario scritto non si perde in silenzio.
+func TestDraftCarriesCcEvenWhenHidden(t *testing.T) {
 	m := newModel(t, ComposerConfig{})
 	m.cc.SetValue("cc@x.dev")
-	if d := m.Draft(); len(d.Cc) != 0 {
-		t.Errorf("Cc nascosto in Draft = %v, voglio vuoto", d.Cc)
+	if d := m.Draft(); len(d.Cc) != 1 || d.Cc[0] != "cc@x.dev" {
+		t.Errorf("Cc nascosto in Draft = %v, voglio [cc@x.dev]", d.Cc)
 	}
 	mm, _ := step(m, pressKey("ctrl+e"))
 	if d := mm.Draft(); len(d.Cc) != 1 || d.Cc[0] != "cc@x.dev" {

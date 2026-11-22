@@ -46,17 +46,17 @@ func TestCcnHiddenLeavesFocusOnTo(t *testing.T) {
 	}
 }
 
-// TestDraftCarriesBccOnlyWhenVisible: Ccn nel Draft solo se visibile.
-func TestDraftCarriesBccOnlyWhenVisible(t *testing.T) {
+// TestDraftCarriesBccWhenHiddenToo: Ccn nel Draft se compilato, visibile o no.
+func TestDraftCarriesBccWhenHiddenToo(t *testing.T) {
 	// Un Ccn precompilato rende Cc/Ccn visibili (ccVisible in New): la bozza lo porta.
 	m := newModel(t, ComposerConfig{To: "a@x.dev", Bcc: "b@x.dev"})
 	if d := m.Draft(); len(d.Bcc) != 1 || d.Bcc[0] != "b@x.dev" {
 		t.Errorf("Draft.Bcc = %v con Ccn visibile, voglio [b@x.dev]", d.Bcc)
 	}
-	// Nascosto con ctrl+e: l'utente non lo vede, non finisce nella bozza.
+	// Nascosto con ctrl+e: il Ccn compilato resta nella bozza (Piano 9, review D).
 	m, _ = step(m, pressKey("ctrl+e"))
-	if d := m.Draft(); len(d.Bcc) != 0 {
-		t.Errorf("Draft.Bcc = %v con Ccn nascosto, voglio vuoto", d.Bcc)
+	if d := m.Draft(); len(d.Bcc) != 1 || d.Bcc[0] != "b@x.dev" {
+		t.Errorf("Draft.Bcc = %v con Ccn nascosto, voglio [b@x.dev]", d.Bcc)
 	}
 }
 

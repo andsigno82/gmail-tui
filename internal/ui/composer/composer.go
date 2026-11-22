@@ -348,8 +348,8 @@ func (m *Model) toggleCc() tea.Cmd {
 // quotato non spezza; un campo non parsabile resta intero e la conferma lo
 // rifiuta citando "A"/"Cc"), oggetto trimmato, corpo tal
 // quale e firma appended stile pop corpo + "\n\n--\n" + firma (solo se la
-// firma non è vuota). Il Cc nascosto NON finisce nella bozza (l'utente non
-// lo vede → non va in invio silenziosamente).
+// firma non è vuota). Cc e Ccn compilati ci sono anche con i campi nascosti
+// (Piano 9, review D): la conferma d'invio li elenca, nulla si perde in silenzio.
 func (m Model) Draft() msg.Outgoing {
 	out := msg.Outgoing{
 		From:        m.from,
@@ -359,10 +359,10 @@ func (m Model) Draft() msg.Outgoing {
 		Attachments: append([]string(nil), m.attachments...),
 		Markdown:    true,
 	}
-	if m.ccVisible {
-		out.Cc = msg.ParseRecipientField(m.cc.Value())
-		out.Bcc = msg.ParseRecipientField(m.bcc.Value())
-	}
+	// Piano 9, review D: Cc e Ccn compilati entrano nella bozza anche con i campi
+	// nascosti (ctrl+e): la conferma d'invio li elenca, nessun destinatario si perde.
+	out.Cc = msg.ParseRecipientField(m.cc.Value())
+	out.Bcc = msg.ParseRecipientField(m.bcc.Value())
 	if m.signature != "" {
 		out.BodyText += "\n\n--\n" + m.signature
 	}
