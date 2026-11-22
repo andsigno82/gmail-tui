@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -34,6 +35,7 @@ func runMCP(args []string) int {
 		Username: cfg.Address,
 		Password: pw,
 	})
+	defer closeStoreLogged(store, os.Stderr, pw) // Piano 14, fix review 7
 	return serveMCP(store, []string{pw}, &mcp.StdioTransport{})
 }
 
@@ -46,4 +48,12 @@ func serveMCP(store mail.MailStore, secrets []string, tr mcp.Transport) int {
 		return 1
 	}
 	return 0
+}
+
+// closeStoreLogged chiude lo store e registra su stderr l'eventuale errore, con
+// i segreti redatti (Piano 14, fix review 7).
+func closeStoreLogged(c io.Closer, stderr io.Writer, secrets ...string) {
+	if err := c.Close(); err != nil {
+		fmt.Fprintf(stderr, "mcp: chiusura store: %v\n", mcpserver.Redact(err, secrets...))
+	}
 }

@@ -16,7 +16,7 @@ Setup, quality gates, commit style and PR rules: see
 must stay clean. Run without credentials: `go run ./cmd/gmail-tui` → wizard →
 `s` = demo mode.
 
-Toolchain: `go 1.26.0` floor (required by `charm.land/*/v2`), `toolchain go1.27.3`
+Toolchain: `go 1.26.0` floor (required by `charm.land/*/v2`), `toolchain go1.27.4`
 (pinned for a govulncheck-clean stdlib). CI uses Go 1.27.
 
 ## Layout
