@@ -71,6 +71,10 @@ type opDone struct {
 	closeComposer bool
 	send          bool
 	gone          []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
+	// localID/localRead: MarkRead riuscito su questo messaggio; lo stato di lettura
+	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
+	localID   msg.MessageID
+	localRead bool
 }
 
 // changeEvt è un evento push del feed Watch.

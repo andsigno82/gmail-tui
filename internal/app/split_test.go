@@ -1,6 +1,7 @@
 package app
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -355,6 +356,98 @@ func TestSplitHelpShowsFocusKey(t *testing.T) {
 }
 
 // hasOpDone dice se tra i Msg c'è un esito di mutazione con quell'etichetta.
+// Piano 7.2, fix review: j poi k entro 150 ms: quando il timer del ritorno scatta
+// l'anteprima di A è già caricata; il segna-come-letto va riarmato comunque.
+func TestSplitReturnToLoadedPreviewRearmsMarkRead(t *testing.T) {
+	m := feedPreview(t, splitModel(t, 140, 30))
+	m, _ = step(m, pressKey("j"))
+	m, _ = step(m, pressKey("k"))
+	if !m.previewReady() {
+		t.Fatal("precondizione: anteprima di A ancora caricata")
+	}
+	_, cmd := step(m, previewDue{tok: m.prevTok})
+	if cmd == nil {
+		t.Error("previewDue con anteprima già caricata: nessun timer di segna-come-letto")
+	}
+}
+
+// Piano 7.2, fix review: con il focus sull'anteprima `q` torna alla lista come
+// esc; non esce dall'app.
+func TestSplitQReturnsToList(t *testing.T) {
+	m := feedPreview(t, splitModel(t, 140, 30))
+	m, _ = step(m, pressKey("tab"))
+	if !m.focusPreview {
+		t.Fatal("precondizione: tab non ha dato il focus all'anteprima")
+	}
+	mm, cmd := step(m, pressKey("q"))
+	if mm.focusPreview {
+		t.Error("q con focus sull'anteprima: focus ancora sull'anteprima")
+	}
+	if hasQuit(cmd) {
+		t.Error("q con focus sull'anteprima esce dall'app")
+	}
+}
+
+// Piano 7.2, fix review: il segna-come-letto in anteprima aggiorna subito il
+// marcatore della riga in lista, senza aspettare un refresh.
+func TestSplitPreviewMarkReadUpdatesListRow(t *testing.T) {
+	m := splitModel(t, 120, 30)
+	m.SetPrefs(config.LayoutSplit, config.PreviewMarkReadImmediate)
+	tok := m.prevTok
+	mm, _ := step(m, previewDue{tok: tok})
+	mm, cmd := step(mm, fetchPreview(mm.store, tok, mm.prevRef.ID)())
+	for _, msg := range runCmd(cmd) {
+		mm, _ = step(mm, msg)
+	}
+	if ref, ok := mm.inbox.SelectedRef(); !ok || ref.Unread {
+		t.Errorf("riga in lista ancora non letta dopo il segna-come-letto in anteprima: %+v", ref)
+	}
+}
+
+// Piano 7.2, fix review: un click sulla colonna destra dà il focus all'anteprima;
+// due click sull'anteprima entro 500 ms aprono il thread a schermo intero.
+func TestSplitClickPreviewFocusesAndDoubleClickOpens(t *testing.T) {
+	m := feedPreview(t, splitModel(t, 140, 30))
+	click := tea.MouseClickMsg{X: 100, Y: 3, Button: tea.MouseLeft}
+	mm, _ := step(m, click)
+	if !mm.focusPreview {
+		t.Fatal("click sulla colonna destra: focus non sull'anteprima")
+	}
+	mm, cmd := step(mm, click)
+	msgs := runCmd(cmd)
+	sel, ok := firstMsg[inbox.SelectedMsg](msgs)
+	if !ok || sel.Ref.ID != m.prevRef.ID {
+		t.Errorf("doppio click sull'anteprima: msgs=%v, voglio SelectedMsg del messaggio in anteprima", msgs)
+	}
+}
+
+// firstMsg restituisce il primo messaggio del tipo T tra quelli dati.
+func firstMsg[T any](ms []tea.Msg) (T, bool) {
+	var zero T
+	for _, msg := range ms {
+		if v, ok := msg.(T); ok {
+			return v, true
+		}
+	}
+	return zero, false
+}
+
+// Piano 7.2, fix review: un a capo di padding a sinistra separa il testo
+// dell'anteprima dal separatore verticale.
+func TestSplitPreviewHasLeftPadding(t *testing.T) {
+	m := feedPreview(t, splitModel(t, 140, 30))
+	ansiRE := regexp.MustCompile("\x1b\\[[0-9;]*m")
+	for _, row := range strings.Split(ansiRE.ReplaceAllString(m.splitView(), ""), "\n") {
+		i := strings.Index(row, "│")
+		if i < 0 {
+			continue
+		}
+		if rest := row[i+len("│"):]; !strings.HasPrefix(rest, " ") {
+			t.Fatalf("riga senza padding dopo il separatore: %q", row)
+		}
+	}
+}
+
 func hasOpDone(ms []tea.Msg, label string) bool {
 	for _, m := range ms {
 		if o, ok := m.(opDone); ok && o.label == label {

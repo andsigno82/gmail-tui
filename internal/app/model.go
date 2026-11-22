@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -87,6 +88,9 @@ type Model struct {
 	// messaggio sotto il cursore mostrato a destra (prevRef, valido con prevHas)
 	// e token dei timer/fetch dell'anteprima (prevTok, split.go).
 	focusPreview bool
+	// lastPreviewClick: ultimo click sinistro sulla colonna dell'anteprima (doppio
+	// click → thread a schermo intero, Piano 7.2, fix review).
+	lastPreviewClick time.Time
 	prevRef      msg.MessageRef
 	prevHas      bool
 	prevTok      int
@@ -477,6 +481,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = statusMsg{text: ev.label, isOK: true}
+		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
+		localCmd := m.setLocalRead(ev.localID, ev.localRead)
 		if ev.closeComposer {
 			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
 			// torna all'inbox (come da piano); il feedback "inviato" resta in
@@ -493,9 +499,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// Piano 7, fix code-review 3: requestRefresh muta m (ricevitore puntatore):
 			// va chiamato prima di restituire m, mai nella stessa return.
 			follow := m.requestRefresh(ev.deep)
-			return m, follow
+			return m, tea.Batch(localCmd, follow)
 		}
-		return m, nil
+		return m, localCmd
 
 	case watchStarted:
 		// Apertura del feed Watch (Task 8): si custodisce il canale e si
@@ -607,8 +613,14 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	case previewDue:
 		// Piano 7.2, Task 4: cursore fermo da 150 ms → fetch dell'anteprima, salvo
 		// token stantio o messaggio già caricato (A → B → A non rifetcha).
-		if ev.tok != m.prevTok || !m.previewVisible() || m.previewReady() {
+		if ev.tok != m.prevTok || !m.previewVisible() {
 			return m, nil
+		}
+		if m.previewReady() {
+			// Piano 7.2, fix review: anteprima già caricata (ritorno sullo stesso
+			// messaggio entro 150 ms): nessun fetch, ma il segna-come-letto va
+			// riarmato, altrimenti il messaggio resta non letto.
+			return m.previewMarkRead(ev.tok)
 		}
 		m.pending++
 		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef.ID), m.spinner.Tick)
@@ -904,7 +916,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// lista (non esce dall'app) e invio apre a schermo intero il messaggio
 			// in anteprima. Il resto segue il routing sotto.
 			switch ev.String() {
-			case "esc":
+			case "esc", "q":
+				// Piano 7.2, fix review: q torna alla lista come esc (non esce dall'app).
 				m.focusPreview = false
 				return m, nil
 			case "enter":
@@ -1054,6 +1067,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// fanno nulla, e il separatore conta come anteprima.
 			if m.splitOn() {
 				if list, _ := splitWidths(m.width); mouseX(ev) >= list {
+					// Piano 7.2, fix review: click sinistro sull'anteprima = focus; doppio
+					// click = thread a schermo intero (previewClick).
+					if click, ok := ev.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+						return m.previewClick()
+					}
 					if _, wheel := ev.(tea.MouseWheelMsg); wheel && m.previewReady() {
 						var cmd tea.Cmd
 						m.thread, cmd = m.thread.Update(ev)

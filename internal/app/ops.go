@@ -257,7 +257,7 @@ func markRead(st mail.MailStore, id msg.MessageID, read, refresh bool) tea.Cmd {
 	}
 	return func() tea.Msg {
 		err := st.MarkRead(context.Background(), []msg.MessageID{id}, read)
-		return opDone{label: label, err: err, refresh: refresh}
+		return opDone{label: label, err: err, refresh: refresh, localID: id, localRead: read}
 	}
 }
 

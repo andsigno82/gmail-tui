@@ -19,6 +19,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/inbox"
 )
 
 // Parametri della vista a due colonne (Piano 7.2, Task 4).
@@ -28,6 +29,7 @@ const (
 	splitSepWidth        = 1                      // colonne del separatore verticale
 	previewLoadDelay     = 150 * time.Millisecond // cursore fermo prima del fetch dell'anteprima
 	previewMarkReadDelay = 2 * time.Second        // "dopo 2 secondi" (U5)
+	splitPreviewPad      = 1                      // colonne di padding a sinistra dell'anteprima (Piano 7.2, fix review)
 )
 
 // splitOn dice se la vista a due colonne è attiva: layout split e larghezza
@@ -112,7 +114,7 @@ func (m *Model) sizeThread() {
 	h := max(0, m.height-1)
 	if m.view != viewThread && m.splitOn() {
 		_, preview := splitWidths(m.width)
-		m.thread.SetSize(preview, h)
+		m.thread.SetSize(max(0, preview-splitPreviewPad), h)
 		return
 	}
 	m.thread.SetSize(m.width, h)
@@ -195,7 +197,7 @@ func (m Model) previewView(w, h int) string {
 	default:
 		body = m.styles.ListDate.Render("Caricamento messaggio…")
 	}
-	return lipgloss.NewStyle().MaxWidth(w).Height(h).MaxHeight(h).Render(body)
+	return lipgloss.NewStyle().PaddingLeft(splitPreviewPad).MaxWidth(w).Height(h).MaxHeight(h).Render(body)
 }
 
 // splitView compone le due colonne con il separatore verticale: il colore del
@@ -210,6 +212,37 @@ func (m Model) splitView() string {
 	}
 	sep := sepStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", h), "\n"))
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, sep, m.previewView(preview, h))
+}
+
+// previewClick gestisce il click sinistro sulla colonna dell'anteprima (Piano
+// 7.2, fix review): dà il focus all'anteprima; un secondo click entro la finestra
+// del doppio click apre il messaggio a schermo intero (come invio).
+func (m Model) previewClick() (Model, tea.Cmd) {
+	m.focusPreview = true
+	now := time.Now()
+	dbl := !m.lastPreviewClick.IsZero() && now.Sub(m.lastPreviewClick) <= inbox.DoubleClickWindow
+	if !dbl || !m.previewReady() {
+		m.lastPreviewClick = now
+		return m, nil
+	}
+	m.lastPreviewClick = time.Time{}
+	ref := m.thread.Ref()
+	return m, func() tea.Msg { return inbox.SelectedMsg{Ref: ref} }
+}
+
+// setLocalRead aggiorna subito il marcatore di lettura della riga in lista e del
+// ref in m.refs dopo un MarkRead riuscito (Piano 7.2, fix review). id vuoto = nessun
+// cambio.
+func (m *Model) setLocalRead(id msg.MessageID, read bool) tea.Cmd {
+	if id == "" {
+		return nil
+	}
+	for i := range m.refs {
+		if m.refs[i].ID == id {
+			m.refs[i].Unread = !read
+		}
+	}
+	return m.inbox.SetUnread(id, !read)
 }
 
 // mouseX è la colonna del terminale di un evento mouse (0 = bordo sinistro).
