@@ -43,8 +43,8 @@ func TestMockListMailboxesDefault(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListMailboxes: %v", err)
 	}
-	want := []Mailbox{{Name: "INBOX", Role: "inbox"}, {Name: "[Gmail]/Trash", Role: "trash"}}
-	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+	want := []Mailbox{{Name: "INBOX", Role: "inbox"}, {Name: "[Gmail]/Drafts", Role: "drafts"}, {Name: "[Gmail]/Trash", Role: "trash"}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Errorf("ListMailboxes = %+v, voglio %+v", got, want)
 	}
 

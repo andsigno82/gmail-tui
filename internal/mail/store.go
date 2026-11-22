@@ -163,6 +163,17 @@ type MailStore interface {
 	// non supporta né MOVE né UIDPLUS (mai EXPUNGE generico).
 	Trash(ctx context.Context, ids []msg.MessageID) error
 
+	// SaveDraft salva un messaggio RFC 5322 (raw) nella mailbox con ruolo "drafts"
+	// (Piano 9, Task 2), con flag \Draft, e restituisce l'ID della bozza. Con
+	// replace le bozze indicate sono rimosse DOPO l'APPEND (riscrittura di una
+	// bozza). Gli ID in replace devono stare nella cartella Bozze: altrimenti
+	// errore prima di qualunque modifica. Non e' esposto al server MCP (D9-J).
+	SaveDraft(ctx context.Context, raw []byte, replace []msg.MessageID) (msg.MessageID, error)
+
+	// DeleteDraft rimuove le bozze indicate dalla cartella Bozze (Piano 9, Task 2).
+	// Rifiuta senza agire gli ID che non stanno in Bozze.
+	DeleteDraft(ctx context.Context, ids []msg.MessageID) error
+
 	// Watch ritorna il canale degli eventi push del feed.
 	//
 	// Contratto:

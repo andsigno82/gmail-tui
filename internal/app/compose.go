@@ -25,7 +25,6 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/composer"
 	"github.com/andsigno82/gmail-tui/internal/ui/thread"
-	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 )
 
 // composeLoaded è il risultato del fetch per r/f nell'inbox
@@ -153,6 +152,9 @@ func (m *Model) openComposer(cfg composer.ComposerConfig) {
 	m.composeBack = m.view
 	m.discardOpen = false
 	m.draft = msg.Outgoing{}
+	m.draftID = "" // nuova bozza: nessuna copia in Bozze (Piano 9)
+	m.draftBusy = false
+	m.draftTmp, m.draftKeep = "", false
 	m.view = viewComposer
 	if m.width > 0 {
 		m.composer.SetSize(m.width, max(0, m.height-1))
@@ -163,6 +165,10 @@ func (m *Model) openComposer(cfg composer.ComposerConfig) {
 func (m *Model) closeComposer() {
 	m.composer = composer.Model{}
 	m.discardOpen = false
+	m.draftID = ""
+	m.draftBusy = false
+	m.draftTmp = ""
+	m.draftKeep = false
 	m.view = m.composeBack
 }
 
@@ -200,26 +206,6 @@ func fetchForCompose(st mail.MailStore, ref msg.MessageRef, forward bool) tea.Cm
 		full, err := st.FetchMessage(context.Background(), ref.ID)
 		return composeLoaded{ref: ref, m: full, err: err, forward: forward}
 	}
-}
-
-// handleComposerCancel traduce la richiesta di cancel del composer: corpo
-// vuoto → back diretto (non c'è nulla da perdere); corpo non vuoto → conferma
-// discard ("scartare la bozza? s/esc"). Il confronto usa il corpo GREZZO del
-// textarea (BodyText): la firma auto-appended non deve far sembrare "piena"
-// una bozza mai toccata.
-func (m *Model) handleComposerCancel() {
-	if strings.TrimSpace(m.composer.BodyText()) == "" {
-		m.closeComposer()
-		return
-	}
-	m.discardOpen = true
-}
-
-// discardDraft chiude il composer scartando la bozza (tasto `s` del modale).
-// Restituisce la cmd del toast di conferma (Piano 7.3, Task 2).
-func (m *Model) discardDraft() tea.Cmd {
-	m.closeComposer()
-	return m.toast.Push(toast.Info, "bozza scartata")
 }
 
 // --- invio (Piano 4, Task 4) --------------------------------------------------
@@ -261,30 +247,38 @@ func sendConfirmText(out msg.Outgoing) string {
 	return strings.Join(append(segs, "s conferma · esc annulla"), " — ")
 }
 
-// sendCmd consegna la bozza al Sender fuori dal loop UI: il ctx porta il
-// budget SendTimeout (const condivisa col sottocomando `send` — stessa semantica
-// anti-hang). L'esito torna come opDone: errore → {"invio", err} (la radice
-// resta nel composer con la bozza: toast d'errore col dettaglio, riprova possibile);
-// successo → {"inviato"} con closeComposer (ritorno inbox, Piano 4 Task 4) e
-// refresh (re-list silenzioso della lista corrente).
-func sendCmd(sender Sender, out msg.Outgoing) tea.Cmd {
-	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
-		defer cancel()
-		if err := sender.Send(ctx, out); err != nil {
-			return opDone{label: "invio", err: err, send: true}
-		}
-		return opDone{label: "inviato", refresh: true, closeComposer: true, send: true}
-	}
+// sendCmd consegna l'invio in attesa al Sender fuori dal loop UI (Piano 4, Task 4;
+// Piano 9, Task 7 e 9): l'esito torna come opDone. Errore → toast d'errore e il
+// composer si riapre con la bozza (retry). Successo → refresh e, se la bozza era
+// ripresa da Bozze, la si toglie da lì (D9-E).
+func sendCmd(sender Sender, st mail.MailStore, p *pendingSend) tea.Cmd {
+	return func() tea.Msg { return deliverSend(sender, st, p) }
 }
 
-// finishSend chiude il composer dopo l'invio riuscito: torna all'inbox (come
-// da piano — la vista di provenienza NON viene ripristinata, il feedback
-// "inviato" riguarda la lista) e azzera stato composer e bozza custodita.
-func (m *Model) finishSend() {
-	m.composer = composer.Model{}
-	m.confirmSend = false
-	m.discardOpen = false
-	m.draft = msg.Outgoing{}
-	m.view = viewInbox
+// deliverSend esegue l'invio con il budget SendTimeout (stessa semantica
+// anti-hang del sottocomando send) e poi rimuove la bozza ripresa. Un errore di
+// rimozione non annulla l'invio: torna in draftErr (D9-E). Usata da sendCmd e dal
+// flush in uscita (quitCmd).
+func deliverSend(sender Sender, st mail.MailStore, p *pendingSend) opDone {
+	if !awaitSave(p) {
+		// Piano 9, review A: senza il salvataggio confermato non si invia e non si
+		// tocca Bozze (draftID non è sicuro): nessun retry, nessun duplicato.
+		return opDone{label: "invio", err: errSaveUnconfirmed, send: true}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
+	defer cancel()
+	if err := sender.Send(ctx, p.out); err != nil {
+		return opDone{label: "invio", err: err, send: true, retry: p}
+	}
+	removeTmp(p.tmp) // inviato: gli allegati scaricati non servono più
+	res := opDone{label: "inviato", refresh: true, send: true, observed: addresses(p.out.To, p.out.Cc, p.out.Bcc)}
+	if p.draftID != "" && p.keep {
+		// Ripresa con allegati non scaricati: l'originale è l'unica copia dell'allegato.
+		res.draftKept = true
+	} else if p.draftID != "" {
+		dctx, dcancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
+		defer dcancel()
+		res.draftErr = st.DeleteDraft(dctx, []msg.MessageID{p.draftID})
+	}
+	return res
 }

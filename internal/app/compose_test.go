@@ -468,10 +468,10 @@ func TestScrollKeysStillScrollThread(t *testing.T) {
 
 // --- cancel con conferma ----------------------------------------------------------
 
-// TestComposerCancelWithBodyAsksDiscard: esc su bozza non vuota apre la
-// conferma "scartare la bozza?"; s scarta (torna alla vista di provenienza),
-// esc riprende nel composer, gli altri tasti sono ignorati.
-func TestComposerCancelWithBodyAsksDiscard(t *testing.T) {
+// TestComposerCancelWithBodySavesDraft: esc su bozza non vuota la salva in Bozze
+// (Piano 9, D9-A): il composer resta aperto fino all'esito (draftBusy); il modale
+// di scarto ora è di ctrl+d (D9-C), non di esc.
+func TestComposerCancelWithBodySavesDraft(t *testing.T) {
 	ref := testRefs(t)[1]
 	m, _ := composerModel(t, fullMessage(ref))
 	mm := openThread(t, m, ref) // la reply precompilata ha la citazione → corpo non vuoto
@@ -480,37 +480,12 @@ func TestComposerCancelWithBodyAsksDiscard(t *testing.T) {
 	if mm.currentView() != viewComposer {
 		t.Fatalf("vista = %v, voglio viewComposer", mm.currentView())
 	}
-	mm, _ = step(mm, pressKey("esc"))
-	if !mm.discardOpen {
-		t.Fatal("esc su bozza non vuota deve aprire la conferma discard")
-	}
-	if !strings.Contains(mm.statusBar(), "scartare la bozza") {
-		t.Errorf("status bar = %q, voglio la conferma", mm.statusBar())
-	}
-	// Tasto estraneo: ignorato (nessuna azione alla cieca, come i modali).
-	mm, cmd := step(mm, pressKey("x"))
-	if cmd != nil || !mm.discardOpen || mm.currentView() != viewComposer {
-		t.Errorf("tasto estraneo nel modale: cmd=%v discardOpen=%v vista=%v", cmd, mm.discardOpen, mm.currentView())
-	}
-	// esc riprende: composer intatto.
-	mm, _ = step(mm, pressKey("esc"))
-	if mm.discardOpen || mm.currentView() != viewComposer {
-		t.Errorf("esc deve riprendere: discardOpen=%v vista=%v", mm.discardOpen, mm.currentView())
-	}
-	// esc di nuovo → conferma → s scarta e torna al thread.
-	mm, _ = step(mm, pressKey("esc"))
-	mm, cmd = step(mm, pressKey("s"))
-	if msgs := dropExpired(runCmd(cmd)); len(msgs) != 0 {
-		t.Errorf("s: cmd = %v, voglio nessuna op (solo il toast)", msgs)
-	}
-	if mm.currentView() != viewThread {
-		t.Errorf("vista dopo lo scarto = %v, voglio thread (provenienza)", mm.currentView())
+	mm, cmd := step(mm, pressKey("esc"))
+	if cmd == nil || !mm.draftBusy {
+		t.Fatal("esc su bozza non vuota: nessun salvataggio in Bozze (D9-A)")
 	}
 	if mm.discardOpen {
-		t.Error("discardOpen resta true dopo lo scarto")
-	}
-	if toastText(mm) != "bozza scartata" {
-		t.Errorf("status = %q, voglio %q", toastText(mm), "bozza scartata")
+		t.Error("esc non deve aprire la conferma di scarto (ora è ctrl+d)")
 	}
 }
 
@@ -733,10 +708,10 @@ func TestSendConfirmEscPreservesDraft(t *testing.T) {
 	}
 }
 
-// TestSendConfirmSendsExactOutgoing: s alla conferma chiama il sender con la
-// bozza ESATTA (mittente/firma/destinatari/oggetto/corpo/allegati) dentro un
-// ctx con budget di timeout; niente ritorno alla vista finché l'opDone non
-// arriva (spinner: pending 1).
+// TestSendConfirmSendsExactOutgoing: s alla conferma apre la finestra di
+// annullamento (Piano 9, D9-I); allo scadere il sender riceve la bozza ESATTA
+// (mittente/firma/destinatari/oggetto/corpo/allegati) dentro un ctx con budget
+// di timeout. Durante la finestra nulla parte.
 func TestSendConfirmSendsExactOutgoing(t *testing.T) {
 	rec := &senderRecorder{}
 	m, _ := senderModel(t, rec)
@@ -746,22 +721,19 @@ func TestSendConfirmSendsExactOutgoing(t *testing.T) {
 		To: "anna@x.dev, bob@y.dev", Cc: "cc@x.dev", Subject: "oggetto", Body: "corpo",
 		Attachments: []string{"/tmp/a.pdf", "/tmp/b.pdf"},
 	}))
-	mm, cmd := step(mm, pressKey("s"))
-	if mm.pending != 1 {
-		t.Errorf("pending dopo s = %d, voglio 1 (invio in flight)", mm.pending)
+	mm = confirmDrained(t, mm)
+	if len(rec.calls) != 0 {
+		t.Fatalf("invio durante la finestra di annullamento: %d chiamate, voglio 0", len(rec.calls))
 	}
 	if mm.confirmSend {
 		t.Error("s deve chiudere la conferma")
 	}
-	var done opDone
-	found := false
-	for _, ms := range runCmd(cmd) {
-		if od, ok := ms.(opDone); ok {
-			done, found = od, true
-		}
+	if mm.currentView() == viewComposer {
+		t.Error("s deve chiudere il composer (la finestra è in status bar)")
 	}
-	if !found {
-		t.Fatalf("cmd di s: voglio opDone dentro il batch (msgs %v)", cmd())
+	mm, done := flushUndo(t, mm)
+	if mm.pending != 1 {
+		t.Errorf("pending allo scadere = %d, voglio 1 (invio in flight)", mm.pending)
 	}
 	if done.err != nil {
 		t.Errorf("opDone err = %v, voglio nil (recorder ok)", done.err)
@@ -797,26 +769,18 @@ func TestSendConfirmSendsExactOutgoing(t *testing.T) {
 	if rem := time.Until(dl); rem <= 0 || rem > 61*time.Second {
 		t.Errorf("deadline del ctx a %v, voglio ~60s", rem)
 	}
-	// Finchè l'opDone non arriva il composer resta (spinner in status bar).
-	if mm.currentView() != viewComposer {
-		t.Errorf("vista durante l'invio = %v, voglio composer", mm.currentView())
-	}
 }
 
-// TestSendSuccessReturnsToInboxAndRefreshes: opDone{"inviato", nil} → back
-// inbox, composer chiuso, feedback "inviato" e re-list silenzioso della lista.
+// TestSendSuccessReturnsToInboxAndRefreshes: allo scadere della finestra
+// l'opDone "inviato" torna: vista inbox, modali chiuse, bozza azzerata, feedback
+// "inviato" e re-list silenzioso della lista.
 func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
 	rec := &senderRecorder{}
 	m, _ := senderModel(t, rec)
 	mm, _ := step(m, teaSize())
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{To: "anna@x.dev", Subject: "s", Body: "c"}))
-	mm, cmd := step(mm, pressKey("s"))
-	var done opDone
-	for _, ms := range runCmd(cmd) {
-		if od, ok := ms.(opDone); ok {
-			done = od
-		}
-	}
+	mm = confirmDrained(t, mm)
+	mm, done := flushUndo(t, mm)
 	mm, cmd2 := step(mm, done)
 	if cmd2 == nil {
 		t.Fatal("opDone ok: cmd nil, voglio il re-list silenzioso")
@@ -838,9 +802,10 @@ func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
 	}
 }
 
-// TestSendErrorStaysInComposerWithErrorToast: errore del sender → toast d'errore col
-// dettaglio; il composer resta aperto con la bozza intatta (riprovabile con
-// ctrl+s — la conferma si riapre).
+// TestSendErrorStaysInComposerWithErrorToast: errore del sender allo scadere →
+// toast d'errore col dettaglio; il composer si RIAPRE con la bozza intatta (Piano
+// 9, D9-I: la finestra l'aveva chiuso, il messaggio non va perso). ctrl+s riapre
+// la conferma.
 func TestSendErrorStaysInComposerWithErrorToast(t *testing.T) {
 	rec := &senderRecorder{err: errBoom()}
 	m, _ := senderModel(t, rec)
@@ -848,13 +813,8 @@ func TestSendErrorStaysInComposerWithErrorToast(t *testing.T) {
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 	}))
-	mm, cmd := step(mm, pressKey("s"))
-	var done opDone
-	for _, ms := range runCmd(cmd) {
-		if od, ok := ms.(opDone); ok {
-			done = od
-		}
-	}
+	mm = confirmDrained(t, mm)
+	mm, done := flushUndo(t, mm)
 	mm, cmd2 := step(mm, done)
 	if cmd2 != nil {
 		t.Errorf("opDone errore: cmd = %v, voglio nil (nessun refresh)", cmd2)
@@ -920,10 +880,8 @@ func TestSendDemoMockRecordsSent(t *testing.T) {
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 		Attachments: []string{"/tmp/a.pdf"},
 	}))
-	mm, cmd := step(mm, pressKey("s"))
-	for _, ms := range runCmd(cmd) {
-		mm, _ = step(mm, ms)
-	}
+	mm = confirmDrained(t, mm)
+	mm, _ = flushUndo(t, mm)
 	if len(mk.Sent) != 1 {
 		t.Fatalf("Mock.Sent = %d messaggi, voglio 1", len(mk.Sent))
 	}
@@ -967,14 +925,20 @@ func TestSendInFlightCtrlSDropped(t *testing.T) {
 	mm = sendRequested(t, draftComposer(mm, composer.ComposerConfig{
 		To: "anna@x.dev", Subject: "oggetto", Body: "corpo",
 	}))
-	mm, cmd := step(mm, pressKey("s"))
-	if mm.pending != 1 {
-		t.Fatalf("pending dopo s = %d, voglio 1 (invio in flight)", mm.pending)
+	mm = confirmDrained(t, mm)
+	if mm.undo == nil {
+		t.Fatal("s: nessun invio in attesa della finestra")
 	}
-	// Esegue la cmd SENZA consegnare l'opDone: il send parte (recorder 1) ma
-	// resta in flight (pending 1), come con un SMTP lento.
+	// Scade la finestra: il send parte (pending 1). La cmd NON si esegue per
+	// intero: l'opDone resta in volo, come con un SMTP lento.
+	mm, cmd := step(mm, undoDueMsg{seq: mm.undo.seq})
+	if mm.pending != 1 {
+		t.Fatalf("pending dopo lo scadere = %d, voglio 1 (invio in flight)", mm.pending)
+	}
 	for range runCmd(cmd) {
 	}
+	// Il composer si riapre con una nuova bozza per provare il ctrl+s in volo.
+	mm = draftComposer(mm, composer.ComposerConfig{To: "anna@x.dev", Subject: "oggetto", Body: "corpo"})
 	if len(rec.calls) != 1 {
 		t.Fatalf("sender dopo il primo s = %d chiamate, voglio 1", len(rec.calls))
 	}
@@ -996,7 +960,7 @@ func TestSendInFlightCtrlSDropped(t *testing.T) {
 		t.Errorf("pending dopo ctrl+s = %d, voglio 1 (l'invio resta l'unico)", mm.pending)
 	}
 	// Un secondo `s` (ora testo nel campo, conferma mai aperta) non invia.
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if len(rec.calls) != 1 {
 		t.Errorf("sender dopo ctrl+s + s = %d chiamate, voglio 1 (no doppia email)", len(rec.calls))
 	}
@@ -1049,10 +1013,10 @@ func TestSendRequestedDiscardOpenDropped(t *testing.T) {
 	if !ok {
 		t.Fatalf("cmd = %T, voglio composer.SendRequestedMsg", cmd())
 	}
-	// esc arriva PRIMA della consegna: il corpo non è vuoto → modale discard.
-	mm, _ = step(mm, pressKey("esc"))
+	// ctrl+d arriva PRIMA della consegna: il corpo non è vuoto → modale discard.
+	mm, _ = step(mm, pressKey("ctrl+d"))
 	if !mm.discardOpen {
-		t.Fatal("esc deve aprire il modale discard (corpo non vuoto)")
+		t.Fatal("ctrl+d deve aprire il modale discard (corpo non vuoto)")
 	}
 	// Il SendRequestedMsg ora consegna a stato invalido: scartato.
 	mm, _ = step(mm, res)
@@ -1063,7 +1027,7 @@ func TestSendRequestedDiscardOpenDropped(t *testing.T) {
 		t.Error("il modale discard deve restare aperto (messaggio scartato)")
 	}
 	// `s` scarta la bozza: back alla vista di provenienza (inbox).
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if mm.currentView() != viewInbox {
 		t.Errorf("vista dopo lo scarto = %v, voglio inbox", mm.currentView())
 	}
@@ -1071,7 +1035,7 @@ func TestSendRequestedDiscardOpenDropped(t *testing.T) {
 		t.Error("confirmSend deve restare false dopo lo scarto")
 	}
 	// I tasti dell'inbox funzionano normalmente: `s` è stella, NON invia.
-	mm, _ = step(mm, pressKey("s"))
+	mm = confirmDrained(t, mm)
 	if mm.confirmSend || mm.currentView() != viewInbox {
 		t.Errorf("s nell'inbox dopo lo scarto: confirm=%v vista=%v, voglio false/inbox", mm.confirmSend, mm.currentView())
 	}

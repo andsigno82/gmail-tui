@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/contacts"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
@@ -76,6 +77,22 @@ type Model struct {
 	draft       msg.Outgoing
 	confirmSend bool // conferma pre-invio aperta ("Invio a …" nella status bar)
 	sending     bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
+	draftID     msg.MessageID
+	draftBusy   bool
+	draftTmp    string // directory privata con gli allegati della bozza ripresa (fix review)
+	draftKeep   bool   // bozza ripresa senza allegati: il risalvataggio non sostituisce l'originale
+	undo        *pendingSend
+	undoSeq     int
+
+	// Rubrica e suggerimenti dei contatti (Piano 9, Task 12-13): book è la rubrica
+	// (memoria di default, file nel main), addrCmd il comando esterno (config),
+	// addrWarned evita di ripetere l'avviso del comando in sessione, clock il tempo.
+	book       *contacts.Book
+	addrCmd    []string
+	addrWarned bool
+	suggestSeq int      // ultima query del composer: il debounce del comando esterno (review G)
+	exit       *exitLog // esiti in uscita da stampare su stderr dopo la TUI (review A)
+	clock      func() time.Time
 
 	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
 	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
@@ -189,7 +206,10 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	if p, err := config.Path(); err == nil {
 		cfgPath = p
 	}
+	memBook, _ := contacts.Open("") // Piano 9: rubrica in memoria; il main la collega al file
 	return Model{
+		exit: &exitLog{},
+		book: memBook, clock: time.Now,
 		store:      store,
 		sender:     sender,
 		styles:     st,
@@ -283,6 +303,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgsLoaded:
 		m.doneOp()
+		m.feedBook(false, refSenders(ev.refs)...) // mittenti in lista: senza incremento (Piano 9, D9-F)
 		// Il token del re-list silenzioso si libera SOLO al risultato del
 		// refresh in volo (fix review 5): un load non silenzioso o un risultato
 		// stante non riapre il coalescing di un refresh ancora in corso. Il
@@ -428,6 +449,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgLoaded:
 		m.doneOp()
+		if ev.m != nil {
+			m.feedBook(true, addresses(ev.m.To, ev.m.Cc)...) // destinatari del messaggio aperto: incremento
+		}
 		// Guardia anti-race (fix merge-gate): il risultato porta l'ID
 		// richiesto. Se non coincide col ref in attesa (open A lenta → esc →
 		// open B veloce: il risultato di A arriva per ultimo) o non siamo più
@@ -517,6 +541,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opDone:
 		m.doneOp()
+		if ev.err == nil && len(ev.observed) > 0 {
+			m.feedBook(true, ev.observed...) // destinatari dell'invio riuscito: incremento (D9-F)
+		}
 		if ev.err == nil && len(ev.gone) > 0 {
 			// Piano 7, fix review 1: gli ID usciti dalla cartella (Archive/Trash)
 			// si tolgono dalla coda PRIMA del merge del refresh profondo, che
@@ -529,22 +556,36 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.sending = false
 		}
 		if ev.err != nil {
-			cmd := m.toast.Push(toast.Error, fmt.Sprintf("%s: %v", ev.label, ev.err))
+			text := fmt.Sprintf("%s: %v", ev.label, ev.err)
+			if ev.retry != nil {
+				// Piano 9, Task 9 (D9-I) e review A: invio fallito dopo la finestra. Il
+				// composer torna con la bozza (copia in Bozze). Se nel frattempo ne è
+				// stato aperto uno nuovo, non lo si sovrascrive: il messaggio resta in Bozze.
+				if m.view != viewComposer {
+					m.reopenPending(ev.retry)
+				} else if ev.retry.draftID != "" {
+					text += " — messaggio rimasto in Bozze"
+				}
+			}
+			cmd := m.toast.Push(toast.Error, text)
 			return m, cmd
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
 		toastCmd := m.toast.Push(toast.Success, ev.label)
+		if ev.draftKept {
+			keptCmd := m.toast.Push(toast.Info, "bozza originale conservata in Bozze: allegati non scaricati alla ripresa")
+			toastCmd = tea.Batch(toastCmd, keptCmd)
+		}
+		if ev.draftErr != nil {
+			// Piano 9, Task 7 (D9-E): l'invio è riuscito; fallisce solo la rimozione da Bozze.
+			errCmd := m.toast.Push(toast.Error, "bozza non rimossa da Bozze: "+ev.draftErr.Error())
+			toastCmd = tea.Batch(toastCmd, errCmd)
+		}
 		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
 		localCmd := m.setLocalRead(ev.localID, ev.localRead)
 		if ev.convSet {
 			// Piano 8, Task 9b: il grassetto della riga segue l'intera conversazione.
 			localCmd = tea.Batch(localCmd, m.setConvUnread(ev.localID, ev.convUnread))
-		}
-		if ev.closeComposer {
-			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
-			// torna all'inbox (come da piano); il feedback "inviato" resta in
-			// status e il refresh sotto rilista la lista corrente.
-			m.finishSend()
 		}
 		if ev.refresh {
 			// Mutazione utente riuscita (Task 7): rilista la lista corrente
@@ -595,6 +636,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleChange(ev)
 
 	case inbox.SelectedMsg:
+		if m.view == viewInbox && m.folder.Role == "drafts" {
+			// Piano 9, Task 6 (D9-D): in Bozze l'invio riprende la bozza nel composer.
+			m.pending++
+			return m, tea.Batch(fetchForResume(m.store, ev.Ref), m.spinner.Tick)
+		}
 		// Apertura dal thread: si custodisce il ref e si fetcha fuori dal
 		// loop UI (spinner attivo finché msgLoaded non arriva).
 		m.pendingRef = ev.Ref
@@ -791,6 +837,108 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.openComposer(cfg)
 		return m, nil
 
+	case sendSaved:
+		// Piano 9, review A: il messaggio è in Bozze (o il salvataggio è fallito e
+		// l'invio resta possibile): parte la finestra di annullamento.
+		p := m.undo
+		if p == nil || p.seq != ev.seq {
+			return m, nil
+		}
+		armCmd := m.armUndo(p)
+		if ev.err != nil {
+			warn := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata in Bozze: %v — invio comunque possibile", ev.err))
+			return m, tea.Batch(armCmd, warn)
+		}
+		return m, armCmd
+
+	case draftSaved:
+		// Piano 9, Task 5 (D9-A): bozza salvata → composer chiuso, torna la vista
+		// di provenienza; errore → composer aperto con la bozza intatta.
+		m.draftBusy = false
+		if ev.id != "" {
+			// Piano 9, review F: la copia in Bozze è quella del composer anche se la
+			// rimozione della precedente è fallita: il prossimo esc la sostituisce.
+			m.draftID, m.draftKeep = ev.id, false
+		}
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata: %v", ev.err))
+			return m, cmd
+		}
+		removeTmp(m.draftTmp) // la copia è in Bozze con gli allegati: la directory non serve più
+		m.closeComposer()
+		cmd := m.toast.Push(toast.Success, "bozza salvata")
+		return m, cmd
+
+	case draftDeleted:
+		// Piano 9, Task 5/7: rimozione da Bozze (scarto, bozza svuotata).
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non rimossa da Bozze: %v", ev.err))
+			return m, cmd
+		}
+		if ev.discard {
+			cmd := m.toast.Push(toast.Info, "bozza scartata")
+			return m, cmd
+		}
+		return m, nil
+
+	case resumeLoaded:
+		// Piano 9, Task 6 (D9-D): bozza letta da Bozze → composer precompilato.
+		m.doneOp()
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza: %v", ev.err))
+			return m, cmd
+		}
+		if ev.m == nil {
+			cmd := m.toast.Push(toast.Error, "bozza: risposta vuota dallo store")
+			return m, cmd
+		}
+		if len(ev.m.Attachments) > 0 {
+			// Allegati: si scaricano fuori dal loop UI, poi si apre il composer (fix review).
+			return m, downloadDraftCmd(m.store, ev.ref, ev.m)
+		}
+		m.openResumed(ev.ref, ev.m, nil, "", false)
+		return m, nil
+
+	case draftAttachments:
+		// Esito del download degli allegati: errore → composer senza allegati e la
+		// bozza originale non viene sostituita (keep); toast d'errore.
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("allegati della bozza non scaricati: %v — la bozza originale resta in Bozze", ev.err))
+			m.openResumed(ev.ref, ev.m, nil, "", true)
+			return m, cmd
+		}
+		m.openResumed(ev.ref, ev.m, ev.paths, ev.dir, false)
+		return m, nil
+
+	case undoDueMsg:
+		// Piano 9, Task 9 (D9-I): scaduta la finestra, l'invio parte (se non annullato).
+		if m.undo == nil || m.undo.seq != ev.seq {
+			return m, nil
+		}
+		p := m.undo
+		m.undo = nil
+		if !p.claim() {
+			return m, nil
+		}
+		m.sending = true // blocca un secondo invio finché opDone
+		m.pending++      // invio in flight: spinner finché opDone
+		return m, tea.Batch(sendCmd(m.sender, m.store, p), m.spinner.Tick)
+
+	case composer.SuggestQueryMsg:
+		// Piano 9, Task 12 (D9-H): suggerimenti per il frammento del campo A/Cc/Ccn.
+		cmd := m.suggestQuery(ev)
+		return m, cmd
+
+	case suggestDueMsg:
+		// Piano 9, review G: debounce scaduto → comando esterno per l'ultima query.
+		cmd := m.dueLookup(ev)
+		return m, cmd
+
+	case suggestionsLoaded:
+		// Esito del comando esterno (Piano 9, Task 12): merge con i locali, stantio scartato.
+		cmd := m.applySuggestions(ev)
+		return m, cmd
+
 	case composer.SendRequestedMsg:
 		// ctrl+s nel composer (Piano 4, Task 4): la bozza viene custodita e
 		// si apre la conferma modale ("Invio a …" nella status bar): s →
@@ -805,7 +953,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// bar segnala già che l'invio è in corso. Il segnale è `sending`
 		// (invio specifico), NON pending: op estranee in flight (load/re-list
 		// iniziale, refresh) non devono bloccare il primo invio.
-		if m.view != viewComposer || m.sending || m.discardOpen {
+		if m.undo != nil {
+			// Piano 9, Task 9: un invio è già in attesa della finestra di annullamento.
+			cmd := m.toast.Push(toast.Info, "un invio è già in attesa — u annulla")
+			return m, cmd
+		}
+		if m.view != viewComposer || m.sending || m.discardOpen || m.draftBusy {
 			return m, nil
 		}
 		// Piano 7, Task 6 + fix review 7: un destinatario malformato o assente
@@ -971,9 +1124,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.confirmSend = false
-				m.sending = true // blocca un secondo invio finché opDone
-				m.pending++      // invio in flight: spinner finché opDone
-				return m, tea.Batch(sendCmd(m.sender, m.draft), m.spinner.Tick)
+				// Piano 9, Task 9 (D9-I): finestra di 5 s prima dell'invio, annullabile con u.
+				cmd := m.startUndo()
+				return m, cmd
 			case "esc":
 				m.confirmSend = false // back al composer: la bozza resta
 			}
@@ -988,7 +1141,20 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
+		if m.undo != nil && ev.String() == "u" && (m.view == viewInbox || m.view == viewThread) {
+			// Piano 9, Task 9 (D9-I) e review E: `u` riporta l'invio in attesa solo da
+			// inbox e thread; in ricerca, prompt o composer è testo o tasto della vista.
+			cmd := m.restoreUndo()
+			return m, cmd
+		}
 		if m.view == viewComposer {
+			if m.draftBusy {
+				return m, nil // salvataggio della bozza in corso
+			}
+			if ev.String() == "ctrl+d" {
+				// Piano 9, Task 5 (D9-C): ctrl+d scarta, con conferma se c'è da perdere.
+				return m.requestDiscard()
+			}
 			// Composer attivo (Piano 4, Task 3): TUTTI i tasti vanno al
 			// composer — esc chiede il cancel (back diretto o conferma
 			// discard), tab/frecce navigano i campi, il resto è testo: i
@@ -998,8 +1164,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.composer, cmd = m.composer.Update(ev)
 			if m.composer.CancelRequested() {
-				m.handleComposerCancel()
-				return m, nil
+				// Piano 9, Task 5 (D9-A): esc salva la bozza in Bozze (o chiude se vuota).
+				save := m.handleComposerCancel()
+				return m, save
 			}
 			return m, cmd
 		}

@@ -29,6 +29,7 @@ const (
 	FieldFrom Field = iota
 	FieldTo
 	FieldCc
+	FieldBcc // Ccn (Piano 9, decisione del coordinatore): con Cc, toggle ctrl+e
 	FieldSubject
 	FieldBody
 	FieldAttachments
@@ -39,10 +40,10 @@ const (
 // QuotedBody è la citazione iniziale nel textarea (appesa sotto Body se
 // entrambe presenti), Attachments i percorsi pre-allegati.
 type ComposerConfig struct {
-	From, Signature       string
-	To, Cc, Subject, Body string
-	QuotedBody            string
-	Attachments           []string
+	From, Signature            string
+	To, Cc, Bcc, Subject, Body string
+	QuotedBody                 string
+	Attachments                []string
 }
 
 // SendRequestedMsg è prodotto da ctrl+s: contiene la bozza completa (firma
@@ -67,8 +68,8 @@ type Model struct {
 	from      string // display readonly (mai focalizzato)
 	signature string // appended nel Draft stile pop
 
-	to, cc, subject textinput.Model
-	body            textarea.Model
+	to, cc, bcc, subject textinput.Model
+	body                 textarea.Model
 
 	ccVisible bool // toggle ctrl+e (da config se Cc precompilato)
 	focus     Field
@@ -76,6 +77,13 @@ type Model struct {
 
 	attachments []string
 	attSel      int // allegato selezionato per `d` (rimozione)
+
+	// Suggerimenti dei contatti (Piano 9, Task 11): lista del campo suggField per
+	// il frammento suggQuery; suggSel è la riga scelta (ctrl+n/ctrl+p).
+	suggest   []Suggestion
+	suggField Field
+	suggQuery string
+	suggSel   int
 
 	picker     filepicker.Model
 	pickerOpen bool
@@ -90,13 +98,15 @@ func New(cfg ComposerConfig, st styles.Styles) Model {
 		st:          st,
 		from:        cfg.From,
 		signature:   cfg.Signature,
-		ccVisible:   cfg.Cc != "",
+		ccVisible:   cfg.Cc != "" || cfg.Bcc != "",
 		attachments: append([]string(nil), cfg.Attachments...),
 	}
 	m.to = newInput(st, "destinatario, separati da virgole")
 	m.to.SetValue(cfg.To)
 	m.cc = newInput(st, "cc, separati da virgole")
 	m.cc.SetValue(cfg.Cc)
+	m.bcc = newInput(st, "ccn, separati da virgole")
+	m.bcc.SetValue(cfg.Bcc)
 	m.subject = newInput(st, "oggetto")
 	m.subject.SetValue(cfg.Subject)
 	m.body = textarea.New()
@@ -159,6 +169,9 @@ func firstEmpty(m Model) Field {
 	if m.ccVisible && m.cc.Value() == "" {
 		return FieldCc
 	}
+	if m.ccVisible && m.bcc.Value() == "" {
+		return FieldBcc
+	}
 	if m.subject.Value() == "" {
 		return FieldSubject
 	}
@@ -172,7 +185,7 @@ func firstEmpty(m Model) Field {
 func (m Model) visibleFields() []Field {
 	f := []Field{FieldTo}
 	if m.ccVisible {
-		f = append(f, FieldCc)
+		f = append(f, FieldCc, FieldBcc)
 	}
 	return append(f, FieldSubject, FieldBody, FieldAttachments)
 }
@@ -201,8 +214,10 @@ func (m Model) prevField() Field {
 // focusField sposta il focus sul campo dato (blur su tutti gli altri).
 func (m *Model) focusField(f Field) tea.Cmd {
 	m.focus = f
+	m.suggest, m.suggQuery, m.suggSel = nil, "", 0 // la lista vale solo sul suo campo
 	m.to.Blur()
 	m.cc.Blur()
+	m.bcc.Blur()
 	m.subject.Blur()
 	m.body.Blur()
 	switch f {
@@ -210,6 +225,8 @@ func (m *Model) focusField(f Field) tea.Cmd {
 		return m.to.Focus()
 	case FieldCc:
 		return m.cc.Focus()
+	case FieldBcc:
+		return m.bcc.Focus()
 	case FieldSubject:
 		return m.subject.Focus()
 	case FieldBody:
@@ -248,6 +265,20 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		case "ctrl+s":
 			return mm, sendCmd(mm.Draft())
 		}
+		if isRecipient(mm.focus) && len(mm.suggest) > 0 {
+			// Lista dei suggerimenti aperta (Piano 9, D9-H): ctrl+n/ctrl+p scelgono, invio inserisce.
+			switch k.String() {
+			case "ctrl+n":
+				mm.moveSuggestion(1)
+				return mm, nil
+			case "ctrl+p":
+				mm.moveSuggestion(-1)
+				return mm, nil
+			case "enter":
+				mm.acceptSuggestion()
+				return mm, nil
+			}
+		}
 		if mm.focus == FieldAttachments {
 			switch k.String() {
 			case "enter":
@@ -275,15 +306,25 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 	var cmd tea.Cmd
+	before := ""
+	if in := mm.recipientInput(mm.focus); in != nil {
+		before = in.Value()
+	}
 	switch mm.focus {
 	case FieldTo:
 		mm.to, cmd = mm.to.Update(ev)
 	case FieldCc:
 		mm.cc, cmd = mm.cc.Update(ev)
+	case FieldBcc:
+		mm.bcc, cmd = mm.bcc.Update(ev)
 	case FieldSubject:
 		mm.subject, cmd = mm.subject.Update(ev)
 	case FieldBody:
 		mm.body, cmd = mm.body.Update(ev)
+	}
+	// Il frammento cambiato rilancia la ricerca dei suggerimenti (D9-H).
+	if in := mm.recipientInput(mm.focus); in != nil && in.Value() != before {
+		cmd = tea.Batch(cmd, mm.suggestCmd())
 	}
 	return mm, cmd
 }
@@ -296,7 +337,7 @@ func (m *Model) toggleCc() tea.Cmd {
 	if m.ccVisible {
 		return m.focusField(FieldCc)
 	}
-	if m.focus == FieldCc {
+	if m.focus == FieldCc || m.focus == FieldBcc {
 		return m.focusField(FieldTo)
 	}
 	return nil
@@ -307,8 +348,8 @@ func (m *Model) toggleCc() tea.Cmd {
 // quotato non spezza; un campo non parsabile resta intero e la conferma lo
 // rifiuta citando "A"/"Cc"), oggetto trimmato, corpo tal
 // quale e firma appended stile pop corpo + "\n\n--\n" + firma (solo se la
-// firma non è vuota). Il Cc nascosto NON finisce nella bozza (l'utente non
-// lo vede → non va in invio silenziosamente).
+// firma non è vuota). Cc e Ccn compilati ci sono anche con i campi nascosti
+// (Piano 9, review D): la conferma d'invio li elenca, nulla si perde in silenzio.
 func (m Model) Draft() msg.Outgoing {
 	out := msg.Outgoing{
 		From:        m.from,
@@ -318,13 +359,22 @@ func (m Model) Draft() msg.Outgoing {
 		Attachments: append([]string(nil), m.attachments...),
 		Markdown:    true,
 	}
-	if m.ccVisible {
-		out.Cc = msg.ParseRecipientField(m.cc.Value())
-	}
+	// Piano 9, review D: Cc e Ccn compilati entrano nella bozza anche con i campi
+	// nascosti (ctrl+e): la conferma d'invio li elenca, nessun destinatario si perde.
+	out.Cc = msg.ParseRecipientField(m.cc.Value())
+	out.Bcc = msg.ParseRecipientField(m.bcc.Value())
 	if m.signature != "" {
 		out.BodyText += "\n\n--\n" + m.signature
 	}
 	return out
+}
+
+// Empty dice se la bozza non ha nulla da salvare (Piano 9, D9-3): nessun
+// destinatario (A, Cc, Ccn), nessun oggetto, nessun allegato, corpo vuoto.
+// Il corpo è quello grezzo: la firma non conta.
+func (m Model) Empty() bool {
+	return m.to.Value() == "" && m.cc.Value() == "" && m.bcc.Value() == "" &&
+		m.subject.Value() == "" && len(m.attachments) == 0 && strings.TrimSpace(m.body.Value()) == ""
 }
 
 // BodyText è il corpo GREZZO del textarea, senza la firma appended (seam per
@@ -437,9 +487,10 @@ func (m Model) removeSelected() (Model, tea.Cmd) {
 func reservedLines(m Model) int {
 	n := 4 // Da, A, Oggetto, riga vuota
 	if m.ccVisible {
-		n++
+		n += 2 // Cc e Ccn
 	}
-	n += 2 // riga vuota dopo il corpo + riga Allegati
+	n += 2              // riga vuota dopo il corpo + riga Allegati
+	n += len(m.suggest) // righe dei suggerimenti (Piano 9, Task 11)
 	if len(m.attachments) > 0 {
 		n += len(m.attachments)
 	}
@@ -456,6 +507,7 @@ func (m *Model) SetSize(width, height int) {
 	w := max(0, width-12) // l'etichetta più lunga ("Oggetto: ") + spazio
 	m.to.SetWidth(w)
 	m.cc.SetWidth(w)
+	m.bcc.SetWidth(w)
 	m.subject.SetWidth(w)
 	m.body.SetWidth(max(0, width))
 	m.body.SetHeight(max(3, height-reservedLines(*m)))
@@ -482,8 +534,12 @@ func (m Model) View() string {
 	}
 	b.WriteString(label("Da", FieldFrom) + " " + m.st.ListNormal.Render(m.from) + "\n")
 	b.WriteString(label("A", FieldTo) + " " + m.to.View() + "\n")
+	b.WriteString(m.suggestRows(FieldTo))
 	if m.ccVisible {
 		b.WriteString(label("Cc", FieldCc) + " " + m.cc.View() + "\n")
+		b.WriteString(m.suggestRows(FieldCc))
+		b.WriteString(label("Ccn", FieldBcc) + " " + m.bcc.View() + "\n")
+		b.WriteString(m.suggestRows(FieldBcc))
 	}
 	b.WriteString(label("Oggetto", FieldSubject) + " " + m.subject.View() + "\n")
 	b.WriteString("\n")

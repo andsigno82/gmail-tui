@@ -46,6 +46,20 @@ import (
 // Il dot-stuffing SMTP non tocca a buildMIME: se ne occupa il DotWriter
 // del client go-smtp in Send.
 func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
+	return buildMIMEWith(m, now, false)
+}
+
+// BuildDraft costruisce il MIME di una BOZZA (Piano 9, Task 4): stesso MIME
+// dell'invio, ma con l'intestazione Bcc, perché la bozza salvata in Bozze
+// conserva i destinatari nascosti (come Gmail) e la ripresa li ricarica. Non va
+// MAI usata per l'invio: il Sender usa buildMIME, che non scrive Bcc.
+func BuildDraft(m msg.Outgoing, now time.Time) ([]byte, error) {
+	return buildMIMEWith(m, now, true)
+}
+
+// buildMIMEWith è il builder comune: withBcc aggiunge l'intestazione Bcc
+// (solo bozze).
+func buildMIMEWith(m msg.Outgoing, now time.Time, withBcc bool) ([]byte, error) {
 	// Corpo: normalizza a CRLF (LF→CRLF senza raddoppiare i CRLF esistenti).
 	body := toCRLF(m.BodyText)
 
@@ -61,7 +75,11 @@ func buildMIME(m msg.Outgoing, now time.Time) ([]byte, error) {
 	if len(m.Cc) > 0 {
 		writeHeader("Cc", strings.Join(m.Cc, ", "))
 	}
-	// Bcc volutamente assente dagli header: solo RCPT in Send.
+	// Bcc volutamente assente dagli header dell'invio: solo RCPT in Send.
+	// Nella bozza (withBcc) l'intestazione c'è, come in Gmail.
+	if withBcc && len(m.Bcc) > 0 {
+		writeHeader("Bcc", strings.Join(m.Bcc, ", "))
+	}
 	// mime.QEncoding.Encode lascia invariato l'ASCII puro.
 	writeHeader("Subject", mime.QEncoding.Encode("utf-8", m.Subject))
 	writeHeader("Date", now.Format(time.RFC1123Z))

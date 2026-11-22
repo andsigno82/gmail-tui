@@ -110,6 +110,7 @@ func DemoStore() *mail.Mock {
 	mk.Mailboxes = []mail.Mailbox{
 		{Name: "INBOX", Role: "inbox"},
 		{Name: "[Gmail]/Inviati", Role: "sent"},
+		{Name: "[Gmail]/Drafts", Role: "drafts"}, // Piano 9, Task 13: cartella Bozze
 		{Name: "[Gmail]/Trash", Role: "trash"},
 		{Name: "Work"},
 	}
@@ -166,6 +167,17 @@ func DemoStore() *mail.Mock {
 			BodyText: "Per me va bene. Ho già aperto il ticket per la ricerca.\n\nLuca",
 		},
 	)
+	// Piano 9, Task 13: una bozza in Bozze (ripresa con invio sulla riga).
+	mk.Msgs = append(mk.Msgs, &msg.Message{
+		Ref: msg.MessageRef{
+			ID:      msg.NewID("[Gmail]/Drafts", 1),
+			From:    "tu@example.com",
+			Subject: "Proposta per la sprint review",
+			Date:    now.Add(-15 * time.Minute),
+		},
+		To:       []string{"luca@example.dev"},
+		BodyText: "Ciao Luca,\n\nti propongo di spostare la sprint review a venerdì.\n\nFammi sapere",
+	})
 	// Allegato fittizio con contenuto: `:save 1` sul messaggio 3 scrive un
 	// PDF (intestazione minima, non un file vero) — sufficiente alla demo.
 	mk.Raw[msg.NewID("INBOX", 3)] = map[int][]byte{
@@ -186,6 +198,7 @@ func DemoStore() *mail.Mock {
 		msg.NewID("[Gmail]/Inviati", 3): demoThreadDesign,
 		msg.NewID("Work", 1):            demoThreadSprint,
 		msg.NewID("Work", 2):            demoThreadSprint,
+		msg.NewID("[Gmail]/Drafts", 1):  demoThreadSprint,
 	}
 	for i, mm := range mk.Msgs {
 		mm.Ref.ThreadID = threadOf[mm.Ref.ID]

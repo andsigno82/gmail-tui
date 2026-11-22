@@ -44,9 +44,11 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `c` opens the composer: From prefilled from config (read-only, never focused), focus starts on To.
 - [ ] `r` on an inbox row (fetch-then-compose) or in an open thread: To = sender, subject `Re:` (idempotent), body pre-filled with the quote header "Il <date>, <from> ha scritto:" and every line prefixed `> `; focus starts on the body.
 - [ ] `f`: subject `Fwd:`, no recipients, quote + a note that original attachments are not re-attached in v1.
-- [ ] `Tab`/`Shift+Tab` cycle fields (From skipped); `Ctrl+E` shows/hides Cc — a hidden Cc is never sent.
+- [ ] `Tab`/`Shift+Tab` cycle fields (From skipped); `Ctrl+E` shows/hides Cc and Bcc — a hidden Cc or Ccn that is filled in is still sent (the confirmation bar lists it).
 - [ ] With a signature configured, it is appended on send as `--` + signature below the body.
 - [ ] `Ctrl+S` opens the confirmation bar: "Invio a … — <subject> — <n> allegati — s conferma · esc annulla". `Esc` returns to the composer with the draft intact; `s` sends.
+- [ ] After `s`, the message is in Drafts at once; within 5 s `u` (inbox or thread) reopens the composer on that draft, and the copy is gone from Drafts only after the send succeeds.
+- [ ] `u` typed in the search bar or in a prompt is text, not undo.
 - [ ] Send success: back to the inbox, status "inviato", list refreshes (message visible in "Sent" on the web).
 - [ ] Send failure (e.g. bad network): error in the status bar, composer stays open with the draft; `Ctrl+S` re-opens the confirmation to retry.
 - [ ] `Esc` on a composer with a non-empty raw body opens the discard confirm "scartare la bozza? s conferma · esc annulla"; `s` discards, `Esc` resumes editing. An untouched empty composer exits directly.
@@ -176,3 +178,17 @@ Use a wrapper script that appends `$GMAIL_TUI_FROM`, `$GMAIL_TUI_SUBJECT` and `$
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).
 - [ ] Run `gmail-tui doctor` with `GMAIL_APP_PASSWORD` unset and no keychain entry → the password line says missing and suggests "gmail-tui login", the IMAP check is skipped, the other checks do not fail.
 - [ ] With the password only in the keychain → `password: keychain ok` and the `imap:` line is printed.
+
+## Piano 9 — scrittura (real account, run by hand)
+
+Run on a real Gmail account; nothing here is covered by tests.
+
+- [ ] `Esc` in a new message with a recipient and text: the message appears in Gmail web under Drafts, with the same recipient, subject and body.
+- [ ] `Enter` on that draft in gmail-tui's Drafts folder: recipients, subject, Cc/Bcc and body are back; the signature is not doubled.
+- [ ] Save again after an edit: Drafts keeps one copy (the new one).
+- [ ] Bcc of a draft: the recipient is still there after resuming; the sent message shows no Bcc header in Gmail web (Sent).
+- [ ] Send a resumed draft: it leaves Drafts; the message is in Sent once.
+- [ ] `Ctrl+S` then `s`: the message goes out after about 5 seconds; `u` within 5 seconds brings the composer back with the text.
+- [ ] Quit within the 5-second window: the message is sent before the program exits.
+- [ ] Address suggestions: type the first letters of a known sender in To, `Ctrl+N`/`Ctrl+P` select, `Enter` inserts `Name <address>, `.
+- [ ] With `address_book_cmd` set (e.g. khard): suggestions include its results; with the command missing or failing, one warning toast and local suggestions still work.

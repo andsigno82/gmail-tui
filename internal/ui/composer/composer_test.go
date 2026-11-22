@@ -44,6 +44,10 @@ func pressKey(k string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl}
 	case "ctrl+e":
 		return tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl}
+	case "ctrl+n":
+		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	case "ctrl+p":
+		return tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
 	default:
 		return tea.KeyPressMsg{Code: rune(k[0]), Text: k}
 	}
@@ -179,13 +183,22 @@ func TestCcInNavigationWhenVisible(t *testing.T) {
 	if mm.focus != FieldCc {
 		t.Errorf("focus dopo il toggle = %v, voglio FieldCc", mm.focus)
 	}
+	// Piano 9 (Ccn): tra Cc e Oggetto c'è il campo Ccn.
+	mm, _ = step(mm, pressKey("tab"))
+	if mm.focus != FieldBcc {
+		t.Errorf("tab da Cc: focus = %v, voglio FieldBcc", mm.focus)
+	}
 	mm, _ = step(mm, pressKey("tab"))
 	if mm.focus != FieldSubject {
-		t.Errorf("tab da Cc: focus = %v, voglio FieldSubject", mm.focus)
+		t.Errorf("tab da Ccn: focus = %v, voglio FieldSubject", mm.focus)
+	}
+	mm, _ = step(mm, pressKey("shift+tab"))
+	if mm.focus != FieldBcc {
+		t.Errorf("shift+tab da Subject: focus = %v, voglio FieldBcc", mm.focus)
 	}
 	mm, _ = step(mm, pressKey("shift+tab"))
 	if mm.focus != FieldCc {
-		t.Errorf("shift+tab da Subject: focus = %v, voglio FieldCc", mm.focus)
+		t.Errorf("shift+tab da Ccn: focus = %v, voglio FieldCc", mm.focus)
 	}
 	// Nuovo toggle nasconde Cc e il focus torna su A.
 	mm, _ = step(mm, pressKey("ctrl+e"))
@@ -289,13 +302,14 @@ func TestDraftMarkdown(t *testing.T) {
 	}
 }
 
-// TestDraftCcOnlyWhenVisible: Cc nascosto NON finisce nella bozza (l'utente
-// non lo vede → non va in invio silenziosamente); mostrato, sì.
-func TestDraftCcOnlyWhenVisible(t *testing.T) {
+// TestDraftCarriesCcEvenWhenHidden (Piano 9, review D): un Cc compilato va nella
+// bozza anche con il campo nascosto (ctrl+e): la conferma d'invio lo elenca, e
+// il destinatario scritto non si perde in silenzio.
+func TestDraftCarriesCcEvenWhenHidden(t *testing.T) {
 	m := newModel(t, ComposerConfig{})
 	m.cc.SetValue("cc@x.dev")
-	if d := m.Draft(); len(d.Cc) != 0 {
-		t.Errorf("Cc nascosto in Draft = %v, voglio vuoto", d.Cc)
+	if d := m.Draft(); len(d.Cc) != 1 || d.Cc[0] != "cc@x.dev" {
+		t.Errorf("Cc nascosto in Draft = %v, voglio [cc@x.dev]", d.Cc)
 	}
 	mm, _ := step(m, pressKey("ctrl+e"))
 	if d := mm.Draft(); len(d.Cc) != 1 || d.Cc[0] != "cc@x.dev" {

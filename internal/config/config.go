@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -54,6 +55,9 @@ type Config struct {
 	// NotifyCommand è il comando delle notifiche desktop (Piano 11, Task 1): lista
 	// di argomenti, primo elemento = eseguibile. Mai una stringa per una shell.
 	NotifyCommand []string `toml:"notify_command"`
+	// AddressBookCmd (Piano 9, Task 10, D9-G): comando esterno dei contatti per
+	// l'autocompletamento di A/Cc, eseguito senza shell; "%s" = la query.
+	AddressBookCmd []string `toml:"address_book_cmd"`
 }
 
 // Default restituisce la configurazione di fabbrica (Piano 7.2, Task 2: layout
@@ -118,6 +122,9 @@ func (c Config) Sanitized() Config {
 	if c.notifyCommandInvalid() {
 		c.NotifyCommand = nil
 	}
+	if len(c.AddressBookCmd) > 0 && checkCommand(c.AddressBookCmd[0]) != nil {
+		c.AddressBookCmd = d.AddressBookCmd // Piano 9, review H: comando non valido → solo locale
+	}
 	return c
 }
 
@@ -146,6 +153,30 @@ func (c Config) Validate() error {
 	}
 	if c.notifyCommandInvalid() {
 		return fmt.Errorf("%w: notify_command, l'eseguibile deve essere un percorso assoluto o un nome nel PATH (non vuoto, non ./x)", ErrInvalid)
+	}
+	if len(c.AddressBookCmd) > 0 {
+		if err := checkCommand(c.AddressBookCmd[0]); err != nil {
+			return fmt.Errorf("%w: address_book_cmd: %v", ErrInvalid, err)
+		}
+	}
+	return nil
+}
+
+// checkCommand accetta un percorso assoluto esistente o un nome senza separatori
+// risolto nel PATH (Piano 9, review H). Il percorso relativo è rifiutato: il
+// comando dei contatti non deve dipendere dalla directory di lavoro.
+func checkCommand(argv0 string) error {
+	if filepath.IsAbs(argv0) {
+		if _, err := os.Stat(argv0); err != nil {
+			return fmt.Errorf("comando %q non trovato", argv0)
+		}
+		return nil
+	}
+	if strings.ContainsAny(argv0, `/\`) {
+		return fmt.Errorf("percorso relativo %q non ammesso: usa un percorso assoluto o un nome nel PATH", argv0)
+	}
+	if _, err := exec.LookPath(argv0); err != nil {
+		return fmt.Errorf("comando %q non trovato nel PATH", argv0)
 	}
 	return nil
 }

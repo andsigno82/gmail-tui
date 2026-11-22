@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -18,6 +17,8 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+
+	"github.com/andsigno82/gmail-tui/internal/childenv"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
@@ -110,18 +111,8 @@ func skipCSI(r []rune, j int) int {
 // notifyEnvBase restituisce os.Environ senza GMAIL_APP_PASSWORD (la password non
 // esce mai dalla TUI verso un comando esterno) e senza le GMAIL_TUI_* preesistenti,
 // che non devono mescolarsi con quelle del messaggio (Piano 11, review punto 1).
-func notifyEnvBase() []string {
-	env := os.Environ()
-	out := make([]string, 0, len(env))
-	for _, kv := range env {
-		k, _, _ := strings.Cut(kv, "=")
-		if k == "GMAIL_APP_PASSWORD" || strings.HasPrefix(k, "GMAIL_TUI_") {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
-}
+// La regola è unica per tutti i comandi esterni: internal/childenv (merge Piani 9 e 11).
+func notifyEnvBase() []string { return childenv.Filtered() }
 
 // notifyEnv costruisce l'ambiente del comando (Piano 11, D11-4): FROM e SUBJECT
 // del messaggio più recente (refs[0], come da Change.Refs), COUNT del numero di

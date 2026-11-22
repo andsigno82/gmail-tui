@@ -14,6 +14,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/app"
 	"github.com/andsigno82/gmail-tui/internal/cmd"
 	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/contacts"
 	"github.com/andsigno82/gmail-tui/internal/keyring"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/mail/cache"
@@ -150,6 +151,13 @@ func runTUI(args []string, forceWizard bool) int {
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
 	m.SetPrefs(cfg.Layout, cfg.PreviewMarkRead)         // layout e segna come letto (Piano 7.2, Task 2-3)
 	m.SetNotify(cfg.NotifyCommand)                      // notifiche desktop (Piano 11, Task 4)
+	// Rubrica e comando dei contatti (Piano 9, Task 10-13): in demo la rubrica resta
+	// in memoria e nessun comando utente viene eseguito.
+	if demo {
+		m.SetAddressBook(nil, nil)
+	} else {
+		m.SetAddressBook(openAddressBook(), cfg.AddressBookCmd)
+	}
 	if demo {
 		m.SetDemoBanner()
 	}
@@ -167,9 +175,16 @@ func runTUI(args []string, forceWizard bool) int {
 // necessario.
 func runProgram(m tea.Model) int {
 	p := tea.NewProgram(m)
-	if _, err := p.Run(); err != nil {
+	final, err := p.Run()
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
 		return 1
+	}
+	// Piano 9, review A: esiti dell'invio in uscita (il messaggio resta in Bozze se fallito).
+	if fm, ok := final.(interface{ ExitMessages() []string }); ok {
+		for _, note := range fm.ExitMessages() {
+			fmt.Fprintln(os.Stderr, note)
+		}
 	}
 	return 0
 }
@@ -417,7 +432,7 @@ func loadConfig() (config.Config, bool) {
 	// Piano 7.2, fix review: un valore non valido riporta al default solo quel
 	// campo; indirizzo e nome restano. Parsing/lettura rotti: come prima.
 	if errors.Is(err, config.ErrInvalid) {
-		fmt.Fprintf(os.Stderr, "config: %v (layout e preview_mark_read non validi tornano al default)\n", err)
+		fmt.Fprintf(os.Stderr, "config: %v (layout, preview_mark_read e address_book_cmd non validi tornano al default)\n", err)
 		return cfg.Sanitized(), true
 	}
 	if err != nil {
@@ -468,6 +483,24 @@ func newSMTPSender(cfg config.Config) (*smtp.Sender, bool) {
 		Username: cfg.Address,
 		Password: pw,
 	}), true
+}
+
+// openAddressBook apre la rubrica dei contatti in UserCacheDir/gmail-tui/contacts.json
+// (Piano 9, D9-F). Qualunque problema ⇒ nil: la rubrica resta in memoria.
+func openAddressBook() *contacts.Book {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	path := filepath.Join(dir, "gmail-tui", "contacts.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil
+	}
+	b, err := contacts.Open(path)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // openCache apre la cache bbolt in UserCacheDir/gmail-tui/cache.db;
