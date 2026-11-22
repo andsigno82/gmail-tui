@@ -24,8 +24,12 @@ Nota: nel commento di #73 i riferimenti "#759" e "#334" puntano a PR di atrium n
 |---|---|---|
 | D8-1 | Patch go-imap | Copia in-tree in `third_party/go-imap` da `v2.0.0-beta.9` (module cache), `replace` in `go.mod`. Già deciso da Andrea. |
 | D8-2 | Formato ID Gmail `uint64` | **Proposta:** `MessageID` resta `MAILBOX:UID` invariato. Gli ID Gmail vanno in campi dedicati e tipizzati: `MessageRef.GmailID` e `MessageRef.ThreadID`, entrambi `uint64` (0 = non disponibile). Motivazioni: (a) `MessageID` è chiave di cache, di Archive/Trash/MarkRead e dei Change di Watch, tutti basati su UID per mailbox: cambiarne il formato toccherebbe ogni op; (b) l'UID IMAP è `uint32` per mailbox, il MSGID è globale e più grande: due spazi diversi non vanno compressi in una stringa; (c) `uint64` evita l'overflow signed (`int64`) segnalato da atrium #73 e confronta i thread senza parsing di stringhe. Conseguenza: i valori `uint64` non vanno in JSON come numero (oltre 2^53 JavaScript perde precisione): ogni serializzazione (MCP, output CLI) li scrive come stringa decimale. |
-| D8-3 | Unità di paginazione della lista | Da decidere con Andrea (Q1). Default del piano: vedi Task 7. |
-| D8-4 | Ambito di default di `/` | Da decidere con Andrea (Q2). Default del piano: All Mail. |
+| D8-2 (approvata) | Formato ID | Confermata dal coordinatore su delega di Andrea: `MessageID` invariato, `GmailID`/`ThreadID` `uint64` dedicati, stringa decimale in JSON. |
+| D8-3 (Q1) | Paginazione della lista | Per messaggi, ma una pagina della lista si riempie fino a 50 conversazioni caricando altre pagine di messaggi finché servono o la cartella è esaurita. Tetto: al massimo 500 messaggi letti per pagina (documentato in README). Nessuna scansione O(mailbox) a ogni refresh. |
+| D8-4 (Q2) | Ambito di `/` | Come Gmail web: senza `in:`/`label:` cerca in `[Gmail]/Tutti i messaggi` (ruolo `all`), con esclusione di spam e cestino applicata da Gmail a X-GM-RAW. Il badge dei risultati lo dichiara. |
+| D8-5 (Q3) | Colore delle label | Hash deterministico del nome su un insieme di slot del tema. Ogni slot usato deve rispettare contrasto WCAG >= 4.5:1 rispetto allo sfondo su cui è disegnato; gli slot che non lo rispettano sono scartati. |
+| D8-6 (Q4) | Grassetto conversazione | Sì: in grassetto se almeno un messaggio della conversazione è non letto (come Gmail). |
+| D8-7 (Q5) | Spam e cestino nella conversazione | Sì: esclusi dalla vista conversazione (come Gmail), salvo quando si è dentro quelle cartelle. |
 
 ## Global Constraints
 
