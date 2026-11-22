@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -580,7 +581,7 @@ func TestFinalizeKeepsExistingSettings(t *testing.T) {
 	}
 	want := existing
 	want.Address = "user@gmail.com"
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("config dopo login = %+v, voglio %+v", got, want)
 	}
 }

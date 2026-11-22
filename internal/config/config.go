@@ -51,6 +51,9 @@ type Config struct {
 	Theme           string `toml:"theme"`
 	Layout          string `toml:"layout"`
 	PreviewMarkRead string `toml:"preview_mark_read"`
+	// NotifyCommand è il comando delle notifiche desktop (Piano 11, Task 1): lista
+	// di argomenti, primo elemento = eseguibile. Mai una stringa per una shell.
+	NotifyCommand []string `toml:"notify_command"`
 }
 
 // Default restituisce la configurazione di fabbrica (Piano 7.2, Task 2: layout
@@ -111,7 +114,17 @@ func (c Config) Sanitized() Config {
 	if !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
 		c.PreviewMarkRead = d.PreviewMarkRead
 	}
+	// Piano 11, Task 1: un comando senza eseguibile si disattiva, il resto resta.
+	if c.notifyCommandInvalid() {
+		c.NotifyCommand = nil
+	}
 	return c
+}
+
+// notifyCommandInvalid vale quando la lista non è vuota ma il primo elemento (l'eseguibile)
+// è vuoto o solo spazi (Piano 11, Task 1).
+func (c Config) notifyCommandInvalid() bool {
+	return len(c.NotifyCommand) > 0 && strings.TrimSpace(c.NotifyCommand[0]) == ""
 }
 
 // Validate controlla i campi con formato noto (Piano 7.2, Task 2: Layout e
@@ -125,6 +138,9 @@ func (c Config) Validate() error {
 	}
 	if c.PreviewMarkRead != "" && !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
 		return fmt.Errorf("%w: preview_mark_read %q, ammessi %s", ErrInvalid, c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
+	}
+	if c.notifyCommandInvalid() {
+		return fmt.Errorf("%w: notify_command, il primo elemento (eseguibile) è vuoto", ErrInvalid)
 	}
 	return nil
 }

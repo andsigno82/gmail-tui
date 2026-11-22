@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 )
@@ -27,7 +29,7 @@ func TestSaveLoadRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("roundtrip: avuto %+v, atteso %+v", got, want)
 	}
 }
@@ -137,5 +139,66 @@ func TestValueListsMatchConstants(t *testing.T) {
 	wantPreview := []string{PreviewMarkReadImmediate, PreviewMarkReadDelay, PreviewMarkReadNever}
 	if got := PreviewMarkReadValues(); !slices.Equal(got, wantPreview) {
 		t.Errorf("PreviewMarkReadValues() = %v, voglio %v", got, wantPreview)
+	}
+}
+
+// Piano 11, Task 1: notify_command è una lista di argomenti TOML, mai una
+// stringa interpretata da una shell.
+func TestLoadNotifyCommandArgv(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := writeFile(path, "notify_command = [\"notify-send\", \"Posta\", \"nuova\"]\n"); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	want := []string{"notify-send", "Posta", "nuova"}
+	if !slices.Equal(c.NotifyCommand, want) {
+		t.Fatalf("NotifyCommand: avuto %q, atteso %q", c.NotifyCommand, want)
+	}
+}
+
+// Piano 11, Task 1: il round-trip conserva la lista; senza comando la chiave
+// non compare e il Load torna nil.
+func TestSaveLoadNotifyCommandRoundtrip(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	want := Config{Theme: "default", NotifyCommand: []string{"osascript", "-e", "display notification"}}
+	if err := want.Save(path); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !slices.Equal(got.NotifyCommand, want.NotifyCommand) {
+		t.Fatalf("roundtrip: avuto %q, atteso %q", got.NotifyCommand, want.NotifyCommand)
+	}
+	none := Config{Theme: "default"}
+	if err := none.Save(path); err != nil {
+		t.Fatalf("Save senza comando: %v", err)
+	}
+	got, err = Load(path)
+	if err != nil {
+		t.Fatalf("Load senza comando: %v", err)
+	}
+	if got.NotifyCommand != nil {
+		t.Fatalf("senza comando atteso nil, avuto %q", got.NotifyCommand)
+	}
+}
+
+// Piano 11, Task 1: un primo elemento vuoto non è valido; Sanitized azzera solo
+// il comando e conserva gli altri campi.
+func TestNotifyCommandEmptyExecutableIsInvalid(t *testing.T) {
+	c := Config{Theme: "dracula", Address: "a@example.com", NotifyCommand: []string{"  ", "x"}}
+	if err := c.Validate(); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("Validate: atteso ErrInvalid, avuto %v", err)
+	}
+	s := c.Sanitized()
+	if s.NotifyCommand != nil {
+		t.Fatalf("Sanitized: comando non valido atteso azzerato, avuto %q", s.NotifyCommand)
+	}
+	if s.Theme != "dracula" || s.Address != "a@example.com" {
+		t.Fatalf("Sanitized: altri campi alterati: %+v", s)
 	}
 }
