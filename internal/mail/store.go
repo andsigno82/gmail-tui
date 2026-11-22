@@ -49,6 +49,19 @@ type Conversation struct {
 	Labels       []string // unione delle label utente
 }
 
+// SingleConversation è la riga di un solo messaggio (fallback senza X-GM-EXT-1,
+// Piano 8, Task 9): Count 1, un partecipante, stato e label del messaggio.
+func SingleConversation(r msg.MessageRef) Conversation {
+	return Conversation{
+		Latest:       r,
+		ThreadID:     r.ThreadID,
+		Count:        1,
+		Participants: []string{r.From},
+		Unread:       r.Unread,
+		Labels:       append([]string(nil), r.Labels...),
+	}
+}
+
 // MailStore è l'astrazione di backend posta.
 //
 // Thread-safety (Piano 3, Task 1): le operazioni sono SERIALIZZATE — UNA OP

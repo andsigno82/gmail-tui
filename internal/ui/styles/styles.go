@@ -4,6 +4,7 @@
 package styles
 
 import (
+	"hash/fnv"
 	"image/color"
 	"math"
 
@@ -34,6 +35,9 @@ type Styles struct {
 	ToastInfo       lipgloss.Style // toast informativo: bordo accent (Piano 7.3, Task 1)
 	ToastSuccess    lipgloss.Style // toast di esito positivo: bordo success
 	ToastError      lipgloss.Style // toast d'errore: bordo error (resta finché un tasto)
+	// Labels è il palette delle etichette utente (Piano 8, Task 9, D8-5): solo
+	// slot con contrasto WCAG >= 4.5:1 sul bg del tema, in entrambe le varianti.
+	Labels []lipgloss.Style
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
@@ -59,7 +63,54 @@ func New(t theme.Theme) Styles {
 		ToastInfo:       toastStyle(t, t.Accent),
 		ToastSuccess:    toastStyle(t, t.Success),
 		ToastError:      toastStyle(t, t.Error),
+		Labels:          labelStyles(labelSlots(t)),
 	}
+}
+
+// LabelStyle restituisce il colore di una etichetta utente: hash deterministico
+// del nome sul palette (Piano 8, Task 9, D8-5). Senza palette ricade su ListNormal.
+func (s Styles) LabelStyle(name string) lipgloss.Style {
+	if len(s.Labels) == 0 {
+		return s.ListNormal
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(name)) // fnv non fallisce mai su Write
+	return s.Labels[int(h.Sum32()%uint32(len(s.Labels)))]
+}
+
+// labelCandidates sono gli slot che il colore delle etichette utente può usare
+// (Piano 8, Task 9, D8-5). Il testo dell'etichetta è disegnato sullo slot bg.
+func labelCandidates(t theme.Theme) []theme.Slot {
+	return []theme.Slot{t.Primary, t.Accent, t.Success, t.Warning, t.Error, t.Starred, t.Quoted, t.Help, t.Unread}
+}
+
+// labelSlots tiene i candidati con contrasto >= 4.5:1 sul bg del tema.
+func labelSlots(t theme.Theme) []theme.Slot {
+	var out []theme.Slot
+	for _, s := range labelCandidates(t) {
+		if slotContrasta(s, t.Bg) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// slotContrasta dice se lo slot fg, come testo, ha contrasto WCAG >= 4.5:1 su bg
+// in entrambe le varianti dark e light.
+func slotContrasta(fg, bg theme.Slot) bool {
+	fD, fL := fg.Resolve()
+	bD, bL := bg.Resolve()
+	return contrastRatio(lipgloss.Color(fD), lipgloss.Color(bD)) >= minContrast &&
+		contrastRatio(lipgloss.Color(fL), lipgloss.Color(bL)) >= minContrast
+}
+
+// labelStyles costruisce uno stile di solo colore per ogni slot del palette.
+func labelStyles(slots []theme.Slot) []lipgloss.Style {
+	out := make([]lipgloss.Style, len(slots))
+	for i, s := range slots {
+		out[i] = lipgloss.NewStyle().Foreground(adaptive(s))
+	}
+	return out
 }
 
 // toastStyle è il riquadro di una notifica (Piano 7.3, Task 1): superficie

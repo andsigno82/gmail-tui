@@ -111,6 +111,10 @@ type Model struct {
 
 	view          view
 	refs          []msg.MessageRef // copia dei ref correnti (uso interno/test)
+	// sums è il riepilogo delle conversazioni caricate, per ID del messaggio più
+	// recente (Piano 8, Task 9): la lista è refs + sums; una riga senza riepilogo
+	// è una conversazione di un solo messaggio.
+	sums map[msg.MessageID]mail.Conversation
 	pendingRef    msg.MessageRef   // ref aperto in attesa della thread view (Task 5)
 	query         msg.Query        // query corrente della lista (refresh dopo op, Task 7)
 	queryRaw      string           // stringa digitata della query corrente ("" = inbox)
@@ -353,7 +357,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// bubbles/list v2 SetItems muta lo stato interno e la cmd restituita
 		// è nil col filtraggio disabilitato — una cmd dedicata non aggiunge
 		// nulla. La cmd viene comunque propagata per fedeltà all'API.
-		cmd := m.inbox.SetRefs(refs)
+		m.rememberConvs(ev.convs)
+		cmd := m.inbox.SetConversations(m.convsOf(refs))
 		if ev.silent && len(refs) > 0 {
 			// Ripristino del cursore dopo il refresh di un'op: stesso
 			// messaggio se c'è ancora nell'elenco (anche se si è spostato),
@@ -465,7 +470,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.refs = appendUnique(m.refs, ev.refs)
 		// Piano 7, fix code-review 3: m.inbox si muta nella chiamata (ricevitore
 		// puntatore): la cmd va calcolata PRIMA di costruire il Model restituito.
-		cmd := m.inbox.AppendRefs(ev.refs)
+		m.rememberConvs(ev.convs)
+		cmd := m.inbox.AppendConversations(m.convsOf(ev.refs))
 		return m, cmd
 
 	case opDone:
@@ -1225,8 +1231,8 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 // finché il wiring del programma non esponga il ctx del programma (Task 7/8).
 func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
-		return msgsLoaded{refs: refs, err: err, limit: pageSize, mailbox: box, gen: gen}
+		convs, err := st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, limit: pageSize, mailbox: box, gen: gen}
 	}
 }
 

@@ -242,6 +242,10 @@ func (m *Model) setLocalRead(id msg.MessageID, read bool) tea.Cmd {
 			m.refs[i].Unread = !read
 		}
 	}
+	if c, ok := m.sums[id]; ok {
+		c.Unread, c.Latest.Unread = !read, !read
+		m.sums[id] = c
+	}
 	return m.inbox.SetUnread(id, !read)
 }
 

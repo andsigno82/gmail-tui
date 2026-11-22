@@ -8,6 +8,16 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
+// latestRefs estrae il messaggio più recente di ogni conversazione (Piano 8,
+// Task 9): è la lista di ref su cui girano selezione, anteprima e op.
+func latestRefs(convs []mail.Conversation) []msg.MessageRef {
+	refs := make([]msg.MessageRef, len(convs))
+	for i, c := range convs {
+		refs[i] = c.Latest
+	}
+	return refs
+}
+
 // Tipi Msg di risultato delle Cmd: uno per operazione, con errore incorporato.
 // Contratto condiviso da tutte le viste (fonte: piano 3, "Contratto messaggi").
 
@@ -25,6 +35,7 @@ import (
 // perde (il refresh di prima pagina, D5, non tronca la lista).
 type msgsLoaded struct {
 	refs    []msg.MessageRef
+	convs   []mail.Conversation // righe-conversazione (Piano 8, Task 9); nil = righe di un solo messaggio da refs
 	err     error
 	query   string
 	silent  bool
@@ -38,6 +49,7 @@ type msgsLoaded struct {
 // lista è cambiata nel frattempo la pagina è STANTE e viene scartata.
 type moreLoaded struct {
 	refs    []msg.MessageRef
+	convs   []mail.Conversation // come msgsLoaded.convs
 	err     error
 	query   string
 	mailbox string // cartella della richiesta (Piano 7, Task 4)

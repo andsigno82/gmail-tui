@@ -31,6 +31,10 @@ const labelPrompt = "etichetta: "
 // refresh di prima pagina). Piano 7, Task 3.
 const pageSize = 50
 
+// searchLimit è il tetto di conversazioni di una ricerca (non paginata nella
+// UI, Piano 8, Task 9): la scansione del backend resta limitata a monte.
+const searchLimit = 1000
+
 // refreshCap è il tetto del refresh a profondità piena (D5, Piano 7, Task 3):
 // oltre questa soglia il refresh rilista solo fino a refreshCap righe e la
 // coda caricata resta com'è (appendUnique in msgsLoaded). Limite noto: per
@@ -369,31 +373,63 @@ func refreshLimit(loaded int, deep bool) int {
 
 // refreshRefs rilista la lista corrente (cartella box) fuori dal loop UI, nello
 // stato silenzioso (msgsLoaded.silent): aggiorna refs e cursore senza toccare lo
-// status. Riusa il pattern del load: query vuota → ListMessages (limit righe
-// dalla prima pagina, come Init), query di ricerca → Search con la query
-// corrente nella cartella (non paginata: limit 0).
+// status. Riusa il pattern del load (Piano 8, Task 9: una riga per conversazione):
+// query vuota → ListConversations (limit righe dalla prima pagina, come Init),
+// query di ricerca → ListConversations con la query corrente nella cartella
+// (non paginata: limit 0).
 func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		var refs []msg.MessageRef
+		var convs []mail.Conversation
 		var err error
 		if raw == "" {
-			refs, err = st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: limit})
+			convs, err = st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Limit: limit})
 		} else {
-			refs, err = st.Search(context.Background(), inFolder(q, box))
+			convs, err = st.ListConversations(context.Background(), inFolder(q, box), mail.Page{Limit: searchLimit})
 			limit = 0
 		}
-		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit, mailbox: box, gen: gen}
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, silent: true, limit: limit, mailbox: box, gen: gen}
 	}
 }
 
-// loadMore esegue ListMessages per la pagina successiva fuori dal loop UI
-// (Piano 7, Task 3): l'offset è il numero di righe già caricate. Il risultato
-// porta la query di origine per lo scarto dei risultati stanti.
+// loadMore esegue ListConversations per la pagina successiva fuori dal loop UI
+// (Piano 7, Task 3; Piano 8, Task 9): l'offset è il numero di conversazioni già
+// caricate. Il risultato porta la query di origine per lo scarto dei risultati
+// stanti.
 func loadMore(st mail.MailStore, box string, offset int, raw string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Offset: offset, Limit: pageSize})
-		return moreLoaded{refs: refs, err: err, query: raw, mailbox: box, gen: gen}
+		convs, err := st.ListConversations(context.Background(), msg.Query{Label: box}, mail.Page{Offset: offset, Limit: pageSize})
+		return moreLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, mailbox: box, gen: gen}
 	}
+}
+
+// rememberConvs registra il riepilogo delle conversazioni ricevute, per ID del
+// messaggio più recente (Piano 8, Task 9). Una lista senza convs non cambia nulla.
+func (m *Model) rememberConvs(convs []mail.Conversation) {
+	if len(convs) == 0 {
+		return
+	}
+	if m.sums == nil {
+		m.sums = make(map[msg.MessageID]mail.Conversation, len(convs))
+	}
+	for _, c := range convs {
+		m.sums[c.Latest.ID] = c
+	}
+}
+
+// convsOf costruisce le righe-conversazione dei ref della lista (Piano 8, Task 9):
+// il riepilogo noto per ID, con il messaggio più recente dato dal ref stesso;
+// senza riepilogo, una conversazione di un solo messaggio.
+func (m Model) convsOf(refs []msg.MessageRef) []mail.Conversation {
+	out := make([]mail.Conversation, len(refs))
+	for i, r := range refs {
+		c, ok := m.sums[r.ID]
+		if !ok {
+			c = mail.SingleConversation(r)
+		}
+		c.Latest = r
+		out[i] = c
+	}
+	return out
 }
 
 // withoutIDs toglie da refs gli ID dati, ordine preservato. Piano 7, fix review 1:

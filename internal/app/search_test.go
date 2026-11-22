@@ -28,18 +28,19 @@ type recorder struct {
 	err    error
 }
 
-func (r *recorder) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error) {
+// ListConversations registra le letture di lista (lists, pages) e le ricerche
+// (search): l'app le distingue dal tetto di pagina searchLimit (Piano 8, Task 9).
+func (r *recorder) ListConversations(ctx context.Context, q msg.Query, pg mail.Page) ([]mail.Conversation, error) {
+	if pg.Limit == searchLimit {
+		r.search = append(r.search, q)
+		if r.err != nil {
+			return nil, r.err
+		}
+		return r.MailStore.ListConversations(ctx, q, pg)
+	}
 	r.lists = append(r.lists, q)
 	r.pages = append(r.pages, pg)
-	return r.MailStore.ListMessages(ctx, q, pg)
-}
-
-func (r *recorder) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, error) {
-	r.search = append(r.search, q)
-	if r.err != nil {
-		return nil, r.err
-	}
-	return r.MailStore.Search(ctx, q)
+	return r.MailStore.ListConversations(ctx, q, pg)
 }
 
 // searchFixture costruisce il corpus di ricerca: due messaggi da bob, uno da

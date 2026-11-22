@@ -61,8 +61,8 @@ func submitQuery(st mail.MailStore, raw string, box string, gen int) tea.Cmd {
 // badge anche al re-list, che viaggia senza query).
 func searchCmd(st mail.MailStore, q msg.Query, raw string, box string, gen int) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.Search(context.Background(), inFolder(q, box))
-		return msgsLoaded{refs: refs, err: err, query: raw, mailbox: box, gen: gen}
+		convs, err := st.ListConversations(context.Background(), inFolder(q, box), mail.Page{Limit: searchLimit})
+		return msgsLoaded{refs: latestRefs(convs), convs: convs, err: err, query: raw, mailbox: box, gen: gen}
 	}
 }
 

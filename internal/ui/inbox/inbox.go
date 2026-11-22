@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
@@ -42,9 +43,12 @@ type SelectedMsg struct {
 	Ref msg.MessageRef
 }
 
-// item adatta un MessageRef all'interfaccia list.Item di bubbles.
+// item adatta una riga-conversazione all'interfaccia list.Item di bubbles.
+// ref è il messaggio più recente (Conversation.Latest): è il messaggio su cui
+// si apre, si seleziona e si opera (Piano 8, Task 9).
 type item struct {
-	ref msg.MessageRef
+	ref  msg.MessageRef
+	conv mail.Conversation
 }
 
 // FilterValue implementa list.Item (il filtraggio è disabilitato, ma
@@ -131,10 +135,20 @@ func (m *Model) SetUnread(id msg.MessageID, unread bool) tea.Cmd {
 		row, ok := it.(item)
 		if ok && row.ref.ID == id {
 			row.ref.Unread = unread
+			// Il grassetto della conversazione segue il messaggio letto: se la
+			// conversazione ha altri non letti, il prossimo refresh lo riallinea.
+			row.conv.Unread = unread
+			row.conv.Latest = row.ref
 			return m.list.SetItem(i, row)
 		}
 	}
 	return nil
+}
+
+// SetConversations sostituisce le righe con le conversazioni (Piano 8, Task 9):
+// una riga per conversazione, con partecipanti, contatore, stato e label.
+func (m *Model) SetConversations(convs []mail.Conversation) tea.Cmd {
+	return m.list.SetItems(convsToItems(convs))
 }
 
 // SetSize propaga le dimensioni del corpo (l'app radice riserva l'ultima
@@ -161,7 +175,31 @@ func (m *Model) AppendRefs(refs []msg.MessageRef) tea.Cmd {
 	for _, r := range refs {
 		if !seen[r.ID] {
 			seen[r.ID] = true
-			all = append(all, item{ref: r})
+			all = append(all, item{ref: r, conv: mail.SingleConversation(r)})
+		}
+	}
+	idx := m.list.Index()
+	cmd := m.list.SetItems(all)
+	m.list.Select(idx)
+	return cmd
+}
+
+// AppendConversations accoda una pagina di conversazioni (Piano 8, Task 9).
+// Dedup per ID del messaggio più recente, come AppendRefs.
+func (m *Model) AppendConversations(convs []mail.Conversation) tea.Cmd {
+	items := m.list.Items()
+	seen := make(map[msg.MessageID]bool, len(items)+len(convs))
+	all := make([]list.Item, 0, len(items)+len(convs))
+	for _, it := range items {
+		if i, ok := it.(item); ok {
+			seen[i.ref.ID] = true
+			all = append(all, it)
+		}
+	}
+	for _, c := range convs {
+		if !seen[c.Latest.ID] {
+			seen[c.Latest.ID] = true
+			all = append(all, item{ref: c.Latest, conv: c})
 		}
 	}
 	idx := m.list.Index()
@@ -255,11 +293,21 @@ func (m Model) rowAt(y int) (int, bool) {
 	return idx, true
 }
 
-// refsToItems converte i ref in item bubbles preservando l'ordine.
+// refsToItems converte i ref in item bubbles preservando l'ordine: ogni ref è
+// una conversazione di un solo messaggio.
 func refsToItems(refs []msg.MessageRef) []list.Item {
 	items := make([]list.Item, len(refs))
 	for i, r := range refs {
-		items[i] = item{ref: r}
+		items[i] = item{ref: r, conv: mail.SingleConversation(r)}
+	}
+	return items
+}
+
+// convsToItems converte le conversazioni in item bubbles preservando l'ordine.
+func convsToItems(convs []mail.Conversation) []list.Item {
+	items := make([]list.Item, len(convs))
+	for i, c := range convs {
+		items[i] = item{ref: c.Latest, conv: c}
 	}
 	return items
 }
@@ -312,58 +360,142 @@ func (d delegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
 	if !ok {
 		return
 	}
-	fmt.Fprint(w, d.row(m.Width(), it.ref, index == m.Index()))
+	fmt.Fprint(w, d.row(m.Width(), it.conv, index == m.Index()))
 }
 
-// row compone la riga del messaggio: marker (●/○), slot stella, mittente
-// troncato su colonna adattiva, oggetto, data relativa allineata a destra.
-// Larghezza adattiva: la riga riempie esattamente la larghezza della lista
-// (il testo viene composto piatto, poi stilizzato a segmenti).
-func (d delegate) row(width int, ref msg.MessageRef, selected bool) string {
+// row compone la riga della conversazione (Piano 8, Task 9): marker e grassetto
+// seguono lo stato della conversazione (almeno un non letto), poi slot stella,
+// partecipanti con contatore su colonna adattiva, oggetto del messaggio più
+// recente, etichette utente e data relativa allineata a destra. Larghezza
+// adattiva: la riga riempie esattamente la larghezza della lista.
+func (d delegate) row(width int, conv mail.Conversation, selected bool) string {
+	ref := conv.Latest
 	marker := "○"
-	if ref.Unread {
+	if conv.Unread {
 		marker = "●"
 	}
 	star := " "
 	if ref.Starred {
 		star = "★"
 	}
+	sender := senderLabel(conv)
 
 	// Larghezza non ancora nota (nessun WindowSizeMsg): riga minima senza
 	// truncation né data.
 	if width <= markerCol {
-		return fmt.Sprintf("%s %s %s %s", marker, star, ref.From, ref.Subject)
+		return fmt.Sprintf("%s %s %s %s", marker, star, sender, ref.Subject)
 	}
 
 	date := RelativeDate(ref.Date, d.clock())
 	dateW := lipgloss.Width(date)
 
 	// Colonne: mittente = frazione della larghezza con minimi/massimi,
-	// oggetto = resto della riga fino alla data.
+	// oggetto = resto della riga fino alla data. Le etichette prendono al più
+	// metà dello spazio dell'oggetto: quelle che non entrano diventano "+N".
 	senderW := min(senderMax, max(senderMin, width/3))
 	subjectW := max(subjectMin, width-dateW-markerCol-1-senderW-1)
-	mid := padRight(truncate(ref.From, senderW), senderW) + " " + truncate(ref.Subject, subjectW)
+	shown, more := fitChips(conv.Labels, subjectW/2)
+	plainChips := d.renderChips(shown, more, true)
+	chipsW := lipgloss.Width(plainChips)
+	if chipsW > 0 {
+		subjectW = max(subjectMin, subjectW-chipsW-1)
+	}
+	mid := padRight(truncate(sender, senderW), senderW) + " " + truncate(ref.Subject, subjectW)
 
 	// La data è allineata a destra: riempi con spazi fino alla sua colonna.
-	gap := width - markerCol - lipgloss.Width(mid) - dateW
-	if gap < 0 {
-		gap = 0
+	used := markerCol + lipgloss.Width(mid) + dateW
+	if chipsW > 0 {
+		used += 1 + chipsW
 	}
+	gap := max(0, width-used)
 
 	if selected {
-		return d.st.ListSelected.Render(marker + " " + star + " " + mid +
+		chips := ""
+		if chipsW > 0 {
+			chips = " " + plainChips
+		}
+		return d.st.ListSelected.Render(marker + " " + star + " " + mid + chips +
 			strings.Repeat(" ", gap) + date)
 	}
 	markerSt, bodySt := d.st.ListNormal, d.st.ListNormal
-	if ref.Unread {
+	if conv.Unread {
 		markerSt, bodySt = d.st.ListUnread, d.st.ListUnread
 	}
 	starSt := d.st.ListNormal
 	if ref.Starred {
 		starSt = d.st.ListStarred
 	}
+	chips := ""
+	if chipsW > 0 {
+		chips = " " + d.renderChips(shown, more, false)
+	}
 	return markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
-		strings.Repeat(" ", gap) + d.st.ListDate.Render(date)
+		chips + strings.Repeat(" ", gap) + d.st.ListDate.Render(date)
+}
+
+// senderLabel compone il nome dei partecipanti come Gmail: il primo, "e altri N"
+// se sono di più, poi il contatore "(N)" se la conversazione ha più messaggi.
+// Senza partecipanti ricade sul mittente del messaggio più recente.
+func senderLabel(c mail.Conversation) string {
+	name := c.Latest.From
+	if n := len(c.Participants); n > 0 {
+		name = c.Participants[0]
+		if n > 1 {
+			name += fmt.Sprintf(" e altri %d", n-1)
+		}
+	}
+	if c.Count > 1 {
+		name += fmt.Sprintf(" (%d)", c.Count)
+	}
+	return name
+}
+
+// chipText è il testo di una etichetta utente: il nome fra parentesi quadre.
+func chipText(name string) string { return "[" + name + "]" }
+
+// fitChips sceglie le etichette che entrano in budget colonne (Piano 8, Task 9):
+// le prime che entrano, il resto è riassunto in "+N". Ritorna le etichette da
+// mostrare e quante ne restano fuori; nessuna se nemmeno la prima entra.
+func fitChips(labels []string, budget int) (shown []string, more int) {
+	for n := len(labels); n > 0; n-- {
+		w := 0
+		for i, name := range labels[:n] {
+			if i > 0 {
+				w++
+			}
+			w += lipgloss.Width(chipText(name))
+		}
+		rest := len(labels) - n
+		if rest > 0 {
+			w += len(fmt.Sprintf(" +%d", rest))
+		}
+		if w <= budget {
+			return labels[:n], rest
+		}
+	}
+	return nil, 0
+}
+
+// renderChips compone le etichette mostrate separate da spazio, più il "+N".
+// Ogni etichetta prende lo stile di Styles.LabelStyle; plain dà il solo testo
+// (riga selezionata, dove lo stile è quello della selezione, e misura in colonne).
+func (d delegate) renderChips(shown []string, more int, plain bool) string {
+	parts := make([]string, 0, len(shown)+1)
+	for _, name := range shown {
+		if plain {
+			parts = append(parts, chipText(name))
+		} else {
+			parts = append(parts, d.st.LabelStyle(name).Render(chipText(name)))
+		}
+	}
+	if more > 0 {
+		if plain {
+			parts = append(parts, fmt.Sprintf("+%d", more))
+		} else {
+			parts = append(parts, d.st.ListDate.Render(fmt.Sprintf("+%d", more)))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // truncate accorcia s a n rune aggiungendo "…"; n <= 0 rende stringa vuota.
