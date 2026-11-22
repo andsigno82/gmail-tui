@@ -21,6 +21,9 @@ type Mock struct {
 	Mailboxes []Mailbox // nil = default (INBOX + cestino Gmail), cfr. defaultMailboxes
 	Raw       map[msg.MessageID]map[int][]byte
 	changes   chan Change
+	// NoGmail simula un server senza X-GM-EXT-1 (Piano 10, Task 4): AllMailIDs
+	// fallisce e le label sono cartelle (cfr. ModifyLabels). Zero = Gmail.
+	NoGmail bool
 }
 
 // defaultMailboxes sono le cartelle del Mock se Mailboxes è nil (Piano 7, Task 1).
@@ -240,19 +243,19 @@ func (m *Mock) ListMailboxes(context.Context) ([]Mailbox, error) {
 // Trash implementa MailStore: sposta gli id nel cestino con un nuovo ID nel
 // prefisso del cestino. Valida TUTTI gli id prima di agire (niente azioni
 // parziali, come il Trash IMAP).
-func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) error {
+func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
 	ids = append([]msg.MessageID(nil), ids...) // copia: il chiamante può riusare la slice
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
-		return m.Err
+		return nil, m.Err
 	}
 	if len(ids) == 0 {
-		return nil
+		return nil, nil
 	}
 	trash, ok := trashBox(m.mailboxes())
 	if !ok {
-		return fmt.Errorf("cestino non trovato")
+		return nil, fmt.Errorf("cestino non trovato")
 	}
 
 	seen := make(map[msg.MessageID]bool, len(ids))
@@ -263,18 +266,20 @@ func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) error {
 		}
 		seen[id] = true
 		if inMailbox(id, trash) {
-			return fmt.Errorf("messaggio %s già nel cestino", id)
+			return nil, fmt.Errorf("messaggio %s già nel cestino", id)
 		}
 		mm := m.find(id)
 		if mm == nil {
-			return fmt.Errorf("messaggio %s non trovato: %w", id, ErrMessageNotFound)
+			return nil, fmt.Errorf("messaggio %s non trovato: %w", id, ErrMessageNotFound)
 		}
 		targets = append(targets, mm)
 	}
 
 	next := m.nextUID(trash)
+	out := make([]msg.MessageID, 0, len(targets))
 	for _, mm := range targets {
 		mm.Ref.ID = msg.NewID(trash, next)
+		out = append(out, mm.Ref.ID)
 		next++
 	}
 	m.init()
@@ -282,7 +287,7 @@ func (m *Mock) Trash(_ context.Context, ids []msg.MessageID) error {
 	case m.changes <- Change{Kind: ChangeFlags, IDs: ids}:
 	default:
 	}
-	return nil
+	return out, nil
 }
 
 // mailboxes restituisce le cartelle configurate, o il default se Mailboxes è nil.

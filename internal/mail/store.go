@@ -161,7 +161,40 @@ type MailStore interface {
 	// escono dalla cartella d'origine ed entrano nel cestino. Rifiuta senza
 	// agire se il cestino non esiste, se un id è già nel cestino, o se il server
 	// non supporta né MOVE né UIDPLUS (mai EXPUNGE generico).
-	Trash(ctx context.Context, ids []msg.MessageID) error
+	//
+	// Restituisce gli ID dei messaggi nel cestino, per l'annulla (Piano 10,
+	// Task 4, D10-T2). Vuoto se il server non riporta i nuovi UID.
+	Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error)
+
+	// Restore riporta nella cartella dest i messaggi indicati, che DEVONO stare
+	// nel cestino (ruolo "trash"): altrimenti errore prima di ogni azione. È un
+	// MOVE di ritorno con UID (mai EXPUNGE generico). Restituisce gli ID nella
+	// cartella dest (Piano 10, Task 4, D10-T3). Le label perse col cestino non
+	// sono ripristinate qui: il chiamante le riapplica con ModifyLabels.
+	Restore(ctx context.Context, ids []msg.MessageID, dest string) ([]msg.MessageID, error)
+
+	// AllMailIDs (solo Gmail, X-GM-EXT-1) restituisce, per ogni ID in INBOX, l'ID
+	// dello stesso messaggio (X-GM-MSGID) in "Tutti i messaggi" (ruolo "all").
+	// Senza X-GM-EXT-1 è errore. Usato dall'annulla di archivia (Piano 10,
+	// Task 4, D10-T4). Non modifica nulla.
+	AllMailIDs(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error)
+
+	// ModifyLabels aggiunge (add) e rimuove (remove) label Gmail sui messaggi
+	// (Piano 10, Task 4, D10-T5).
+	//
+	// Con X-GM-EXT-1 (STORE ±X-GM-LABELS) le label si cambiano da qualunque
+	// cartella, anche sugli ID di "Tutti i messaggi": è sicuro perché si toccano
+	// solo le label, mai i messaggi. "\Inbox" è ammesso: è l'annullamento
+	// dell'archiviazione (aggiungerlo riporta il messaggio in INBOX; rimuoverlo
+	// equivale ad archiviare). Gli altri attributi di sistema (con backslash)
+	// non sono label utente e sono rifiutati: la UI non deve esporre \Inbox
+	// nell'elenco delle label.
+	//
+	// Senza X-GM-EXT-1 le label sono cartelle: add copia il messaggio nella
+	// cartella-label; remove rimuove il messaggio dalla cartella-label, e ogni
+	// ID deve stare in ogni label rimossa (altrimenti errore prima di toccare
+	// il server). Un'add e una remove sulla stessa label sono rifiutate.
+	ModifyLabels(ctx context.Context, ids []msg.MessageID, add, remove []string) error
 
 	// SaveDraft salva un messaggio RFC 5322 (raw) nella mailbox con ruolo "drafts"
 	// (Piano 9, Task 2), con flag \Draft, e restituisce l'ID della bozza. Con

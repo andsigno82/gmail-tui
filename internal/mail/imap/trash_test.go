@@ -23,7 +23,7 @@ func TestTrashMovesFromInboxAndLabel(t *testing.T) {
 	ts.seedMail("Keep <k@example.org>", "Keep", "corpo", false, false)
 	store := connectStore(t, ts)
 
-	if err := store.Trash(t.Context(), []msg.MessageID{
+	if _, err := store.Trash(t.Context(), []msg.MessageID{
 		msg.NewID("INBOX", uidIn),
 		msg.NewID("Work", uidWk),
 	}); err != nil {
@@ -48,7 +48,7 @@ func TestTrashWithoutTrashMailboxFails(t *testing.T) {
 	uid := ts.seedMail("In <i@example.org>", "In inbox", "corpo", false, false)
 	store := connectStore(t, ts)
 
-	if err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}); err == nil {
+	if _, err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}); err == nil {
 		t.Fatal("Trash senza cestino: err = nil, voglio errore")
 	}
 	if got := mailboxSubjects(t, store, ""); len(got) != 1 {
@@ -65,7 +65,7 @@ func TestTrashRejectsIDAlreadyInTrash(t *testing.T) {
 	uidTr := ts.seedInMailbox("[Gmail]/Trash", "T <t@example.org>", "In trash", "corpo", false, false)
 	store := connectStore(t, ts)
 
-	if err := store.Trash(t.Context(), []msg.MessageID{
+	if _, err := store.Trash(t.Context(), []msg.MessageID{
 		msg.NewID("INBOX", uidIn),
 		msg.NewID("[Gmail]/Trash", uidTr),
 	}); err == nil {
@@ -91,7 +91,7 @@ func TestTrashRefusesWithoutMoveOrUIDPlus(t *testing.T) {
 	uid := ts.seedMail("In <i@example.org>", "In inbox", "corpo", false, false)
 	store := connectStore(t, ts)
 
-	if err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}); err == nil {
+	if _, err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uid)}); err == nil {
 		t.Fatal("Trash senza MOVE né UIDPLUS: err = nil, voglio rifiuto")
 	}
 	if got := mailboxSubjects(t, store, ""); len(got) != 1 {
@@ -112,7 +112,7 @@ func TestTrashWithUIDPlusOnly(t *testing.T) {
 	ts.seedMail("Keep <k@example.org>", "Keep", "corpo", false, false)
 	store := connectStore(t, ts)
 
-	if err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uidIn)}); err != nil {
+	if _, err := store.Trash(t.Context(), []msg.MessageID{msg.NewID("INBOX", uidIn)}); err != nil {
 		t.Fatalf("Trash con solo UIDPLUS: %v", err)
 	}
 	if got := mailboxSubjects(t, store, ""); len(got) != 1 || got[0] != "Keep" {

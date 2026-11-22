@@ -25,7 +25,13 @@ import (
 //
 // Un errore a metà (SELECT/MOVE di un gruppo) lascia già spostati i gruppi
 // precedenti: IMAP non offre transazioni, il refresh della UI rilegge lo stato.
-func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) error {
+// Piano 10, Task 4: firma nuova (ID nel cestino); la restituzione dei nuovi UID da
+// MoveData.DestUIDs arriva nel Task 5. Per ora il corpo storico resta in trashMove.
+func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
+	return nil, s.trashMove(ctx, ids)
+}
+
+func (s *Store) trashMove(ctx context.Context, ids []msg.MessageID) error {
 	if err := s.refuseAllMail(ctx, ids, "cestina"); err != nil {
 		return err
 	}
