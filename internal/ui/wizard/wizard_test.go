@@ -548,3 +548,67 @@ func TestFinalizeConfigErrorCompletesAnyway(t *testing.T) {
 		t.Errorf("KeyringErr = %v, voglio nil (keychain finto ok)", cm.KeyringErr)
 	}
 }
+
+// Piano 7.2, Task 2: login conserva nome, firma, tema, layout e preview della
+// config esistente, aggiornando solo l'indirizzo.
+func TestFinalizeKeepsExistingSettings(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	existing := config.Config{
+		Address:         "vecchio@gmail.com",
+		Name:            "Andrea",
+		Signature:       "-- \nAndrea",
+		Theme:           "dracula",
+		Layout:          "split",
+		PreviewMarkRead: "never",
+	}
+	if err := existing.Save(cfgPath); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(t, Deps{TestConnect: func(context.Context, string, string) error { return nil }, Keyring: &krRecorder{}, CfgPath: cfgPath})
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "user@gmail.com")
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "app-password")
+	m, cmd := step(m, pressKey("enter"))
+	m, fin := step(m, connTestedOf(t, runCmds(cmd)))
+	completedOf(t, runCmds(fin))
+	_ = m
+
+	got, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config non leggibile: %v", err)
+	}
+	want := existing
+	want.Address = "user@gmail.com"
+	if got != want {
+		t.Errorf("config dopo login = %+v, voglio %+v", got, want)
+	}
+}
+
+// Piano 7.2, Task 2: config esistente illeggibile → login comunque, con i
+// default e il solo indirizzo nuovo.
+func TestFinalizeUnreadableExistingConfigFallsBack(t *testing.T) {
+	cfgPath := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(cfgPath, []byte("questo non è toml = [\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := newModel(t, Deps{TestConnect: func(context.Context, string, string) error { return nil }, Keyring: &krRecorder{}, CfgPath: cfgPath})
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "user@gmail.com")
+	m, _ = step(m, pressKey("enter"))
+	m = typeKeys(m, "app-password")
+	m, cmd := step(m, pressKey("enter"))
+	m, fin := step(m, connTestedOf(t, runCmds(cmd)))
+	cm := completedOf(t, runCmds(fin))
+	_ = m
+	if cm.ConfigErr != nil {
+		t.Fatalf("ConfigErr = %v, voglio nil (la config è sovrascritta)", cm.ConfigErr)
+	}
+	got, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("config non leggibile: %v", err)
+	}
+	if got.Address != "user@gmail.com" || got.Theme != "default" || got.Layout != config.LayoutSingle {
+		t.Errorf("config = %+v, voglio indirizzo nuovo e default", got)
+	}
+}

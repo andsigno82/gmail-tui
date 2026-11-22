@@ -289,15 +289,21 @@ func (m Model) testConnCmd() tea.Cmd {
 }
 
 // finalizeCmd persiste la config e la password nel keychain fuori dal loop UI
-// (Piano 4, Task 5: successo = config.Save con address/name/signature vuote/
-// tema default + keyring.Set). Entrambi gli errori sono NON fatali: il
-// CompletedMsg li porta al radice e il wizard completa comunque (la sessione
-// corrente funziona con le credenziali in memoria).
+// (Piano 4, Task 5: successo = config.Save con address + keyring.Set). Piano
+// 7.2, Task 2: la config esistente è conservata (nome, firma, tema, layout,
+// preview) e cambia solo l'indirizzo; se manca o non è leggibile si parte dai
+// default. Entrambi gli errori sono NON fatali: il CompletedMsg li porta al
+// radice e il wizard completa comunque (la sessione corrente funziona con le
+// credenziali in memoria).
 func (m Model) finalizeCmd() tea.Cmd {
 	return func() tea.Msg {
 		var cfgErr, krErr error
 		if m.deps.CfgPath != "" {
-			cfg := config.Config{Address: m.addr, Theme: "default"}
+			cfg, err := config.Load(m.deps.CfgPath)
+			if err != nil {
+				cfg = config.Default()
+			}
+			cfg.Address = m.addr
 			cfgErr = cfg.Save(m.deps.CfgPath)
 		}
 		if m.deps.Keyring != nil {

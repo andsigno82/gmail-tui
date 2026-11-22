@@ -6,23 +6,51 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
-// Config è la configurazione utente. Gli host IMAP/SMTP sono preset
-// Gmail fissi (spec) e non sono configurabili in v1.
-type Config struct {
-	Address   string `toml:"address"`
-	Name      string `toml:"name"`
-	Signature string `toml:"signature"`
-	Theme     string `toml:"theme"`
+// Valori ammessi per Layout e PreviewMarkRead (Piano 7.2, Task 2). Il valore
+// vuoto è accettato e vale come default (single / delay).
+const (
+	LayoutSingle = "single"
+	LayoutSplit  = "split"
+
+	PreviewMarkReadImmediate = "immediate"
+	PreviewMarkReadDelay     = "delay"
+	PreviewMarkReadNever     = "never"
+)
+
+// LayoutValues restituisce i valori ammessi per Layout, nell'ordine del menu
+// impostazioni (Piano 7.2, Task 2).
+func LayoutValues() []string {
+	return []string{LayoutSingle, LayoutSplit}
 }
 
-// Default restituisce la configurazione di fabbrica.
+// PreviewMarkReadValues restituisce i valori ammessi per PreviewMarkRead, nell'
+// ordine del menu impostazioni (Piano 7.2, Task 2).
+func PreviewMarkReadValues() []string {
+	return []string{PreviewMarkReadImmediate, PreviewMarkReadDelay, PreviewMarkReadNever}
+}
+
+// Config è la configurazione utente. Gli host IMAP/SMTP sono preset
+// Gmail fissi (spec) e non sono configurabili in v1. Layout e PreviewMarkRead
+// sono le impostazioni di lettura (Piano 7.2, Task 2).
+type Config struct {
+	Address         string `toml:"address"`
+	Name            string `toml:"name"`
+	Signature       string `toml:"signature"`
+	Theme           string `toml:"theme"`
+	Layout          string `toml:"layout"`
+	PreviewMarkRead string `toml:"preview_mark_read"`
+}
+
+// Default restituisce la configurazione di fabbrica (Piano 7.2, Task 2: layout
+// a una colonna, segna come letto in anteprima dopo 2 secondi).
 func Default() Config {
-	return Config{Theme: "default"}
+	return Config{Theme: "default", Layout: LayoutSingle, PreviewMarkRead: PreviewMarkReadDelay}
 }
 
 // Path restituisce il percorso della config (os.UserConfigDir + gmail-tui).
@@ -66,10 +94,17 @@ func (c Config) Save(path string) error {
 	return err
 }
 
-// Validate controlla i campi con formato noto.
+// Validate controlla i campi con formato noto (Piano 7.2, Task 2: Layout e
+// PreviewMarkRead accettano solo i valori ammessi, o il vuoto).
 func (c Config) Validate() error {
 	if c.Address != "" && !strings.Contains(c.Address, "@") {
 		return fmt.Errorf("address %q non valido: manca @", c.Address)
+	}
+	if c.Layout != "" && !slices.Contains(LayoutValues(), c.Layout) {
+		return fmt.Errorf("layout %q non valido: ammessi %s", c.Layout, strings.Join(LayoutValues(), ", "))
+	}
+	if c.PreviewMarkRead != "" && !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
+		return fmt.Errorf("preview_mark_read %q non valido: ammessi %s", c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
 	}
 	return nil
 }
