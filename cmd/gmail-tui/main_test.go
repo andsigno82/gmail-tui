@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -69,9 +71,45 @@ func TestWizardNeeded(t *testing.T) {
 		{"login forza anche senza nulla", true, false, "", true},
 	}
 	for _, tc := range cases {
-		if got := wizardNeeded(tc.force, tc.cfgExist, tc.source); got != tc.want {
+		if got := wizardNeeded(tc.force, tc.cfgExist, "ada@example.com", tc.source); got != tc.want {
 			t.Errorf("%s: wizardNeeded(%v, %v, %q) = %v, voglio %v", tc.name, tc.force, tc.cfgExist, tc.source, got, tc.want)
 		}
+	}
+}
+
+// Piano 7.2, fix review: una config senza indirizzo (salvataggio dal menu in
+// demo) non è un account: senza password il wizard torna.
+func TestWizardNeededEmptyAddress(t *testing.T) {
+	if !wizardNeeded(false, true, "", "") {
+		t.Error("config con indirizzo vuoto e nessuna password: wizard atteso")
+	}
+	if wizardNeeded(false, true, "ada@example.com", "") {
+		t.Error("config con indirizzo e nessuna password: demo, non wizard")
+	}
+}
+
+// Piano 7.2, fix review: loadConfig con un valore non valido (layout "grid")
+// conserva l'indirizzo e riporta al default solo il campo sbagliato.
+func TestLoadConfigKeepsAddressOnInvalidValue(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	path, err := config.Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("address = \"ada@example.com\"\nlayout = \"grid\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, ok := loadConfig()
+	if !ok {
+		t.Fatal("loadConfig: ok = false, voglio true (valore non valido, non config rotta)")
+	}
+	if cfg.Address != "ada@example.com" || cfg.Layout != config.LayoutSingle {
+		t.Errorf("cfg = %+v, voglio indirizzo conservato e layout di default", cfg)
 	}
 }
 

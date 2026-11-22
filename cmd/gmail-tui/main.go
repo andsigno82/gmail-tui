@@ -139,7 +139,7 @@ func runTUI(args []string, forceWizard bool) int {
 	cfgPath, pathErr := config.Path()
 	cfgExists := pathErr == nil && fileExists(cfgPath)
 
-	if wizardNeeded(forceWizard, cfgExists, src) {
+	if wizardNeeded(forceWizard, cfgExists, cfg.Address, src) {
 		return runWizardTUI(cfgPath, krStore, th)
 	}
 
@@ -188,11 +188,12 @@ func runWizardTUI(cfgPath string, krStore keyring.Store, th theme.Theme) int {
 }
 
 // wizardNeeded decide la modalità first-run (Piano 4, Task 5): wizard SOLO se
-// forzato (`gmail-tui login`) oppure se la config MANCA e nessuna password è
-// risolvibile (source ""). Config presente senza password → demo mode col
+// forzato (`gmail-tui login`) oppure se nessuna password è risolvibile (source
+// "") e la config MANCA o non ha indirizzo (Piano 7.2, fix review: un salvataggio
+// dal menu in demo crea una config con address vuoto). Config presente senza password → demo mode col
 // banner esistente (non wizard); config assente CON password → sessione reale.
-func wizardNeeded(force, cfgExists bool, source string) bool {
-	return force || (!cfgExists && source == "")
+func wizardNeeded(force, cfgExists bool, address, source string) bool {
+	return force || ((!cfgExists || address == "") && source == "")
 }
 
 // resolvePassword applica l'ordine di risoluzione (Piano 4, Task 5) via
@@ -410,6 +411,12 @@ func loadConfig() (config.Config, bool) {
 		return config.Config{}, false
 	}
 	cfg, err := config.Load(path)
+	// Piano 7.2, fix review: un valore non valido riporta al default solo quel
+	// campo; indirizzo e nome restano. Parsing/lettura rotti: come prima.
+	if errors.Is(err, config.ErrInvalid) {
+		fmt.Fprintf(os.Stderr, "config: %v (campi riportati al default)\n", err)
+		return cfg.Sanitized(), true
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "config: %v\n", err)
 		return config.Config{}, false
