@@ -72,6 +72,8 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 
 ## Piano 9 — Scrittura
 
+**Consegnato** (branch `feat/piano-9`): bozze (Esc salva, Ctrl+D scarta, ripresa da Bozze), annulla invio (5 s, `u`), rubrica locale e comando esterno `address_book_cmd` per A/Cc/Ccn. Nota D9-2: il campo Ccn è stato aggiunto al composer (decisione del coordinatore), quindi Ccn è coperto anche dai suggerimenti. Verifica reale su Gmail: vedi `docs/smoke-checklist.md`, sezione Piano 9.
+
 - **Bozze:** `Ctrl+S` salva o "posponi" la bozza con APPEND nella mailbox `\Drafts` (ruolo SPECIAL-USE, già letto da `ListMailboxes`); dalla cartella Bozze `r`/invio la riapre nel composer. Modello: `:postpone`/`:recall` di aerc. Nuovo metodo `MailStore.SaveDraft`.
 - **Markdown → HTML:** consegnato nel Piano 7.2 (`multipart/alternative` con GFM, `gmail-tui send --markdown`, goldmark per D9-1). Non più in questo piano.
 - **Autocompletamento contatti** nei campi A/Cc/Ccn. Due fonti possibili: gli indirizzi già visti nelle ENVELOPE e nella cache (zero configurazione), più un comando esterno opzionale come `address-book-cmd` di aerc (es. khard), entrambi (D9-2).

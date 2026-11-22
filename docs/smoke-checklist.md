@@ -160,3 +160,17 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).
 - [ ] Run `gmail-tui doctor` with `GMAIL_APP_PASSWORD` unset and no keychain entry → the password line says missing and suggests "gmail-tui login", the IMAP check is skipped, the other checks do not fail.
 - [ ] With the password only in the keychain → `password: keychain ok` and the `imap:` line is printed.
+
+## Piano 9 — scrittura (real account, run by hand)
+
+Run on a real Gmail account; nothing here is covered by tests.
+
+- [ ] `Esc` in a new message with a recipient and text: the message appears in Gmail web under Drafts, with the same recipient, subject and body.
+- [ ] `Enter` on that draft in gmail-tui's Drafts folder: recipients, subject, Cc/Bcc and body are back; the signature is not doubled.
+- [ ] Save again after an edit: Drafts keeps one copy (the new one).
+- [ ] Bcc of a draft: the recipient is still there after resuming; the sent message shows no Bcc header in Gmail web (Sent).
+- [ ] Send a resumed draft: it leaves Drafts; the message is in Sent once.
+- [ ] `Ctrl+S` then `s`: the message goes out after about 5 seconds; `u` within 5 seconds brings the composer back with the text.
+- [ ] Quit within the 5-second window: the message is sent before the program exits.
+- [ ] Address suggestions: type the first letters of a known sender in To, `Ctrl+N`/`Ctrl+P` select, `Enter` inserts `Name <address>, `.
+- [ ] With `address_book_cmd` set (e.g. khard): suggestions include its results; with the command missing or failing, one warning toast and local suggestions still work.

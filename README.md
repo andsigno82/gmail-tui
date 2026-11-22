@@ -51,6 +51,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `Ctrl+C` | quit from anywhere |
 | `/` | search — on Gmail accounts the query goes verbatim to Gmail (`older_than:7d`, `in:`, `-label:`, `from:x is:unread label:Work has:attachment`); without Gmail, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
+| `m` then `Enter` in Drafts | resume a draft in the composer (recipients, subject, body; attachments are not restored) |
 | `a` | archive the conversation in the current folder (Inbox only) |
 | `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
 | `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
@@ -66,7 +67,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 
 **Conversations.** On Gmail accounts the list shows one row per conversation: participants, message count in parentheses, unread state, and user labels as colored chips. The thread view shows all messages of the conversation in date order, your replies included: read messages are collapsed to one line, the latest and unread ones are expanded. `j`/`k` choose a message; `r`, `f`, `o` and `:save` act on the selected message (the latest by default).
 
-Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc · `Ctrl+S` send (confirmation first) · `Esc` cancel. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
+Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc and Bcc (Ccn) · `Ctrl+S` send (confirmation first, then a 5-second window: `u` brings the draft back) · `Esc` save the draft to Drafts and close · `Ctrl+D` discard (asks for confirmation) · while typing an address in To/Cc/Ccn, `Ctrl+N`/`Ctrl+P` choose a suggestion and `Enter` inserts it. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
 
 Notifications: the outcome of an action ("archived", "sent", errors…) appears as a toast in the top-right corner. Info and success toasts disappear after 3 seconds; error toasts stay until you press a key. Up to 3 toasts stack; when a fourth arrives the oldest non-error toast goes first. The status bar stays neutral and shows only lasting state (folder, active search, reconnecting, setup warnings); it turns colored only for confirmations that wait for an answer (send, discard draft, trash).
 

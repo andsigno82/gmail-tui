@@ -189,7 +189,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Produces:** README (tasti: `ctrl+d`, `u`, `ctrl+n/p`, `invio` in Bozze; config `address_book_cmd`), CHANGELOG (sezione Piano 9), `docs/smoke-checklist.md` (sezione "Piano 9 — scrittura", da eseguire da Andrea su account reale: bozza salvata e visibile in Gmail web, ripresa, rimozione dopo invio, suggerimenti, annulla invio), piano dei gap (Piano 9 consegnato, con la nota su Ccn di D9-2).
 
-- [ ] Gate finali: build, vet, `go test -race -count=1 ./...`, `golangci-lint run ./...` 0 issues; build `CGO_ENABLED=0` per linux/darwin/windows; `govulncheck ./...` pulito; `grep -rn "go-imap" internal --include="*.go" -l | grep -v internal/mail/imap` vuoto.
+- [x] Gate finali: build, vet, `go test -race -count=1 ./...`, `golangci-lint run ./...` 0 issues; build `CGO_ENABLED=0` per linux/darwin/windows; `govulncheck ./...` pulito; `grep -rn "go-imap" internal --include="*.go" -l | grep -v internal/mail/imap` vuoto.
 - [ ] Prova in tmux con HOME temporanea (demo): bozza salvata, ripresa, suggerimenti, annulla invio.
 - [ ] Commit `docs: Piano 9 (README, CHANGELOG, smoke, piano dei gap)`.
 
