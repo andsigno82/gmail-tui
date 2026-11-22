@@ -62,7 +62,6 @@ type Model struct {
 	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
 	labelOpen bool            // prompt label attivo: i tasti vanno all'input
 	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
-	demo      bool            // demo mode (Task 9): banner iniziale nello stato della barra
 
 	// Composer (Piano 4, Task 3-4): identity mittente/firma (SetIdentity,
 	// seam per il wiring dalla config del main), vista di provenienza per il
@@ -239,12 +238,6 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Piano 7.3, Task 2: scadenza di un toast di successo/info (un errore non
 		// scade mai); gli altri toast in pila restano.
 		m.toast.Update(ev)
-		return m, nil
-
-	case statusMsg:
-		// Timeout logico: lo status resta finché il prossimo evento non lo
-		// sostituisce; nessun timer.
-		m.status = ev
 		return m, nil
 
 	case connResult:
@@ -505,7 +498,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.refresh {
 			// Mutazione utente riuscita (Task 7): rilista la lista corrente
 			// (query corrente) in silenzio — refs e cursore aggiornati, il
-			// feedback resta in status. Via requestRefresh (Task 8): con un
+			// l'esito è già nel toast (Piano 7.3). Via requestRefresh (Task 8): con un
 			// refresh già in volo non si accatasta, il follow-up parte al
 			// risultato (dirty). deep (Piano 7, D5): profondità piena solo per
 			// Archive/Trash, che cambiano la composizione della lista.
@@ -1279,7 +1272,6 @@ const demoBannerText = "demo mode — set GMAIL_APP_PASSWORD"
 // che sopravvive al load di Init e resta finché il prossimo evento (op,
 // ricerca, Watch) non lo sostituisce.
 func (m *Model) SetDemoBanner() {
-	m.demo = true
 	m.startup = true
 	m.status = statusMsg{text: demoBannerText}
 }

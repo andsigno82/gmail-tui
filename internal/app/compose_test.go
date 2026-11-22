@@ -838,7 +838,7 @@ func TestSendSuccessReturnsToInboxAndRefreshes(t *testing.T) {
 	}
 }
 
-// TestSendErrorStaysInComposerWithErrorToast: errore del sender → StatusErr col
+// TestSendErrorStaysInComposerWithErrorToast: errore del sender → toast d'errore col
 // dettaglio; il composer resta aperto con la bozza intatta (riprovabile con
 // ctrl+s — la conferma si riapre).
 func TestSendErrorStaysInComposerWithErrorToast(t *testing.T) {

@@ -15,7 +15,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
-// Duration è la vita di un toast di successo, info o avviso (decisione T3).
+// Duration è la vita di un toast di successo o info (decisione T3).
 // È una variabile solo perché il pacchetto app la abbassa nei test (che
 // eseguono le cmd in modo sincrono): nessuna attesa reale (Piano 7.3, Task 2).
 var Duration = 3 * time.Second
@@ -30,7 +30,6 @@ type Kind int
 const (
 	Info Kind = iota
 	Success
-	Warning
 	Error
 )
 
@@ -88,10 +87,10 @@ func (m *Model) evict() {
 
 // Update gestisce ExpiredMsg: rimuove quel toast se è ancora in pila. Gli altri
 // messaggi non la riguardano.
-func (m *Model) Update(msg tea.Msg) tea.Cmd {
+func (m *Model) Update(msg tea.Msg) {
 	ev, ok := msg.(ExpiredMsg)
 	if !ok {
-		return nil
+		return
 	}
 	for i, it := range m.items {
 		// Un errore non arma timer: un ExpiredMsg con il suo ID è stantio.
@@ -100,7 +99,6 @@ func (m *Model) Update(msg tea.Msg) tea.Cmd {
 			break
 		}
 	}
-	return nil
 }
 
 // DismissErrors chiude i toast d'errore; gli altri restano. La app la chiama a
@@ -168,8 +166,6 @@ func (m Model) style(k Kind) lipgloss.Style {
 	switch k {
 	case Success:
 		return m.st.ToastSuccess
-	case Warning:
-		return m.st.ToastWarning
 	case Error:
 		return m.st.ToastError
 	default:

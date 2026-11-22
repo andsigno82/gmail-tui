@@ -169,7 +169,8 @@ func TestStatusBarShowsShortHelp(t *testing.T) {
 		}
 	}
 	// Con uno status attivo l'help resta visibile accanto al testo.
-	mm, _ := step(m, statusMsg{text: "fatto"})
+	mm := m
+	mm.status = statusMsg{text: "fatto"}
 	bar = mm.statusBar()
 	if !strings.Contains(bar, "fatto") || !strings.Contains(bar, "esci") {
 		t.Errorf("status bar = %q, voglio testo + help breve", bar)

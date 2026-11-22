@@ -1,7 +1,6 @@
 // Wizard nel radice (Piano 4, Task 5): attivazione (SetWizard), routing dei
 // tasti, completamento (skip → demo con seed; successo → factory dei backend
-// reali) e i feedback positivi in stile StatusOK (polish ereditato dal
-// Piano 3: use-or-drop).
+// reali) e gli esiti come toast (Piano 7.3, fix review).
 package app
 
 import (

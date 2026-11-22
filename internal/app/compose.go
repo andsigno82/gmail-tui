@@ -264,7 +264,7 @@ func sendConfirmText(out msg.Outgoing) string {
 // sendCmd consegna la bozza al Sender fuori dal loop UI: il ctx porta il
 // budget SendTimeout (const condivisa col sottocomando `send` — stessa semantica
 // anti-hang). L'esito torna come opDone: errore → {"invio", err} (la radice
-// resta nel composer con la bozza: StatusErr col dettaglio, riprova possibile);
+// resta nel composer con la bozza: toast d'errore col dettaglio, riprova possibile);
 // successo → {"inviato"} con closeComposer (ritorno inbox, Piano 4 Task 4) e
 // refresh (re-list silenzioso della lista corrente).
 func sendCmd(sender Sender, out msg.Outgoing) tea.Cmd {

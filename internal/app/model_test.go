@@ -279,12 +279,13 @@ func TestPendingCounterAndSpinner(t *testing.T) {
 
 func TestStatusBarTextChanges(t *testing.T) {
 	m := newTestModel(t)
-	mm, _ := step(m, statusMsg{text: "demo mode"})
+	m.status = statusMsg{text: "demo mode"}
+	mm := m
 	if got := mm.statusText(); got != "demo mode" {
 		t.Errorf("statusText = %q, voglio \"demo mode\"", got)
 	}
 	// il prossimo evento sostituisce lo status (timeout logico)
-	mm, _ = step(mm, statusMsg{text: "fatto"})
+	mm.status = statusMsg{text: "fatto"}
 	if got := mm.statusText(); got != "fatto" {
 		t.Errorf("statusText = %q, voglio \"fatto\"", got)
 	}
@@ -701,7 +702,7 @@ func TestBackMsgPreservesInboxList(t *testing.T) {
 
 // TestOpenRequestedWiresExecCmd: la radice risponde a OpenRequested con la
 // Cmd di exec (tea.ExecProcess, NON eseguita nei test) e a OpenedMsg col
-// feedback in status bar; un errore di preparazione finisce in status isErr.
+// feedback come toast; un errore di preparazione finisce in un toast d'errore.
 func TestOpenRequestedWiresExecCmd(t *testing.T) {
 	m := newTestModel(t)
 	mm, cmd := step(m, thread.OpenRequested{Path: "/tmp/msg.html"})

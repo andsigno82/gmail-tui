@@ -21,7 +21,7 @@ type Styles struct {
 	ListDate        lipgloss.Style // metadati riga: data relativa, mittente
 	ListSelected    lipgloss.Style // riga sotto il cursore
 	SearchInput     lipgloss.Style // prompt/cursore della ricerca
-	StatusErr       lipgloss.Style // barra colorata: conferme modali (invio, scarta, cestino)
+	StatusErr       lipgloss.Style // barra colorata: conferme modali (invio, scarta, cestino) e errori del wizard
 	StatusBar       lipgloss.Style // status bar: stato normale
 	HelpView        lipgloss.Style // barra help contestuale / overlay
 	ThreadHeader    lipgloss.Style // intestazione del thread
@@ -33,7 +33,6 @@ type Styles struct {
 	DividerFocus    lipgloss.Style // separatore con il focus sull'anteprima (slot primary)
 	ToastInfo       lipgloss.Style // toast informativo: bordo accent (Piano 7.3, Task 1)
 	ToastSuccess    lipgloss.Style // toast di esito positivo: bordo success
-	ToastWarning    lipgloss.Style // toast d'avviso: bordo warning
 	ToastError      lipgloss.Style // toast d'errore: bordo error (resta finché un tasto)
 }
 
@@ -59,7 +58,6 @@ func New(t theme.Theme) Styles {
 		DividerFocus:    lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
 		ToastInfo:       toastStyle(t, t.Accent),
 		ToastSuccess:    toastStyle(t, t.Success),
-		ToastWarning:    toastStyle(t, t.Warning),
 		ToastError:      toastStyle(t, t.Error),
 	}
 }
