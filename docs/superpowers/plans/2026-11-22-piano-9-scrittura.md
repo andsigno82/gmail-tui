@@ -167,7 +167,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestTypingEmitsSuggestQuery`; `TestSetSuggestionsIgnoresStaleQuery`; `TestEnterInsertsSelectedSuggestion`; `TestEnterWithoutSuggestionsKeepsField`; `TestSuggestionRowsFitLayout`.
 
-- [ ] RED, implementazione, commit `feat(composer): suggerimenti dei contatti in A e Cc (Piano 9, Task 11)`.
+- [x] RED, implementazione, commit `feat(composer): suggerimenti dei contatti in A e Cc (Piano 9, Task 11)`.
 
 ## Task 12: suggerimenti nell'app
 

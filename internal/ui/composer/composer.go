@@ -78,6 +78,13 @@ type Model struct {
 	attachments []string
 	attSel      int // allegato selezionato per `d` (rimozione)
 
+	// Suggerimenti dei contatti (Piano 9, Task 11): lista del campo suggField per
+	// il frammento suggQuery; suggSel è la riga scelta (ctrl+n/ctrl+p).
+	suggest   []Suggestion
+	suggField Field
+	suggQuery string
+	suggSel   int
+
 	picker     filepicker.Model
 	pickerOpen bool
 }
@@ -207,6 +214,7 @@ func (m Model) prevField() Field {
 // focusField sposta il focus sul campo dato (blur su tutti gli altri).
 func (m *Model) focusField(f Field) tea.Cmd {
 	m.focus = f
+	m.suggest, m.suggQuery, m.suggSel = nil, "", 0 // la lista vale solo sul suo campo
 	m.to.Blur()
 	m.cc.Blur()
 	m.bcc.Blur()
@@ -257,6 +265,20 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		case "ctrl+s":
 			return mm, sendCmd(mm.Draft())
 		}
+		if isRecipient(mm.focus) && len(mm.suggest) > 0 {
+			// Lista dei suggerimenti aperta (Piano 9, D9-H): ctrl+n/ctrl+p scelgono, invio inserisce.
+			switch k.String() {
+			case "ctrl+n":
+				mm.moveSuggestion(1)
+				return mm, nil
+			case "ctrl+p":
+				mm.moveSuggestion(-1)
+				return mm, nil
+			case "enter":
+				mm.acceptSuggestion()
+				return mm, nil
+			}
+		}
 		if mm.focus == FieldAttachments {
 			switch k.String() {
 			case "enter":
@@ -284,6 +306,10 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 	var cmd tea.Cmd
+	before := ""
+	if in := mm.recipientInput(mm.focus); in != nil {
+		before = in.Value()
+	}
 	switch mm.focus {
 	case FieldTo:
 		mm.to, cmd = mm.to.Update(ev)
@@ -295,6 +321,10 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		mm.subject, cmd = mm.subject.Update(ev)
 	case FieldBody:
 		mm.body, cmd = mm.body.Update(ev)
+	}
+	// Il frammento cambiato rilancia la ricerca dei suggerimenti (D9-H).
+	if in := mm.recipientInput(mm.focus); in != nil && in.Value() != before {
+		cmd = tea.Batch(cmd, mm.suggestCmd())
 	}
 	return mm, cmd
 }
@@ -459,7 +489,8 @@ func reservedLines(m Model) int {
 	if m.ccVisible {
 		n += 2 // Cc e Ccn
 	}
-	n += 2 // riga vuota dopo il corpo + riga Allegati
+	n += 2              // riga vuota dopo il corpo + riga Allegati
+	n += len(m.suggest) // righe dei suggerimenti (Piano 9, Task 11)
 	if len(m.attachments) > 0 {
 		n += len(m.attachments)
 	}
@@ -503,9 +534,12 @@ func (m Model) View() string {
 	}
 	b.WriteString(label("Da", FieldFrom) + " " + m.st.ListNormal.Render(m.from) + "\n")
 	b.WriteString(label("A", FieldTo) + " " + m.to.View() + "\n")
+	b.WriteString(m.suggestRows(FieldTo))
 	if m.ccVisible {
 		b.WriteString(label("Cc", FieldCc) + " " + m.cc.View() + "\n")
+		b.WriteString(m.suggestRows(FieldCc))
 		b.WriteString(label("Ccn", FieldBcc) + " " + m.bcc.View() + "\n")
+		b.WriteString(m.suggestRows(FieldBcc))
 	}
 	b.WriteString(label("Oggetto", FieldSubject) + " " + m.subject.View() + "\n")
 	b.WriteString("\n")
