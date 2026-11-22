@@ -179,13 +179,22 @@ func TestCcInNavigationWhenVisible(t *testing.T) {
 	if mm.focus != FieldCc {
 		t.Errorf("focus dopo il toggle = %v, voglio FieldCc", mm.focus)
 	}
+	// Piano 9 (Ccn): tra Cc e Oggetto c'è il campo Ccn.
+	mm, _ = step(mm, pressKey("tab"))
+	if mm.focus != FieldBcc {
+		t.Errorf("tab da Cc: focus = %v, voglio FieldBcc", mm.focus)
+	}
 	mm, _ = step(mm, pressKey("tab"))
 	if mm.focus != FieldSubject {
-		t.Errorf("tab da Cc: focus = %v, voglio FieldSubject", mm.focus)
+		t.Errorf("tab da Ccn: focus = %v, voglio FieldSubject", mm.focus)
+	}
+	mm, _ = step(mm, pressKey("shift+tab"))
+	if mm.focus != FieldBcc {
+		t.Errorf("shift+tab da Subject: focus = %v, voglio FieldBcc", mm.focus)
 	}
 	mm, _ = step(mm, pressKey("shift+tab"))
 	if mm.focus != FieldCc {
-		t.Errorf("shift+tab da Subject: focus = %v, voglio FieldCc", mm.focus)
+		t.Errorf("shift+tab da Ccn: focus = %v, voglio FieldCc", mm.focus)
 	}
 	// Nuovo toggle nasconde Cc e il focus torna su A.
 	mm, _ = step(mm, pressKey("ctrl+e"))

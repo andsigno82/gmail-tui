@@ -29,6 +29,7 @@ const (
 	FieldFrom Field = iota
 	FieldTo
 	FieldCc
+	FieldBcc // Ccn (Piano 9, decisione del coordinatore): con Cc, toggle ctrl+e
 	FieldSubject
 	FieldBody
 	FieldAttachments
@@ -39,10 +40,10 @@ const (
 // QuotedBody è la citazione iniziale nel textarea (appesa sotto Body se
 // entrambe presenti), Attachments i percorsi pre-allegati.
 type ComposerConfig struct {
-	From, Signature       string
-	To, Cc, Subject, Body string
-	QuotedBody            string
-	Attachments           []string
+	From, Signature            string
+	To, Cc, Bcc, Subject, Body string
+	QuotedBody                 string
+	Attachments                []string
 }
 
 // SendRequestedMsg è prodotto da ctrl+s: contiene la bozza completa (firma
@@ -67,8 +68,8 @@ type Model struct {
 	from      string // display readonly (mai focalizzato)
 	signature string // appended nel Draft stile pop
 
-	to, cc, subject textinput.Model
-	body            textarea.Model
+	to, cc, bcc, subject textinput.Model
+	body                 textarea.Model
 
 	ccVisible bool // toggle ctrl+e (da config se Cc precompilato)
 	focus     Field
@@ -90,13 +91,15 @@ func New(cfg ComposerConfig, st styles.Styles) Model {
 		st:          st,
 		from:        cfg.From,
 		signature:   cfg.Signature,
-		ccVisible:   cfg.Cc != "",
+		ccVisible:   cfg.Cc != "" || cfg.Bcc != "",
 		attachments: append([]string(nil), cfg.Attachments...),
 	}
 	m.to = newInput(st, "destinatario, separati da virgole")
 	m.to.SetValue(cfg.To)
 	m.cc = newInput(st, "cc, separati da virgole")
 	m.cc.SetValue(cfg.Cc)
+	m.bcc = newInput(st, "ccn, separati da virgole")
+	m.bcc.SetValue(cfg.Bcc)
 	m.subject = newInput(st, "oggetto")
 	m.subject.SetValue(cfg.Subject)
 	m.body = textarea.New()
@@ -159,6 +162,9 @@ func firstEmpty(m Model) Field {
 	if m.ccVisible && m.cc.Value() == "" {
 		return FieldCc
 	}
+	if m.ccVisible && m.bcc.Value() == "" {
+		return FieldBcc
+	}
 	if m.subject.Value() == "" {
 		return FieldSubject
 	}
@@ -172,7 +178,7 @@ func firstEmpty(m Model) Field {
 func (m Model) visibleFields() []Field {
 	f := []Field{FieldTo}
 	if m.ccVisible {
-		f = append(f, FieldCc)
+		f = append(f, FieldCc, FieldBcc)
 	}
 	return append(f, FieldSubject, FieldBody, FieldAttachments)
 }
@@ -203,6 +209,7 @@ func (m *Model) focusField(f Field) tea.Cmd {
 	m.focus = f
 	m.to.Blur()
 	m.cc.Blur()
+	m.bcc.Blur()
 	m.subject.Blur()
 	m.body.Blur()
 	switch f {
@@ -210,6 +217,8 @@ func (m *Model) focusField(f Field) tea.Cmd {
 		return m.to.Focus()
 	case FieldCc:
 		return m.cc.Focus()
+	case FieldBcc:
+		return m.bcc.Focus()
 	case FieldSubject:
 		return m.subject.Focus()
 	case FieldBody:
@@ -280,6 +289,8 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 		mm.to, cmd = mm.to.Update(ev)
 	case FieldCc:
 		mm.cc, cmd = mm.cc.Update(ev)
+	case FieldBcc:
+		mm.bcc, cmd = mm.bcc.Update(ev)
 	case FieldSubject:
 		mm.subject, cmd = mm.subject.Update(ev)
 	case FieldBody:
@@ -296,7 +307,7 @@ func (m *Model) toggleCc() tea.Cmd {
 	if m.ccVisible {
 		return m.focusField(FieldCc)
 	}
-	if m.focus == FieldCc {
+	if m.focus == FieldCc || m.focus == FieldBcc {
 		return m.focusField(FieldTo)
 	}
 	return nil
@@ -320,11 +331,20 @@ func (m Model) Draft() msg.Outgoing {
 	}
 	if m.ccVisible {
 		out.Cc = msg.ParseRecipientField(m.cc.Value())
+		out.Bcc = msg.ParseRecipientField(m.bcc.Value())
 	}
 	if m.signature != "" {
 		out.BodyText += "\n\n--\n" + m.signature
 	}
 	return out
+}
+
+// Empty dice se la bozza non ha nulla da salvare (Piano 9, D9-3): nessun
+// destinatario (A, Cc, Ccn), nessun oggetto, nessun allegato, corpo vuoto.
+// Il corpo è quello grezzo: la firma non conta.
+func (m Model) Empty() bool {
+	return m.to.Value() == "" && m.cc.Value() == "" && m.bcc.Value() == "" &&
+		m.subject.Value() == "" && len(m.attachments) == 0 && strings.TrimSpace(m.body.Value()) == ""
 }
 
 // BodyText è il corpo GREZZO del textarea, senza la firma appended (seam per
@@ -437,7 +457,7 @@ func (m Model) removeSelected() (Model, tea.Cmd) {
 func reservedLines(m Model) int {
 	n := 4 // Da, A, Oggetto, riga vuota
 	if m.ccVisible {
-		n++
+		n += 2 // Cc e Ccn
 	}
 	n += 2 // riga vuota dopo il corpo + riga Allegati
 	if len(m.attachments) > 0 {
@@ -456,6 +476,7 @@ func (m *Model) SetSize(width, height int) {
 	w := max(0, width-12) // l'etichetta più lunga ("Oggetto: ") + spazio
 	m.to.SetWidth(w)
 	m.cc.SetWidth(w)
+	m.bcc.SetWidth(w)
 	m.subject.SetWidth(w)
 	m.body.SetWidth(max(0, width))
 	m.body.SetHeight(max(3, height-reservedLines(*m)))
@@ -484,6 +505,7 @@ func (m Model) View() string {
 	b.WriteString(label("A", FieldTo) + " " + m.to.View() + "\n")
 	if m.ccVisible {
 		b.WriteString(label("Cc", FieldCc) + " " + m.cc.View() + "\n")
+		b.WriteString(label("Ccn", FieldBcc) + " " + m.bcc.View() + "\n")
 	}
 	b.WriteString(label("Oggetto", FieldSubject) + " " + m.subject.View() + "\n")
 	b.WriteString("\n")
