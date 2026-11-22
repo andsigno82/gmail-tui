@@ -155,6 +155,19 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] Send confirmation, discard confirmation and trash confirmation still use the colored status bar.
 - [ ] Active search badge, `⟳ riconnessione…` and the folder tag stay in the status bar (not toasts).
 
+## Desktop notifications (Piano 11) — real account only
+
+Use a wrapper script that appends `$GMAIL_TUI_FROM`, `$GMAIL_TUI_SUBJECT` and `$GMAIL_TUI_COUNT` to a temporary file, and set it as `notify_command` (see README). Do not paste real senders or subjects into the repo.
+
+- [ ] Start gmail-tui with the wrapper configured: the file gets no line for mail already in the INBOX.
+- [ ] Send one message to the account from another address: one line in the file with the right sender and subject. The message stays unread in Gmail web.
+- [ ] Send three messages in quick succession: the lines in the file add up to three, and a batch shows a `COUNT` greater than 1. Record how the batches were split.
+- [ ] A subject with ANSI escape codes or over 200 characters: the file shows no escape codes and the subject is cut with `…`.
+- [ ] Make the wrapper exit 1 (or point `notify_command` to `false`): one error toast `notifica desktop: …`; the next new message does not show it again.
+- [ ] Settings `,`: the row "Notifiche desktop" reads "comando configurato"; without the key it reads "non configurate (vedi README)".
+- [ ] macOS: the `osascript` example from the README shows a banner, which confirms that `system attribute` works on this macOS version.
+- [ ] Linux, if available: the `notify-send -- ...` wrapper shows a notification. This path is not verified in the repo.
+
 ## Doctor
 
 - [ ] `gmail-tui doctor` prints one line per check: config path + address (or "nessuna, uso defaults…"), theme ok, password found (or missing), writable cache dir; exit code 0 when healthy, 1 on blocking problems (broken config/theme/cache).

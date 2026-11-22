@@ -86,6 +86,8 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 
 ## Piano 11 — Notifiche desktop
 
+**Stato:** implementato sul branch `feat/piano-11` (piano: `docs/superpowers/plans/2026-11-22-piano-11-notifiche.md`). Smoke reale su account di Andrea: `docs/smoke-checklist.md`, sezione Piano 11.
+
 - **Notifiche alla posta nuova** con un comando configurabile in `config.toml`, eseguito a ogni `ChangeNewMail` con mittente e oggetto in variabili d'ambiente, come l'hook `mail-received` di aerc (D11-1). Zero dipendenze: l'utente sceglie `notify-send`, `terminal-notifier`, ecc. Il comando gira fuori dal loop UI, con timeout, e i dati del messaggio passano solo come variabili d'ambiente, mai interpolati in una shell (il contenuto delle email non è fidato).
 - **Push fuori da INBOX:** non si fa (D11-2). Le altre cartelle si aggiornano dopo ogni operazione, come oggi.
 

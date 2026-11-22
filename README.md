@@ -92,6 +92,39 @@ Press `,` in the inbox or thread view to open the settings menu. `↑`/`↓` cho
 
 A value the app does not accept (for example `layout = "wide"`) is reset to its default for that field only; the other fields are kept and a warning is printed to stderr at startup.
 
+## Desktop notifications
+
+When new mail arrives in INBOX, gmail-tui runs a command you choose. Set `notify_command` in `config.toml` as a list of arguments: the first item is the program, the rest are fixed arguments. **No shell is involved.** Without the key (the default) nothing runs.
+
+```toml
+notify_command = ["osascript", "-e", "display notification (system attribute \"GMAIL_TUI_SUBJECT\") with title (system attribute \"GMAIL_TUI_FROM\")"]
+```
+
+The command gets the message data only as environment variables:
+
+| Variable | Value |
+|---|---|
+| `GMAIL_TUI_FROM` | sender of the newest new message (max 100 characters) |
+| `GMAIL_TUI_SUBJECT` | its subject (max 200 characters) |
+| `GMAIL_TUI_COUNT` | number of new messages in this batch |
+| `GMAIL_TUI_FOLDER` | always `INBOX` |
+
+Control and escape characters are removed and spaces are collapsed. Email content is untrusted: **do not put these variables in the argument list or in a `sh -c "..."` string**, because the shell would run whatever the subject contains. Tools that cannot read the environment (`terminal-notifier`, `notify-send` with literal arguments) need a small wrapper script that quotes the variables:
+
+```sh
+#!/bin/sh
+# macOS, with terminal-notifier
+terminal-notifier -title "$GMAIL_TUI_FROM" -message "$GMAIL_TUI_SUBJECT"
+```
+
+```sh
+#!/bin/sh
+# Linux, with notify-send
+notify-send -- "$GMAIL_TUI_FROM" "$GMAIL_TUI_SUBJECT"
+```
+
+Set `notify_command = ["/path/to/wrapper"]` to use one. Behaviour: the command runs once per batch of new messages (`GMAIL_TUI_COUNT` says how many), never for mail already present at startup or during the first load, and only for INBOX. It is killed after 5 seconds. A failing command shows one error toast per session. The settings menu (`,`) shows whether a command is configured; it is read-only, because the command is a list and cannot be edited as text. Demo mode generates no new mail, so the command runs there only when real mail arrives.
+
 ## CLI
 
 | Command | Description |
