@@ -76,6 +76,10 @@ type Model struct {
 	draft       msg.Outgoing
 	confirmSend bool // conferma pre-invio aperta ("Invio a …" nella status bar)
 	sending     bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
+	draftID     msg.MessageID
+	draftBusy   bool
+	undo        *pendingSend
+	undoSeq     int
 
 	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
 	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
@@ -508,23 +512,27 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// (ctrl+s dopo un errore riapre la conferma).
 			m.sending = false
 		}
+		if ev.err != nil && ev.retry != nil && m.view != viewComposer {
+			// Piano 9, Task 9 (D9-I): invio fallito dopo la finestra: il composer torna
+			// con la bozza, così il messaggio non va perso.
+			m.reopenPending(ev.retry)
+		}
 		if ev.err != nil {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("%s: %v", ev.label, ev.err))
 			return m, cmd
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
 		toastCmd := m.toast.Push(toast.Success, ev.label)
+		if ev.draftErr != nil {
+			// Piano 9, Task 7 (D9-E): l'invio è riuscito; fallisce solo la rimozione da Bozze.
+			errCmd := m.toast.Push(toast.Error, "bozza non rimossa da Bozze: "+ev.draftErr.Error())
+			toastCmd = tea.Batch(toastCmd, errCmd)
+		}
 		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
 		localCmd := m.setLocalRead(ev.localID, ev.localRead)
 		if ev.convSet {
 			// Piano 8, Task 9b: il grassetto della riga segue l'intera conversazione.
 			localCmd = tea.Batch(localCmd, m.setConvUnread(ev.localID, ev.convUnread))
-		}
-		if ev.closeComposer {
-			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
-			// torna all'inbox (come da piano); il feedback "inviato" resta in
-			// status e il refresh sotto rilista la lista corrente.
-			m.finishSend()
 		}
 		if ev.refresh {
 			// Mutazione utente riuscita (Task 7): rilista la lista corrente
@@ -557,6 +565,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleChange(ev)
 
 	case inbox.SelectedMsg:
+		if m.view == viewInbox && m.folder.Role == "drafts" {
+			// Piano 9, Task 6 (D9-D): in Bozze l'invio riprende la bozza nel composer.
+			m.pending++
+			return m, tea.Batch(fetchForResume(m.store, ev.Ref), m.spinner.Tick)
+		}
 		// Apertura dal thread: si custodisce il ref e si fetcha fuori dal
 		// loop UI (spinner attivo finché msgLoaded non arriva).
 		m.pendingRef = ev.Ref
@@ -753,6 +766,58 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.openComposer(cfg)
 		return m, nil
 
+	case draftSaved:
+		// Piano 9, Task 5 (D9-A): bozza salvata → composer chiuso, torna la vista
+		// di provenienza; errore → composer aperto con la bozza intatta.
+		m.draftBusy = false
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non salvata: %v", ev.err))
+			return m, cmd
+		}
+		m.closeComposer()
+		cmd := m.toast.Push(toast.Success, "bozza salvata")
+		return m, cmd
+
+	case draftDeleted:
+		// Piano 9, Task 5/7: rimozione da Bozze (scarto, bozza svuotata).
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza non rimossa da Bozze: %v", ev.err))
+			return m, cmd
+		}
+		if ev.discard {
+			cmd := m.toast.Push(toast.Info, "bozza scartata")
+			return m, cmd
+		}
+		return m, nil
+
+	case resumeLoaded:
+		// Piano 9, Task 6 (D9-D): bozza letta da Bozze → composer precompilato.
+		m.doneOp()
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("bozza: %v", ev.err))
+			return m, cmd
+		}
+		if ev.m == nil {
+			cmd := m.toast.Push(toast.Error, "bozza: risposta vuota dallo store")
+			return m, cmd
+		}
+		cmd := m.resumeDraft(ev.ref, ev.m)
+		return m, cmd
+
+	case undoDueMsg:
+		// Piano 9, Task 9 (D9-I): scaduta la finestra, l'invio parte (se non annullato).
+		if m.undo == nil || m.undo.seq != ev.seq {
+			return m, nil
+		}
+		p := m.undo
+		m.undo = nil
+		if !p.claim() {
+			return m, nil
+		}
+		m.sending = true // blocca un secondo invio finché opDone
+		m.pending++      // invio in flight: spinner finché opDone
+		return m, tea.Batch(sendCmd(m.sender, m.store, p), m.spinner.Tick)
+
 	case composer.SendRequestedMsg:
 		// ctrl+s nel composer (Piano 4, Task 4): la bozza viene custodita e
 		// si apre la conferma modale ("Invio a …" nella status bar): s →
@@ -767,7 +832,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// bar segnala già che l'invio è in corso. Il segnale è `sending`
 		// (invio specifico), NON pending: op estranee in flight (load/re-list
 		// iniziale, refresh) non devono bloccare il primo invio.
-		if m.view != viewComposer || m.sending || m.discardOpen {
+		if m.undo != nil {
+			// Piano 9, Task 9: un invio è già in attesa della finestra di annullamento.
+			cmd := m.toast.Push(toast.Info, "un invio è già in attesa — u annulla")
+			return m, cmd
+		}
+		if m.view != viewComposer || m.sending || m.discardOpen || m.draftBusy {
 			return m, nil
 		}
 		// Piano 7, Task 6 + fix review 7: un destinatario malformato o assente
@@ -933,9 +1003,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.confirmSend = false
-				m.sending = true // blocca un secondo invio finché opDone
-				m.pending++      // invio in flight: spinner finché opDone
-				return m, tea.Batch(sendCmd(m.sender, m.draft), m.spinner.Tick)
+				// Piano 9, Task 9 (D9-I): finestra di 5 s prima dell'invio, annullabile con u.
+				cmd := m.startUndo()
+				return m, cmd
 			case "esc":
 				m.confirmSend = false // back al composer: la bozza resta
 			}
@@ -950,7 +1020,19 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
+		if m.undo != nil && ev.String() == "u" && m.view != viewComposer {
+			// Piano 9, Task 9 (D9-I): `u` fuori dal composer riporta l'invio in attesa.
+			cmd := m.restoreUndo()
+			return m, cmd
+		}
 		if m.view == viewComposer {
+			if m.draftBusy {
+				return m, nil // salvataggio della bozza in corso
+			}
+			if ev.String() == "ctrl+d" {
+				// Piano 9, Task 5 (D9-C): ctrl+d scarta, con conferma se c'è da perdere.
+				return m.requestDiscard()
+			}
 			// Composer attivo (Piano 4, Task 3): TUTTI i tasti vanno al
 			// composer — esc chiede il cancel (back diretto o conferma
 			// discard), tab/frecce navigano i campi, il resto è testo: i
@@ -960,8 +1042,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.composer, cmd = m.composer.Update(ev)
 			if m.composer.CancelRequested() {
-				m.handleComposerCancel()
-				return m, nil
+				// Piano 9, Task 5 (D9-A): esc salva la bozza in Bozze (o chiude se vuota).
+				save := m.handleComposerCancel()
+				return m, save
 			}
 			return m, cmd
 		}

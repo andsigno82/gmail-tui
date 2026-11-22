@@ -79,9 +79,9 @@ Scelte del piano (da confermare solo se contestate):
 - `TestMockSaveDraftWithoutDraftsBox`: Mailboxes senza ruolo drafts → errore.
 - `TestMockListMailboxesDefault` aggiornato con la cartella Bozze.
 
-- [ ] Test RED riportati (errore di compilazione per simboli mancanti, poi fallimento comportamentale dopo lo stub).
-- [ ] Implementazione nel contratto (`store.go`, con commento Piano 9, Task 2) e nel Mock (`mock_draft.go`).
-- [ ] Gate verdi, commit `feat(mail): SaveDraft e DeleteDraft nel contratto e nel Mock (Piano 9, Task 2)`.
+- [x] Test RED riportati (errore di compilazione per simboli mancanti, poi fallimento comportamentale dopo lo stub).
+- [x] Implementazione nel contratto (`store.go`, con commento Piano 9, Task 2) e nel Mock (`mock_draft.go`).
+- [x] Gate verdi, commit `feat(mail): SaveDraft e DeleteDraft nel contratto e nel Mock (Piano 9, Task 2)`.
 
 ## Task 3: backend IMAP per le bozze
 
@@ -95,7 +95,7 @@ Scelte del piano (da confermare solo se contestate):
 - `TestDeleteDraftRefusesInboxIDs`: nessuna chiamata al server (stato invariato).
 - `TestSaveDraftNoDraftsMailbox`: errore pulito.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(imap): bozze in Bozze con APPEND \Draft e rimozione per UID (Piano 9, Task 3)`.
+- [x] RED riportato, implementazione, gate, commit `feat(imap): bozze in Bozze con APPEND \Draft e rimozione per UID (Piano 9, Task 3)`.
 
 ## Task 4: MIME esportato per le bozze
 
@@ -103,7 +103,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestBuildMessageRoundTripsWithMsgParse`: un `Outgoing` con `Markdown: true`, senza allegati, con To/Subject/corpo → `msg.Parse` restituisce To, Subject e BodyText (markdown sorgente). Nessun Bcc negli header (D9-1).
 
-- [ ] RED, implementazione, commit `refactor(smtp): BuildMessage esportato per le bozze (Piano 9, Task 4)`.
+- [x] RED, implementazione, commit `refactor(smtp): BuildMessage esportato per le bozze (Piano 9, Task 4)`.
 
 ## Task 5: esc salva, ctrl+d scarta con conferma
 
@@ -115,7 +115,7 @@ Scelte del piano (da confermare solo se contestate):
 - `TestEscKeepsComposerOnSaveError`: Mock con `Err` → composer aperto, toast d'errore.
 - `TestCtrlDAsksDiscardConfirm` e `TestCtrlDDiscardDeletesSavedDraft`: il secondo parte da una bozza con `draftID` e verifica la rimozione.
 
-- [ ] RED, implementazione, gate, commit `feat(app): esc salva la bozza in Bozze, ctrl+d scarta con conferma (Piano 9, Task 5)`.
+- [x] RED, implementazione, gate, commit `feat(app): esc salva la bozza in Bozze, ctrl+d scarta con conferma (Piano 9, Task 5)`.
 
 ## Task 6: ripresa dalla cartella Bozze
 
@@ -127,7 +127,7 @@ Scelte del piano (da confermare solo se contestate):
 - `TestResumeWarnsAboutAttachments`: bozza con allegato → toast "allegati non ripresi".
 - `TestResavePreservesSingleCopy`: riprendere e `esc` → Bozze contiene una sola bozza (quella nuova).
 
-- [ ] RED, implementazione, commit `feat(app): riprende una bozza dalla cartella Bozze (Piano 9, Task 6)`.
+- [x] RED, implementazione, commit `feat(app): riprende una bozza dalla cartella Bozze (Piano 9, Task 6)`.
 
 ## Task 7: invio da bozza ripresa
 
@@ -135,7 +135,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestSendFromResumedDraftRemovesFromDrafts` (dopo l'invio la bozza non è più in Bozze, `Sent` contiene il messaggio); `TestSendFailureKeepsDraft` (Send che fallisce → la bozza resta).
 
-- [ ] RED, implementazione, commit `feat(app): invio di una bozza ripresa la toglie da Bozze (Piano 9, Task 7)`.
+- [x] RED, implementazione, commit `feat(app): invio di una bozza ripresa la toglie da Bozze (Piano 9, Task 7)`.
 
 ## Task 8: rubrica locale
 
@@ -151,7 +151,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestConfirmSendWaitsFiveSeconds` (nessun invio dopo `s`; `sendDueMsg` con il seq giusto → `Sent` contiene il messaggio); `TestUndoRestoresComposer` (`s` → `u` → composer con lo stesso corpo; il timer successivo non invia); `TestUndoIgnoredInsideComposer` (`u` digitato nel composer resta testo); `TestQuitFlushesPendingSend` (`q` durante l'attesa → `Sent` contiene il messaggio prima del QuitMsg).
 
-- [ ] RED, implementazione, commit `feat(app): annulla invio con ritardo di 5 secondi (Piano 9, Task 9)`.
+- [x] RED, implementazione, commit `feat(app): annulla invio con ritardo di 5 secondi (Piano 9, Task 9)`.
 
 ## Task 10: comando esterno dei contatti
 

@@ -90,18 +90,18 @@ type msgLoaded struct {
 // chiede il re-list della lista corrente al risultato (le op dell'utente,
 // Task 7); le op automatiche — es. auto MarkRead al fetch (Task 5) — non
 // rilistano (lo status resta l'unico feedback, la lista si aggiorna via
-// Watch/nuova ricerca). closeComposer (Piano 4, Task 4) è dell'invio riuscito:
-// il composer si chiude e si torna all'inbox prima del re-list. send (fix
+// Watch/nuova ricerca). send (fix
 // doppio invio) identifica l'opDone dell'invio: la radice lo usa per
 // riabilitare un nuovo invio (m.sending) al suo arrivo, ok o errore.
 type opDone struct {
-	label         string
-	err           error
-	refresh       bool
-	deep          bool // refresh a profondità piena (D5, Piano 7 Task 3): solo Archive/Trash
-	closeComposer bool
-	send          bool
-	gone          []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
+	label    string
+	err      error
+	refresh  bool
+	deep     bool // refresh a profondità piena (D5, Piano 7 Task 3): solo Archive/Trash
+	send     bool
+	draftErr error           // Piano 9, Task 7: rimozione dalla Bozze fallita dopo un invio riuscito
+	retry    *pendingSend    // Piano 9, Task 9: invio fallito dopo la finestra → il composer si riapre con la bozza
+	gone     []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
 	// localID/localRead: MarkRead riuscito su questo messaggio; lo stato di lettura
 	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
 	localID   msg.MessageID
