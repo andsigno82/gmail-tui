@@ -12,6 +12,12 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// ErrInvalid marca gli errori di validazione (valore non ammesso): Load
+// restituisce comunque i campi decodificati, così il chiamante può riportare al
+// default solo i campi sbagliati (Piano 7.2, fix review). Un errore di parsing o
+// di lettura NON è ErrInvalid.
+var ErrInvalid = errors.New("valore non valido")
+
 // Valori ammessi per Layout e PreviewMarkRead (Piano 7.2, Task 2). Il valore
 // vuoto è accettato e vale come default (single / delay).
 const (
@@ -112,13 +118,13 @@ func (c Config) Sanitized() Config {
 // PreviewMarkRead accettano solo i valori ammessi, o il vuoto).
 func (c Config) Validate() error {
 	if c.Address != "" && !strings.Contains(c.Address, "@") {
-		return fmt.Errorf("address %q non valido: manca @", c.Address)
+		return fmt.Errorf("%w: address %q, manca @", ErrInvalid, c.Address)
 	}
 	if c.Layout != "" && !slices.Contains(LayoutValues(), c.Layout) {
-		return fmt.Errorf("layout %q non valido: ammessi %s", c.Layout, strings.Join(LayoutValues(), ", "))
+		return fmt.Errorf("%w: layout %q, ammessi %s", ErrInvalid, c.Layout, strings.Join(LayoutValues(), ", "))
 	}
 	if c.PreviewMarkRead != "" && !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
-		return fmt.Errorf("preview_mark_read %q non valido: ammessi %s", c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
+		return fmt.Errorf("%w: preview_mark_read %q, ammessi %s", ErrInvalid, c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
 	}
 	return nil
 }
