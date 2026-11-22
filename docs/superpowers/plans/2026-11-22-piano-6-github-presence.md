@@ -73,11 +73,11 @@ docs/superpowers/plans/...piano-5...md (Task 3: nota collegamento al Piano 6)
 
 ## Verifica finale del piano
 
-- [ ] site/index.html render verificato con screenshot Playwright (hero/GIF/swatch/footer)
-- [ ] pages.yml validato (azioni ufficiali, permissions corrette)
-- [ ] CHANGELOG/SECURITY/COC coerenti coi fatti del progetto
-- [ ] Gates Go verdi; nessun segreto; placeholder consistenti
-- [ ] Handoff utente aggiornato (Pages setup + metadata repo)
+- [x] site/index.html render verificato con screenshot Playwright (hero/GIF/swatch/footer) — verificato 2026-11-22 (Task 1): pagina servita con `python3 -m http.server` su `site/` (il protocollo file:// è bloccato dal server Playwright MCP) e verificata con 3 screenshot Playwright in `.superpowers/sdd/`: `p6-task1-hero.png` (hero + GIF animata incorniciata), `p6-task1-fullpage.png` (6 feature card, 12 strisce temi con swatch leggibili su fondo chiaro e scuro, quickstart, keymap, footer), `p6-task1-mobile.png` (390×844: colonna singola, nessun overflow orizzontale); zero errori console
+- [x] pages.yml validato (azioni ufficiali, permissions corrette) — verificato 2026-11-22 (Task 2 + fix `51045a6`): YAML valido (PyYAML 6.0.4), permissions `pages: write` + `id-token: write`, pin allineati ai major correnti via API GitHub (checkout@v7 = v7.0.1, upload-pages-artifact@v5 = v5.0.0, deploy-pages@v5 = v5.0.1). Onesto: il workflow NON è eseguibile finché il repo non esiste (nessun remote) — lo sarà solo dopo il push + Source "GitHub Actions" in Settings (passo manuale nel handoff)
+- [x] CHANGELOG/SECURITY/COC coerenti coi fatti del progetto — verificato 2026-11-22 (Task 2): contenuti cross-verificati dalle review dei task 1-2 (diff in `.superpowers/sdd/review-8ad0f4c..d2b51a8.diff` e `review-d2b51a8..51045a6.diff`); CHANGELOG `[0.1.0]` datato 2026-11-22 in attesa del tag (bump della data nello stesso commit del tag se il rilascio slitta); placeholder email `USER@example.com` (SECURITY/COC) da sostituire al push
+- [x] Gates Go verdi; nessun segreto; placeholder consistenti — verificato 2026-11-22 (Task 3, esecuzione finale): `go vet ./...` OK, `go test -race -count=1 ./...` ok su 16 package, `golangci-lint run ./...` (v2.15.0) → **0 issues**; nessun segreto nei file nuovi (solo placeholder `USER`); `github.com/USER/gmail-tui` coerente in README/site/pages.yml/CHANGELOG/FUNDING
+- [x] Handoff utente aggiornato (Pages setup + metadata repo) — verificato 2026-11-22 (Task 3): lista passi manuali nel piano 5 estesa con (7) Settings → Pages → Source: GitHub Actions (dopo il push) e (8) decommentare `.github/FUNDING.yml` se si vuole sponsorizzare, più la nota follow-up opzionale di allineamento pin checkout/setup-go di `ci.yml`/`release.yml`; nota di collegamento al Piano 6 aggiunta in coda al piano 5. Il metadata repo (description/topics/social preview) resta nei passi manuali dell'utente al push (vedi "Dopo il piano")
 
 ## Dopo il piano
 
