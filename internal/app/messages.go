@@ -87,6 +87,10 @@ type opDone struct {
 	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
 	localID   msg.MessageID
 	localRead bool
+	// convSet/convUnread (Piano 8, Task 9b): stato di lettura dell'intera
+	// conversazione dopo `v`; convSet dice se è noto.
+	convSet    bool
+	convUnread bool
 }
 
 // changeEvt è un evento push del feed Watch.

@@ -507,6 +507,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		toastCmd := m.toast.Push(toast.Success, ev.label)
 		// Piano 7.2, fix review: il segna-come-letto si vede subito in lista.
 		localCmd := m.setLocalRead(ev.localID, ev.localRead)
+		if ev.convSet {
+			// Piano 8, Task 9b: il grassetto della riga segue l'intera conversazione.
+			localCmd = tea.Batch(localCmd, m.setConvUnread(ev.localID, ev.convUnread))
+		}
 		if ev.closeComposer {
 			// Invio riuscito (Piano 4, Task 4): il composer si chiude e si
 			// torna all'inbox (come da piano); il feedback "inviato" resta in

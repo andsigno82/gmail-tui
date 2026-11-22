@@ -184,6 +184,71 @@ func (s *Store) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.Mess
 	return refs, nil
 }
 
+// ConversationMembers implementa mail.MailStore (Piano 8, Task 9b): gli ID dei
+// messaggi del thread nella mailbox data (UID SEARCH X-GM-THRID su quella
+// mailbox, non su All Mail).
+func (s *Store) ConversationMembers(ctx context.Context, mailbox string, threadID uint64) ([]msg.MessageID, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if threadID == 0 {
+		return nil, errors.New("imap: thread 0 non valido")
+	}
+	if !s.gmailOn() {
+		return nil, errGmailNonDisponibile
+	}
+	if mailbox == "" {
+		return nil, errors.New("imap: mailbox dei membri vuota")
+	}
+	defer s.gate.acquire()()
+	c, err := s.connected()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	}
+	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil).Wait()
+	if err != nil {
+		return nil, fmt.Errorf("imap thread members search: %w", err)
+	}
+	uids := data.AllUIDs()
+	out := make([]msg.MessageID, 0, len(uids))
+	for _, uid := range uids {
+		out = append(out, msg.NewID(mailbox, uint32(uid)))
+	}
+	return out, nil
+}
+
+// refuseAllMail rifiuta la rimozione (archivia, cestina) di ID che stanno in
+// Tutti i messaggi (ruolo "all"): lì l'expunge o il MOVE cancellerebbero il
+// messaggio dalla posta (Piano 8, Task 9b, sicurezza dati). Senza mailbox \All
+// non c'è nulla da proteggere. Va chiamata SENZA gate (ListMailboxes lo prende).
+func (s *Store) refuseAllMail(ctx context.Context, ids []msg.MessageID, op string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	boxes, err := s.ListMailboxes(ctx)
+	if err != nil {
+		return err
+	}
+	allMail := ""
+	for _, b := range boxes {
+		if b.Role == "all" {
+			allMail = b.Name
+		}
+	}
+	if allMail == "" {
+		return nil
+	}
+	for _, id := range ids {
+		if box, _, err := id.Split(); err == nil && box == allMail {
+			return fmt.Errorf("imap %s: rifiuto %d messaggi in Tutti i messaggi: l'operazione li cancellerebbe", op, len(ids))
+		}
+	}
+	return nil
+}
+
 // allMailName restituisce il nome della cartella con ruolo "all" (All Mail,
 // SPECIAL-USE). Prende il gate tramite ListMailboxes: non chiamarla con il gate.
 func (s *Store) allMailName(ctx context.Context) (string, error) {

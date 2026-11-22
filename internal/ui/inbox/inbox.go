@@ -151,6 +151,19 @@ func (m *Model) SetConversations(convs []mail.Conversation) tea.Cmd {
 	return m.list.SetItems(convsToItems(convs))
 }
 
+// SetConvUnread imposta lo stato di lettura dell'intera conversazione della riga
+// id (Piano 8, Task 9b), senza toccare il messaggio più recente.
+func (m *Model) SetConvUnread(id msg.MessageID, unread bool) tea.Cmd {
+	for i, it := range m.list.Items() {
+		row, ok := it.(item)
+		if ok && row.ref.ID == id {
+			row.conv.Unread = unread
+			return m.list.SetItem(i, row)
+		}
+	}
+	return nil
+}
+
 // SetSize propaga le dimensioni del corpo (l'app radice riserva l'ultima
 // riga alla status bar) alla lista interna.
 func (m *Model) SetSize(width, height int) { m.list.SetSize(width, height) }

@@ -97,6 +97,13 @@ type MailStore interface {
 	// label:/in:). Senza Gmail (server senza X-GM-EXT-1) una riga per messaggio.
 	ListConversations(ctx context.Context, q msg.Query, pg Page) ([]Conversation, error)
 
+	// ConversationMembers restituisce gli ID dei messaggi del thread che stanno
+	// nella mailbox indicata (Piano 8, Task 9b): è la conversazione "nella
+	// cartella corrente" su cui agiscono le op della riga, come Gmail web. Non
+	// usa All Mail. Senza X-GM-EXT-1 o con threadID 0 è un errore: il chiamante
+	// usa l'ID della riga.
+	ConversationMembers(ctx context.Context, mailbox string, threadID uint64) ([]msg.MessageID, error)
+
 	// ThreadMessages restituisce tutti i messaggi del thread (X-GM-THRID) in
 	// ordine cronologico, escluso spam e cestino (Q5/D8-7). Errore per threadID 0.
 	ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error)

@@ -96,7 +96,7 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 	switch k {
 	case "a": // archivia: niente conferma (undo non in v1, feedback chiaro)
 		m.pending++
-		return m, tea.Batch(archive(m.store, ref.ID), m.spinner.Tick)
+		return m, tea.Batch(archive(m.store, ref), m.spinner.Tick)
 	case "s": // stella: toggle
 		on := !ref.Starred
 		updated := ref
@@ -110,7 +110,7 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 		updated.Unread = !read
 		m.applyLocalRef(updated)
 		m.pending++
-		return m, tea.Batch(markRead(m.store, ref.ID, read, true), m.spinner.Tick)
+		return m, tea.Batch(markReadConv(m.store, ref, read), m.spinner.Tick)
 	case "l": // label: mini-prompt (enter applica, esc annulla)
 		m.label.Reset()
 		m.labelOpen = true
@@ -168,7 +168,7 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.pending++
-	return m, tea.Batch(applyLabel(m.store, ref.ID, name, true), m.spinner.Tick)
+	return m, tea.Batch(applyLabel(m.store, ref, name, true), m.spinner.Tick)
 }
 
 // opBox è la mailbox IMAP su cui agisce un'op: quella della RIGA operata (l'ID
@@ -238,16 +238,101 @@ func (m Model) confirmTrash() (Model, tea.Cmd) {
 		m.view = viewInbox
 	}
 	m.pending++
-	return m, tea.Batch(trashCmd(m.store, m.trashRef.ID), m.spinner.Tick)
+	return m, tea.Batch(trashCmd(m.store, m.trashRef), m.spinner.Tick)
 }
 
 // trashCmd esegue Trash fuori dal loop UI: feedback "spostata nel cestino" e
 // refresh a profondità piena. Un errore (es. cestino assente) resta in status
 // e la lista non cambia.
-func trashCmd(st mail.MailStore, id msg.MessageID) tea.Cmd {
+// Piano 8, Task 9b: sposta nel cestino la conversazione della riga (ids da
+// conversationIDs, guardati sulla mailbox della riga).
+func trashCmd(st mail.MailStore, ref msg.MessageRef) tea.Cmd {
 	return func() tea.Msg {
-		err := st.Trash(context.Background(), []msg.MessageID{id})
-		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: []msg.MessageID{id}}
+		ctx := context.Background()
+		ids, err := conversationIDs(ctx, st, ref)
+		if err == nil {
+			err = guardBox(ids, boxOf(ref))
+		}
+		if err == nil {
+			err = st.Trash(ctx, ids)
+		}
+		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: ids}
+	}
+}
+
+// conversationIDs risolve i messaggi su cui agisce un'op della riga (Piano 8,
+// Task 9b): la conversazione intera nella mailbox della riga, come Gmail web.
+// Senza thread Gmail (ThreadID 0) è il solo messaggio della riga. La riga è
+// sempre inclusa.
+func conversationIDs(ctx context.Context, st mail.MailStore, ref msg.MessageRef) ([]msg.MessageID, error) {
+	if ref.ThreadID == 0 {
+		return []msg.MessageID{ref.ID}, nil
+	}
+	ids, err := st.ConversationMembers(ctx, boxOf(ref), ref.ThreadID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range ids {
+		if id == ref.ID {
+			return ids, nil
+		}
+	}
+	return append(ids, ref.ID), nil
+}
+
+// boxOf è la mailbox del messaggio della riga ("" se l'ID è malformato).
+func boxOf(ref msg.MessageRef) string {
+	box, _, err := ref.ID.Split()
+	if err != nil {
+		return ""
+	}
+	return box
+}
+
+// guardBox rifiuta un insieme di ID se uno di essi non sta nella mailbox box
+// (Piano 8, Task 9b, sicurezza dati): archivia e cestina non devono mai toccare
+// un messaggio di un'altra mailbox, in particolare Tutti i messaggi.
+func guardBox(ids []msg.MessageID, box string) error {
+	for _, id := range ids {
+		if b, _, err := id.Split(); err != nil || b != box {
+			return fmt.Errorf("rifiutato: %s non sta in %q", id, box)
+		}
+	}
+	return nil
+}
+
+// anyUnread dice se un messaggio del set è non letto.
+func anyUnread(refs []msg.MessageRef) bool {
+	for _, r := range refs {
+		if r.Unread {
+			return true
+		}
+	}
+	return false
+}
+
+// markReadConv è il toggle `v` sulla riga (Piano 8, Task 9b): segna letta (o non
+// letta) la conversazione intera nella cartella. Poi legge lo stato di lettura
+// dell'intera conversazione (All Mail, senza spam e cestino), così il grassetto
+// della riga è giusto subito, senza attendere il refresh.
+func markReadConv(st mail.MailStore, ref msg.MessageRef, read bool) tea.Cmd {
+	label := "segna non letta"
+	if read {
+		label = "letta"
+	}
+	return func() tea.Msg {
+		ctx := context.Background()
+		ids, err := conversationIDs(ctx, st, ref)
+		if err == nil {
+			err = st.MarkRead(ctx, ids, read)
+		}
+		ev := opDone{label: label, err: err, refresh: true, localID: ref.ID, localRead: read}
+		if err == nil && ref.ThreadID != 0 {
+			if thread, terr := st.ThreadMessages(ctx, ref.ThreadID); terr == nil {
+				ev.convSet, ev.convUnread = true, anyUnread(thread)
+			}
+		}
+		return ev
 	}
 }
 
@@ -280,22 +365,40 @@ func star(st mail.MailStore, id msg.MessageID, on bool) tea.Cmd {
 
 // archive esegue Archive fuori dal loop UI: feedback "archiviata". Nessuna
 // conferma (undo non in v1, Piano 3 Task 7).
-func archive(st mail.MailStore, id msg.MessageID) tea.Cmd {
+// Piano 8, Task 9b: archivia la conversazione della riga, guardata sulla
+// mailbox della riga (la INBOX, per il controllo di runOp).
+func archive(st mail.MailStore, ref msg.MessageRef) tea.Cmd {
 	return func() tea.Msg {
-		err := st.Archive(context.Background(), []msg.MessageID{id})
-		return opDone{label: "archiviata", err: err, refresh: true, deep: true, gone: []msg.MessageID{id}}
+		ctx := context.Background()
+		ids, err := conversationIDs(ctx, st, ref)
+		if err == nil {
+			err = guardBox(ids, boxOf(ref))
+		}
+		if err == nil {
+			err = st.Archive(ctx, ids)
+		}
+		return opDone{label: "archiviata", err: err, refresh: true, deep: true, gone: ids}
 	}
 }
 
 // applyLabel esegue ApplyLabel fuori dal loop UI: feedback "etichetta X
 // applicata" (on) / "etichetta X rimossa" (off).
-func applyLabel(st mail.MailStore, id msg.MessageID, label string, on bool) tea.Cmd {
+// Piano 8, Task 9b: la label va a tutta la conversazione della riga nella
+// cartella (la COPY non rimuove nulla, la guardia resta sulla mailbox della riga).
+func applyLabel(st mail.MailStore, ref msg.MessageRef, label string, on bool) tea.Cmd {
 	feedback := fmt.Sprintf("etichetta %s rimossa", label)
 	if on {
 		feedback = fmt.Sprintf("etichetta %s applicata", label)
 	}
 	return func() tea.Msg {
-		err := st.ApplyLabel(context.Background(), []msg.MessageID{id}, label, on)
+		ctx := context.Background()
+		ids, err := conversationIDs(ctx, st, ref)
+		if err == nil {
+			err = guardBox(ids, boxOf(ref))
+		}
+		if err == nil {
+			err = st.ApplyLabel(ctx, ids, label, on)
+		}
 		return opDone{label: feedback, err: err, refresh: true}
 	}
 }

@@ -64,6 +64,26 @@ func (m *Mock) ListConversations(_ context.Context, q msg.Query, pg Page) ([]Con
 	return convs[pg.Offset:end], nil
 }
 
+// ConversationMembers implementa MailStore (Piano 8, Task 9b): gli ID dei
+// messaggi del thread nella sola mailbox indicata.
+func (m *Mock) ConversationMembers(_ context.Context, mailbox string, threadID uint64) ([]msg.MessageID, error) {
+	if threadID == 0 {
+		return nil, errors.New("mock: thread 0 non valido")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	var out []msg.MessageID
+	for _, mm := range m.Msgs {
+		if mm.Ref.ThreadID == threadID && inMailbox(mm.Ref.ID, mailbox) {
+			out = append(out, mm.Ref.ID)
+		}
+	}
+	return out, nil
+}
+
 // ThreadMessages implementa MailStore: i messaggi del thread, cronologici,
 // senza spam e cestino.
 func (m *Mock) ThreadMessages(_ context.Context, threadID uint64) ([]msg.MessageRef, error) {

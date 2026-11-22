@@ -249,6 +249,16 @@ func (m *Model) setLocalRead(id msg.MessageID, read bool) tea.Cmd {
 	return m.inbox.SetUnread(id, !read)
 }
 
+// setConvUnread aggiorna lo stato di lettura dell'intera conversazione della riga
+// id (Piano 8, Task 9b): riepilogo per ID e grassetto in lista, subito.
+func (m *Model) setConvUnread(id msg.MessageID, unread bool) tea.Cmd {
+	if c, ok := m.sums[id]; ok {
+		c.Unread = unread
+		m.sums[id] = c
+	}
+	return m.inbox.SetConvUnread(id, unread)
+}
+
 // mouseX è la colonna del terminale di un evento mouse (0 = bordo sinistro).
 func mouseX(ev tea.Msg) int {
 	if mm, ok := ev.(tea.MouseMsg); ok {

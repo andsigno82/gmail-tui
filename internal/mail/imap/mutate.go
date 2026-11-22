@@ -47,6 +47,9 @@ func (s *Store) Star(ctx context.Context, ids []msg.MessageID, on bool) error {
 // (nel memserver dei test l'expunge lo rimuove fisicamente dalla mailbox:
 // il comportamento IMAP verificato dai test è proprio questo).
 func (s *Store) Archive(ctx context.Context, ids []msg.MessageID) error {
+	if err := s.refuseAllMail(ctx, ids, "archivia"); err != nil {
+		return err
+	}
 	defer s.gate.acquire()() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
 
 	return s.deleteAndExpunge(ctx, ids, "")
