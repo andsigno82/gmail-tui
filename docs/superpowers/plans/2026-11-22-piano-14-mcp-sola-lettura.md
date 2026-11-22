@@ -74,7 +74,7 @@ Difese del piano:
 func Wrap(nonce string, text string) string
 func NewNonce() (string, error)                  // 16 byte hex da crypto/rand
 func Sanitize(s string) string                   // via caratteri di controllo e sequenze ANSI/OSC
-func Truncate(s string, max int) (string, bool)  // su rune, segnala il troncamento
+func Truncate(s string, maxRunes, maxBytes int) (string, bool) // su rune e byte, segnala il troncamento
 func Redact(err error, secrets ...string) error  // sostituisce i segreti con ***
 ```
 
@@ -208,6 +208,22 @@ Nel README: la password resta nel portachiavi (`gmail-tui login`) o in `GMAIL_AP
 3. Ordine: Wave 1-3 ora, Wave 4 dopo il merge del Piano 8.
 4. `ni-c/imap-mcp`: link ricevuto, citato come fonte del nonce.
 5. Limiti M5 (20/100 righe, 8 000/32 000 caratteri, 64 KB): approvati.
+
+## Stato FASE B e deviazioni
+
+Stato per task (branch `feat/piano-14`): Task 0 fatto (`1b39562`); Task 1-7 fatti (commit in `git log`); Task 8 è di Andrea; Task 9-10 dopo il merge del Piano 8.
+
+Deviazioni rispetto alla FASE A, motivate:
+
+- **Reader con `Search`:** oltre ai quattro metodi previsti, `Reader` include `Search` (usato da `search_messages`). `Search` non è paginata nello store: offset e limit si applicano al risultato (`slicePage`). La paginazione vera è del Piano 12.
+- **Limiti in byte:** `Truncate` limita anche in byte (`maxBodyBytes` = 48 KB), perché 32 000 rune UTF-8 possono superare 64 KB. Una risposta oltre 64 KB è rifiutata con errore esplicito (`respond`), mai troncata in silenzio. Le liste sono ridotte in coda e dichiarate con `truncated`.
+- **Formato del risultato:** ogni tool restituisce un testo con una riga di preambolo, poi il blocco `BEGIN_UNTRUSTED_EMAIL nonce=<hex>` / JSON / `END_UNTRUSTED_EMAIL nonce=<hex>`. Il JSON contiene `"untrusted": true`. Anche `list_folders` passa dal blocco, per uniformità.
+- **Sanitize:** oltre a ANSI/OSC e controlli, rimuove i caratteri zero-width e i controlli bidi (come ni-c/imap-mcp). Il formato dei marcatori resta quello del piano: ni-c non ne documenta il formato esatto.
+- **Task 3 e Task 4:** i tool di lettura sono stati registrati come stub nel commit del Task 3 (rossi nei test del Task 4), poi implementati nel Task 4.
+- **Task 6:** la suite di sicurezza passa sul codice attuale. Non è un rosso: verifica invarianti. Lo stdout è controllato staticamente (nessun `fmt.Print`/`os.Stdout` nel package), non con un processo figlio. Il test end-to-end con processo reale resta a carico dello smoke di Andrea (Task 8).
+- **Task 5:** il test di `serveMCP` usa il trasporto in memoria, non stdio. Il trasporto stdio è quello dell'SDK, usato da `runMCP`.
+- **Task 7:** README (sezione "MCP server (read-only)" con i comandi `claude mcp add` verificati con `claude mcp add --help`), CHANGELOG, SECURITY, layout di AGENTS.
+- **Dipendenze:** `go-sdk` v1.8.0 porta con sé `golang.org/x/oauth2`, `golang-jwt/jwt/v5` e `segmentio/asm` (indiretti). `govulncheck ./...` segnala una vulnerabilità dello stdlib, `GO-2026-6859` (`net/http`, corretta in go1.27.4), con tracce già presenti su `main` (`composer`, `cache`, `cmd/send`). Non è introdotta da questo piano; il go.mod pinna `go1.27.3`. Alzare il toolchain è una decisione di Andrea.
 
 ## Fonti
 
