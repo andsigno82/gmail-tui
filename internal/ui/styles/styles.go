@@ -33,6 +33,10 @@ type Styles struct {
 	DemoBanner      lipgloss.Style // banner "demo mode" senza credenziali
 	Divider         lipgloss.Style // separatore lista/anteprima a due colonne (Piano 7.2, Task 4)
 	DividerFocus    lipgloss.Style // separatore con il focus sull'anteprima (slot primary)
+	ToastInfo       lipgloss.Style // toast informativo: bordo accent (Piano 7.3, Task 1)
+	ToastSuccess    lipgloss.Style // toast di esito positivo: bordo success
+	ToastWarning    lipgloss.Style // toast d'avviso: bordo warning
+	ToastError      lipgloss.Style // toast d'errore: bordo error (resta finché un tasto)
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
@@ -57,7 +61,24 @@ func New(t theme.Theme) Styles {
 		DemoBanner:      lipgloss.NewStyle().Foreground(onColor(t.Warning, t.Fg, t.Bg)).Background(adaptive(t.Warning)).Bold(true).Padding(0, 1),
 		Divider:         lipgloss.NewStyle().Foreground(adaptive(t.Border)),
 		DividerFocus:    lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
+		ToastInfo:       toastStyle(t, t.Accent),
+		ToastSuccess:    toastStyle(t, t.Success),
+		ToastWarning:    toastStyle(t, t.Warning),
+		ToastError:      toastStyle(t, t.Error),
 	}
+}
+
+// toastStyle è il riquadro di una notifica (Piano 7.3, Task 1): superficie
+// dello slot bg, bordo arrotondato nello slot edge del tipo. Il testo usa
+// onColor sulla superficie, così vale il test di contrasto WCAG.
+func toastStyle(t theme.Theme, edge theme.Slot) lipgloss.Style {
+	return lipgloss.NewStyle().
+		Foreground(onColor(t.Bg, t.Fg, t.Accent)).
+		Background(adaptive(t.Bg)).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(adaptive(edge)).
+		BorderBackground(adaptive(t.Bg)).
+		Padding(0, 1)
 }
 
 // adaptive converte uno Slot in un colore lipgloss: la coppia dark/light
