@@ -20,7 +20,7 @@ Inbox, threads, search, compose/reply/forward with attachments, labels, themes a
 
 ```sh
 # 1. Install (any one of)
-brew install USER/tap/gmail-tui                       # placeholder tap — created after the first release
+brew install USER/gmail-tui/gmail-tui                       # placeholder tap — created after the first release
 go install github.com/USER/gmail-tui/cmd/gmail-tui@latest
 git clone https://github.com/USER/gmail-tui && cd gmail-tui && go build ./cmd/gmail-tui
 
