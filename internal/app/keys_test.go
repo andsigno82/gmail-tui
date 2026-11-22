@@ -52,6 +52,7 @@ var routedKeys = []string{
 	"/", "c", // ricerca, composer (P4 Task 3)
 	"r", "f", // risposta / inoltro (P4 Task 3: f liberato dal rebind scroll)
 	"a", "s", "v", "l", // mutazioni
+	"m",      // cartelle e label (selettore, P7 Task 4)
 	"enter",  // apri messaggio (inbox), cerca (search), applica (label)
 	"j", "k", // cursore lista / scroll thread
 	"pgup", "pgdn", "space", // scroll pagina viewport (thread, P3 polish)

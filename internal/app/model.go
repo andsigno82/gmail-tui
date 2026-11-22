@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -98,6 +99,9 @@ type Model struct {
 	dirtyDeep     bool             // il follow-up richiesto durante il refresh è a profondità piena (Piano 7, Task 3)
 	exhausted     bool             // ultima pagina ricevuta corta: nessuna pagina successiva (Piano 7, Task 3)
 	loadingMore   bool             // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
+	folder        mail.Mailbox     // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
+	folderOpen    bool             // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
+	folderList    list.Model       // elenco del selettore cartelle (bubbles/list, folders.go)
 
 	// Ctx del feed Watch (Task 8): creato in New, annullato dal quitCmd
 	// all'uscita pulita (Task 9: q/esc/ctrl+c). Una SIGINT esterna invece
@@ -136,18 +140,19 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 		cfgPath = p
 	}
 	return Model{
-		store:   store,
-		sender:  sender,
-		styles:  st,
-		spinner: spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
-		help:    newHelp(st),
-		inbox:   inbox.New(nil, st),
-		search:  newSearchInput(st),
-		label:   newLabelInput(st),
-		cfgPath: cfgPath,
-		view:    viewInbox,
-		ctx:     ctx,
-		cancel:  cancel,
+		store:      store,
+		sender:     sender,
+		styles:     st,
+		spinner:    spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
+		help:       newHelp(st),
+		inbox:      inbox.New(nil, st),
+		folderList: newFolderList(st),
+		search:     newSearchInput(st),
+		label:      newLabelInput(st),
+		cfgPath:    cfgPath,
+		view:       viewInbox,
+		ctx:        ctx,
+		cancel:     cancel,
 		// Il Connect d'avvio emesso da Init è già in flight (bugfix
 		// 2026-11-22): pending parte da 1 così la status bar mostra lo
 		// spinner finché connResult non arriva — il load vero incrementa
@@ -205,7 +210,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.connectFailed = false
 		m.pending++
-		return m, tea.Batch(loadRefs(m.store), m.spinner.Tick, startWatch(m.store, m.ctx))
+		return m, tea.Batch(loadRefs(m.store, m.folder.Name), m.spinner.Tick, startWatch(m.store, m.ctx))
 
 	case msgsLoaded:
 		m.doneOp()
@@ -213,6 +218,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// refresh fallito non deve bloccare i successivi); dirty NON viene
 		// consumato: il follow-up partirà alla prima riuscita (self-healing).
 		m.refreshing = false
+		if ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
+			// Stante (Piano 7, Task 4): il risultato è di un'altra cartella o di
+			// un'altra query (cambio cartella/ricerca durante il load): la lista
+			// visibile non va sovrascritta. Il refreshing è già liberato sopra.
+			return m, nil
+		}
 		if ev.err != nil {
 			// La query distingue l'errore di ricerca da quello di list.
 			if ev.query != "" {
@@ -349,13 +360,39 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case mailboxesLoaded:
+		// Risposta di ListMailboxes per il selettore (Piano 7, Task 4). Chiuso
+		// il selettore prima della risposta, il risultato è ignorato; errore →
+		// status d'errore e nessuna modale; altrimenti la lista si riempie con
+		// il cursore sulla cartella corrente.
+		m.doneOp()
+		if !m.folderOpen {
+			return m, nil
+		}
+		if ev.err != nil {
+			m.folderOpen = false
+			m.status = statusMsg{text: fmt.Sprintf("cartelle: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		items := make([]list.Item, len(ev.boxes))
+		cur := 0
+		for i, b := range ev.boxes {
+			items[i] = folderItem{box: b}
+			if canonicalFolder(b) == m.folder {
+				cur = i
+			}
+		}
+		cmd := m.folderList.SetItems(items)
+		m.folderList.Select(cur)
+		return m, cmd
+
 	case moreLoaded:
 		// Pagina successiva (scroll in fondo, Piano 7, Task 3). Stante se la
 		// ricerca è cambiata dopo la richiesta: la pagina non appartiene più
 		// alla lista visibile e si scarta (il loadingMore lo libera il
 		// msgsLoaded della lista nuova).
 		m.doneOp()
-		if ev.query != m.queryRaw {
+		if ev.mailbox != m.folder.Name || ev.query != m.queryRaw {
 			return m, nil
 		}
 		m.loadingMore = false
@@ -482,6 +519,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner.Style = ev.St.Spinner
 		m.help = newHelp(ev.St)
 		m.inbox.SetStyles(ev.St)
+		m.folderList.SetDelegate(folderDelegate{st: ev.St})
 		m.thread.SetStyles(ev.St)
 		m.status = statusMsg{text: fmt.Sprintf("tema %s applicato", ev.Th.Name), isOK: true}
 		return m, saveThemeCmd(m.cfgPath, ev.Th.Name)
@@ -564,6 +602,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = ev.Width, ev.Height
 		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
 		m.inbox.SetSize(ev.Width, max(0, m.height-1))
+		m.folderList.SetSize(ev.Width, max(0, m.height-2)) // -2: titolo del selettore + status bar
 		m.thread.SetSize(ev.Width, max(0, m.height-1))
 		if m.wizardActive {
 			// Gli input del wizard si adattano alla larghezza (Piano 4, Task 5).
@@ -623,6 +662,22 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				var cmd tea.Cmd
 				m.label, cmd = m.label.Update(ev)
+				return m, cmd
+			}
+		}
+		if m.folderOpen {
+			// Selettore cartelle aperto (Piano 7, Task 4): invio apre la cartella
+			// sotto il cursore, esc chiude, il resto naviga la lista (j/k, frecce,
+			// pagine). Le op della lista dietro non scattano (come col prompt).
+			switch ev.String() {
+			case "enter":
+				return m.chooseFolder()
+			case "esc":
+				m.folderOpen = false
+				return m, nil
+			default:
+				var cmd tea.Cmd
+				m.folderList, cmd = m.folderList.Update(ev)
 				return m, cmd
 			}
 		}
@@ -723,6 +778,12 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// dal messaggio già caricato. Il composer precompilato sostituisce
 			// la vista corrente (il back del composer torna lì).
 			return m.startCompose(ev.String() == "f")
+		case key.Matches(ev, keys.Folders):
+			// Selettore cartelle e label (Piano 7, Task 4): solo dalla lista; nel
+			// thread `m` cade nella delega di coda senza effetti.
+			if m.view == viewInbox {
+				return m.openFolders()
+			}
 		case key.Matches(ev, keys.Archive, keys.Star, keys.Read, keys.Label):
 			// Mutazioni (Task 7): agiscono sul ref corrente — nell'inbox la
 			// riga selezionata, nel thread il messaggio aperto.
@@ -800,7 +861,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
 		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
 		// selezionano nulla: la lista non esiste ancora).
-		if m.showHelp || m.labelOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
+		if m.showHelp || m.labelOpen || m.folderOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -898,15 +959,15 @@ func (m Model) submitSearch() (Model, tea.Cmd) {
 		m.query = msg.ParseQuery(raw)
 	}
 	m.pending++ // ricerca/re-list in flight: spinner finché msgsLoaded
-	return m, tea.Batch(submitQuery(m.store, raw), m.spinner.Tick)
+	return m, tea.Batch(submitQuery(m.store, raw, m.folder.Name), m.spinner.Tick)
 }
 
 // loadRefs esegue ListMessages fuori dal loop UI. Il contesto è background
 // finché il wiring del programma non esponga il ctx del programma (Task 7/8).
-func loadRefs(st mail.MailStore) tea.Cmd {
+func loadRefs(st mail.MailStore, box string) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: pageSize})
-		return msgsLoaded{refs: refs, err: err, limit: pageSize}
+		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: pageSize})
+		return msgsLoaded{refs: refs, err: err, limit: pageSize, mailbox: box}
 	}
 }
 
@@ -921,7 +982,7 @@ func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
 	}
 	m.loadingMore = true
 	m.pending++
-	return m, tea.Batch(cmd, loadMore(m.store, len(m.refs), m.queryRaw), m.spinner.Tick)
+	return m, tea.Batch(cmd, loadMore(m.store, m.folder.Name, len(m.refs), m.queryRaw), m.spinner.Tick)
 }
 
 // fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).
@@ -1028,6 +1089,9 @@ func (m Model) helpOverlay() string {
 // la ricerca è il textinput della query (Task 6), il composer i campi di
 // scrittura (Piano 4, Task 3).
 func (m Model) body() string {
+	if m.folderOpen {
+		return m.foldersView()
+	}
 	switch m.view {
 	case viewThread:
 		if !m.thread.Loaded() {
@@ -1068,6 +1132,11 @@ func (m Model) statusBar() string {
 		return m.renderBar(m.styles.StatusErr, sendConfirmText(m.draft))
 	}
 	text := m.status.text
+	if m.folder.Name != "" {
+		// Fuori dalla posta in arrivo la status bar dice in quale cartella si è
+		// (Piano 7, Task 4).
+		text = "[" + folderName(m.folder) + "] " + text
+	}
 	if m.pending > 0 {
 		text = m.spinner.View() + " " + text
 	}

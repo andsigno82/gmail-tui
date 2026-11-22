@@ -242,7 +242,7 @@ func (m *Model) requestRefresh(deep bool) tea.Cmd {
 	m.refreshing = true
 	m.pending++
 	limit := refreshLimit(len(m.refs), deep)
-	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw, limit), m.spinner.Tick)
+	return tea.Batch(refreshRefs(m.store, m.query, m.queryRaw, limit, m.folder.Name), m.spinner.Tick)
 }
 
 // refreshLimit è il Limit del re-list silenzioso (Piano 7, Task 3, D5): la sola
@@ -255,32 +255,32 @@ func refreshLimit(loaded int, deep bool) int {
 	return min(max(pageSize, loaded), refreshCap)
 }
 
-// refreshRefs rilista la lista corrente fuori dal loop UI, nello stato
-// silenzioso (msgsLoaded.silent): aggiorna refs e cursore senza toccare lo
+// refreshRefs rilista la lista corrente (cartella box) fuori dal loop UI, nello
+// stato silenzioso (msgsLoaded.silent): aggiorna refs e cursore senza toccare lo
 // status. Riusa il pattern del load: query vuota → ListMessages (limit righe
 // dalla prima pagina, come Init), query di ricerca → Search con la query
-// corrente (non paginata: limit 0).
-func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int) tea.Cmd {
+// corrente nella cartella (non paginata: limit 0).
+func refreshRefs(st mail.MailStore, q msg.Query, raw string, limit int, box string) tea.Cmd {
 	return func() tea.Msg {
 		var refs []msg.MessageRef
 		var err error
 		if raw == "" {
-			refs, err = st.ListMessages(context.Background(), msg.Query{}, mail.Page{Limit: limit})
+			refs, err = st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Limit: limit})
 		} else {
-			refs, err = st.Search(context.Background(), q)
+			refs, err = st.Search(context.Background(), inFolder(q, box))
 			limit = 0
 		}
-		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit}
+		return msgsLoaded{refs: refs, err: err, query: raw, silent: true, limit: limit, mailbox: box}
 	}
 }
 
 // loadMore esegue ListMessages per la pagina successiva fuori dal loop UI
 // (Piano 7, Task 3): l'offset è il numero di righe già caricate. Il risultato
 // porta la query di origine per lo scarto dei risultati stanti.
-func loadMore(st mail.MailStore, offset int, raw string) tea.Cmd {
+func loadMore(st mail.MailStore, box string, offset int, raw string) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.ListMessages(context.Background(), msg.Query{}, mail.Page{Offset: offset, Limit: pageSize})
-		return moreLoaded{refs: refs, err: err, query: raw}
+		refs, err := st.ListMessages(context.Background(), msg.Query{Label: box}, mail.Page{Offset: offset, Limit: pageSize})
+		return moreLoaded{refs: refs, err: err, query: raw, mailbox: box}
 	}
 }
 

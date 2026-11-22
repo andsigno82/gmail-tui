@@ -37,6 +37,8 @@ type appKeys struct {
 	Star       key.Binding // s — stella on/off
 	Read       key.Binding // v — letta/non letta
 	Label      key.Binding // l — etichetta
+	Folders    key.Binding // m — cartelle e label (selettore, Piano 7, Task 4)
+	Pick       key.Binding // invio — apri la cartella scelta (selettore, Piano 7, Task 4)
 	Open       key.Binding // o — apri nel browser (thread)
 	Command    key.Binding // : — command line :save/:open/:theme (thread)
 	Submit     key.Binding // invio — esegui la ricerca
@@ -66,6 +68,8 @@ var keys = appKeys{
 	Star:       key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "stella")),
 	Read:       key.NewBinding(key.WithKeys("v"), key.WithHelp("v", "letta/non letta")),
 	Label:      key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "etichetta")),
+	Folders:    key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "cartelle")),
+	Pick:       key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "apri cartella")),
 	Open:       key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "apri nel browser")),
 	Command:    key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "comandi")),
 	Submit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "cerca")),
@@ -103,6 +107,10 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 		// il prompt occupa la status bar, resta la documentazione centrale).
 		return []key.Binding{keys.Apply, keys.Cancel}
 	}
+	if m.folderOpen {
+		// Selettore cartelle (Piano 7, Task 4): invio apre, esc chiude.
+		return []key.Binding{keys.Pick, keys.Cancel}
+	}
 	switch v {
 	case viewSearch:
 		return []key.Binding{keys.Submit, keys.Cancel}
@@ -126,7 +134,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 			// pubblicizzato perché funziona: l'uscita pulita resta possibile.
 			return []key.Binding{keys.Connect, keys.Quit, keys.ForceQuit}
 		}
-		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Help}
+		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Help}
 	}
 }
 
@@ -135,6 +143,9 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	if labelOpen {
 		return [][]key.Binding{{keys.Apply, keys.Cancel, keys.Help}}
+	}
+	if m.folderOpen {
+		return [][]key.Binding{{keys.Pick, keys.Cancel}}
 	}
 	switch v {
 	case viewSearch:
@@ -152,7 +163,7 @@ func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	default: // inbox
 		return [][]key.Binding{
 			{keys.Move, keys.OpenSel, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Quit},
-			{keys.Archive, keys.Star, keys.Read, keys.Label},
+			{keys.Archive, keys.Star, keys.Read, keys.Label, keys.Folders},
 			{keys.Help},
 		}
 	}

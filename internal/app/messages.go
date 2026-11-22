@@ -24,20 +24,22 @@ import (
 // Con silent e pagina piena la coda già caricata oltre la prima pagina non si
 // perde (il refresh di prima pagina, D5, non tronca la lista).
 type msgsLoaded struct {
-	refs   []msg.MessageRef
-	err    error
-	query  string
-	silent bool
-	limit  int
+	refs    []msg.MessageRef
+	err     error
+	query   string
+	silent  bool
+	limit   int
+	mailbox string // cartella richiesta ("" = INBOX): risultato stante se non corrisponde (Piano 7, Task 4)
 }
 
 // moreLoaded è il risultato di una pagina successiva (scroll in fondo, Piano 7,
 // Task 3). query è la stringa di ricerca al momento della richiesta: se la
 // lista è cambiata nel frattempo la pagina è STANTE e viene scartata.
 type moreLoaded struct {
-	refs  []msg.MessageRef
-	err   error
-	query string
+	refs    []msg.MessageRef
+	err     error
+	query   string
+	mailbox string // cartella della richiesta (Piano 7, Task 4)
 }
 
 // msgLoaded è il risultato di FetchMessage. requested è l'ID richiesto dalla

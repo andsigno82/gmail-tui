@@ -43,25 +43,26 @@ func newSearchInput(st styles.Styles) textinput.Model {
 	return ti
 }
 
-// submitQuery traduce la query digitata nella Cmd giusta: stringa vuota (o
-// solo spazi) → re-list completo (ListMessages Query{}, prima pagina da 50,
-// come il load di Init), altrimenti Search col Query parsato da ParseQuery.
-func submitQuery(st mail.MailStore, raw string) tea.Cmd {
+// submitQuery traduce la query digitata nella Cmd giusta nella cartella box
+// (Piano 7, Task 4): stringa vuota (o solo spazi) → re-list completo (come il
+// load di Init), altrimenti Search col Query parsato da ParseQuery, limitata
+// alla cartella salvo label: esplicita.
+func submitQuery(st mail.MailStore, raw string, box string) tea.Cmd {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return loadRefs(st)
+		return loadRefs(st, box)
 	}
-	return searchCmd(st, msg.ParseQuery(raw), raw)
+	return searchCmd(st, msg.ParseQuery(raw), raw, box)
 }
 
 // searchCmd esegue la ricerca fuori dal loop UI. Il risultato è msgsLoaded
 // con la stringa digitata: la radice la usa per il badge
 // "N risultati per …" in status bar (una ricerca non deve sostituire il
 // badge anche al re-list, che viaggia senza query).
-func searchCmd(st mail.MailStore, q msg.Query, raw string) tea.Cmd {
+func searchCmd(st mail.MailStore, q msg.Query, raw string, box string) tea.Cmd {
 	return func() tea.Msg {
-		refs, err := st.Search(context.Background(), q)
-		return msgsLoaded{refs: refs, err: err, query: raw}
+		refs, err := st.Search(context.Background(), inFolder(q, box))
+		return msgsLoaded{refs: refs, err: err, query: raw, mailbox: box}
 	}
 }
 

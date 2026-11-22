@@ -41,7 +41,7 @@ func pagedModel(tb testing.TB, store mail.MailStore) Model {
 	}
 	m := New(store, noopSender{}, th)
 	m, _ = step(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	return applyAll(tb, m, loadRefs(store))
+	return applyAll(tb, m, loadRefs(store, ""))
 }
 
 // applyAll esegue la cmd e applica al modello i msg di risultato (lo spinner
