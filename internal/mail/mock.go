@@ -26,6 +26,7 @@ type Mock struct {
 // defaultMailboxes sono le cartelle del Mock se Mailboxes è nil (Piano 7, Task 1).
 var defaultMailboxes = []Mailbox{
 	{Name: "INBOX", Role: "inbox"},
+	{Name: "[Gmail]/Drafts", Role: "drafts"}, // Piano 9, Task 2: cartella Bozze
 	{Name: "[Gmail]/Trash", Role: "trash"},
 }
 
