@@ -1,0 +1,221 @@
+// Vista a due colonne (Piano 7.2, Task 4): lista messaggi a sinistra, anteprima
+// del messaggio sotto il cursore a destra (riuso di thread.Model). Attiva solo
+// con layout = split e larghezza ≥ 120 colonne (U4, U7): sotto, una colonna.
+// Proporzione fissa: lista floor(35%), anteprima il resto meno il separatore
+// (U8). Il focus (Tab, U6) dice quale colonna riceve j/k/pgup/pgdn; le azioni
+// (r f a s v l # o :) agiscono sempre sul messaggio in anteprima. Il caricamento
+// dell'anteprima aspetta 150 ms di cursore fermo; il segna-come-letto segue
+// l'impostazione preview_mark_read (U5). Ogni token stantio è scartato.
+package app
+
+import (
+	"context"
+	"strings"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+
+	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/msg"
+)
+
+// Parametri della vista a due colonne (Piano 7.2, Task 4).
+const (
+	splitMinWidth        = 120                    // sotto questa larghezza: una colonna (U4)
+	splitListPercent     = 35                     // quota della lista in percentuale (U8)
+	splitSepWidth        = 1                      // colonne del separatore verticale
+	previewLoadDelay     = 150 * time.Millisecond // cursore fermo prima del fetch dell'anteprima
+	previewMarkReadDelay = 2 * time.Second        // "dopo 2 secondi" (U5)
+)
+
+// splitOn dice se la vista a due colonne è attiva: layout split e larghezza
+// sufficiente (la soglia è quella di U4).
+func (m Model) splitOn() bool {
+	return m.layout == config.LayoutSplit && m.width >= splitMinWidth
+}
+
+// splitWidths restituisce le colonne di lista e anteprima per una larghezza
+// data (il separatore è escluso da entrambe).
+func splitWidths(width int) (list, preview int) {
+	list = width * splitListPercent / 100
+	preview = max(0, width-list-splitSepWidth)
+	return list, preview
+}
+
+// previewFocused dice se il focus è sull'anteprima (Tab): solo nella vista
+// inbox a due colonne.
+func (m Model) previewFocused() bool {
+	return m.focusPreview && m.splitOn() && m.view == viewInbox
+}
+
+// previewVisible dice se l'anteprima è in uso: vista inbox a due colonne con un
+// messaggio sotto il cursore.
+func (m Model) previewVisible() bool {
+	return m.splitOn() && m.view == viewInbox && m.prevHas
+}
+
+// previewReady dice se il thread mostra il corpo del messaggio in anteprima.
+func (m Model) previewReady() bool {
+	return m.prevHas && m.thread.Loaded() && m.thread.Ref().ID == m.prevRef.ID
+}
+
+// threadTarget dice se i tasti del thread (command line, filepicker, scorrimento)
+// vanno al thread: vista thread a schermo intero, o anteprima con il focus.
+func (m Model) threadTarget() bool {
+	return m.view == viewThread || (m.previewFocused() && m.previewReady())
+}
+
+// previewRef è il messaggio dell'anteprima: la copia del thread quando è
+// caricata (stato aggiornato da MarkRead e op), altrimenti la riga del cursore.
+func (m Model) previewRef() (msg.MessageRef, bool) {
+	if !m.prevHas {
+		return msg.MessageRef{}, false
+	}
+	if m.previewReady() {
+		return m.thread.Ref(), true
+	}
+	return m.prevRef, true
+}
+
+// relayout riapplica le dimensioni alle viste dopo un cambio di misura, layout o
+// vista. Fuori dal layout a due colonne il focus e l'anteprima si spengono: al
+// ritorno l'anteprima si ricarica dal cursore.
+func (m *Model) relayout() {
+	if m.width == 0 {
+		return
+	}
+	if !m.splitOn() {
+		m.focusPreview = false
+		m.prevHas = false
+		m.prevTok++
+	}
+	m.sizeInbox()
+	m.sizeThread()
+}
+
+// sizeInbox dà alla lista la colonna sinistra (due colonne) o tutta la larghezza.
+func (m *Model) sizeInbox() {
+	h := max(0, m.height-1)
+	if m.splitOn() {
+		list, _ := splitWidths(m.width)
+		m.inbox.SetSize(list, h)
+		return
+	}
+	m.inbox.SetSize(m.width, h)
+}
+
+// sizeThread dà al thread l'intera vista se è aperto a schermo intero, altrimenti
+// la colonna dell'anteprima (due colonne).
+func (m *Model) sizeThread() {
+	h := max(0, m.height-1)
+	if m.view != viewThread && m.splitOn() {
+		_, preview := splitWidths(m.width)
+		m.thread.SetSize(preview, h)
+		return
+	}
+	m.thread.SetSize(m.width, h)
+}
+
+// syncPreview allinea l'anteprima al cursore: ogni cambio del messaggio sotto il
+// cursore (movimento, refresh, cambio cartella o ricerca) apre un nuovo token e
+// il timer di caricamento. Lista vuota → anteprima vuota. Fuori dalla vista
+// inbox a due colonne non fa nulla.
+func (m Model) syncPreview() (Model, tea.Cmd) {
+	if !m.splitOn() || m.view != viewInbox {
+		return m, nil
+	}
+	cur, ok := m.inbox.SelectedRef()
+	if !ok {
+		if m.prevHas {
+			m.prevHas, m.prevRef = false, msg.MessageRef{}
+			m.prevTok++
+		}
+		return m, nil
+	}
+	if m.prevHas && m.prevRef.ID == cur.ID {
+		return m, nil
+	}
+	m.prevTok++
+	m.prevRef, m.prevHas = cur, true
+	return m, previewTimer(m.prevTok)
+}
+
+// previewTimer è il ritardo di 150 ms prima del fetch dell'anteprima.
+func previewTimer(tok int) tea.Cmd {
+	return tea.Tick(previewLoadDelay, func(time.Time) tea.Msg { return previewDue{tok: tok} })
+}
+
+// previewReadTimer è il ritardo di 2 s prima di segnare come letto l'anteprima.
+func previewReadTimer(tok int, id msg.MessageID) tea.Cmd {
+	return tea.Tick(previewMarkReadDelay, func(time.Time) tea.Msg {
+		return previewReadDue{tok: tok, id: id}
+	})
+}
+
+// fetchPreview esegue FetchMessage fuori dal loop UI (cache-first) per
+// l'anteprima; il risultato porta token e ID per lo scarto degli stantii.
+func fetchPreview(st mail.MailStore, tok int, id msg.MessageID) tea.Cmd {
+	return func() tea.Msg {
+		mm, err := st.FetchMessage(context.Background(), id)
+		return previewLoaded{tok: tok, id: id, m: mm, err: err}
+	}
+}
+
+// previewMarkRead applica il segna-come-letto all'anteprima appena caricata (U5):
+// subito → ora (con la stessa cmd del toggle senza refresh); dopo 2 s → timer
+// con token; mai → nulla. Solo messaggi non letti.
+func (m Model) previewMarkRead(tok int) (Model, tea.Cmd) {
+	ref := m.thread.Ref()
+	if !ref.Unread {
+		return m, nil
+	}
+	switch m.markRead {
+	case config.PreviewMarkReadImmediate:
+		m.thread.MarkRead()
+		return m, markRead(m.store, ref.ID, true, false)
+	case config.PreviewMarkReadNever:
+		return m, nil
+	default: // delay (valore di default)
+		return m, previewReadTimer(tok, ref.ID)
+	}
+}
+
+// previewView rende la colonna dell'anteprima alla larghezza e altezza date:
+// il thread se il corpo è caricato, un testo attenuato altrimenti. Le righe
+// troppo lunghe si troncano (nessun a capo che sposti la status bar).
+func (m Model) previewView(w, h int) string {
+	var body string
+	switch {
+	case !m.prevHas:
+		body = m.styles.ListDate.Render("nessun messaggio")
+	case m.previewReady():
+		body = m.thread.View()
+	default:
+		body = m.styles.ListDate.Render("Caricamento messaggio…")
+	}
+	return lipgloss.NewStyle().MaxWidth(w).Height(h).MaxHeight(h).Render(body)
+}
+
+// splitView compone le due colonne con il separatore verticale: il colore del
+// separatore indica il focus (slot primary sull'anteprima attiva).
+func (m Model) splitView() string {
+	list, preview := splitWidths(m.width)
+	h := max(0, m.height-1)
+	left := lipgloss.NewStyle().MaxWidth(list).Height(h).MaxHeight(h).Render(m.inbox.View())
+	sepStyle := m.styles.Divider
+	if m.previewFocused() {
+		sepStyle = m.styles.DividerFocus
+	}
+	sep := sepStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", h), "\n"))
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, sep, m.previewView(preview, h))
+}
+
+// mouseX è la colonna del terminale di un evento mouse (0 = bordo sinistro).
+func mouseX(ev tea.Msg) int {
+	if mm, ok := ev.(tea.MouseMsg); ok {
+		return mm.Mouse().X
+	}
+	return 0
+}

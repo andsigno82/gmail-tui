@@ -55,6 +55,12 @@ func (m Model) currentRef() (msg.MessageRef, bool) {
 		return m.thread.Ref(), true
 	}
 	if m.view == viewInbox {
+		if m.splitOn() {
+			// Piano 7.2, Task 4: con due colonne le azioni agiscono sul messaggio
+			// in anteprima, con entrambi i focus (la riga del cursore se l'anteprima
+			// non è ancora pronta).
+			return m.previewRef()
+		}
 		return m.inbox.SelectedRef()
 	}
 	return msg.MessageRef{}, false
@@ -113,14 +119,22 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 // toggle consecutivi dell'utente leggono questo stato); la lista inbox si
 // corregge col refresh che segue l'opDone, quindi non si tocca qui.
 func (m *Model) applyLocalRef(updated msg.MessageRef) {
-	if m.view != viewThread || !m.thread.Loaded() {
+	// Piano 7.2, Task 4: con due colonne il messaggio in anteprima è quello delle
+	// azioni: la sua copia locale (prevRef e thread) si aggiorna come nel thread.
+	inPreview := m.view == viewInbox && m.previewVisible() && m.prevRef.ID == updated.ID
+	if inPreview {
+		m.prevRef = updated
+	}
+	if (m.view != viewThread && !inPreview) || !m.thread.Loaded() {
 		return
 	}
 	if m.thread.Ref().ID != updated.ID {
 		return
 	}
 	m.thread.SetRef(updated)
-	m.pendingRef = updated
+	if m.view == viewThread {
+		m.pendingRef = updated
+	}
 }
 
 // confirmLabel chiude il prompt e applica la label digitata al ref corrente

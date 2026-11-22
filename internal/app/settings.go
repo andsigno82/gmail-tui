@@ -157,6 +157,7 @@ func (m Model) settingsStep(dir int) Model {
 		m.applyStyles(styles.New(th))
 	case rowLayout:
 		m.layout = nextValue(config.LayoutValues(), m.layout, dir)
+		m.relayout() // applicato subito: lista e anteprima si ridispongono (Piano 7.2, Task 4)
 	case rowMarkRead:
 		m.menu.markRead = nextValue(config.PreviewMarkReadValues(), m.menu.markRead, dir)
 	}
@@ -170,7 +171,10 @@ func (m Model) settingsCancel() Model {
 		m.th = m.menu.origTheme
 		m.applyStyles(styles.New(m.th))
 	}
-	m.layout = m.menu.origLayout
+	if m.layout != m.menu.origLayout {
+		m.layout = m.menu.origLayout
+		m.relayout()
+	}
 	m.menu = settingsMenu{}
 	return m
 }

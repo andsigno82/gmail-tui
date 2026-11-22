@@ -128,3 +128,23 @@ type connResult struct {
 type settingsSaved struct {
 	err error
 }
+
+// Anteprima a due colonne (Piano 7.2, Task 4). previewDue scade dopo 150 ms di
+// cursore fermo; previewLoaded è il fetch dell'anteprima; previewReadDue scade
+// dopo 2 s per il segna-come-letto ritardato (U5). Il token (prevTok) scarta i
+// risultati e i timer di un messaggio che non è più sotto il cursore.
+type previewDue struct {
+	tok int
+}
+
+type previewLoaded struct {
+	tok int
+	id  msg.MessageID
+	m   *msg.Message
+	err error
+}
+
+type previewReadDue struct {
+	tok int
+	id  msg.MessageID
+}

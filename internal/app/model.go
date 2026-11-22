@@ -68,19 +68,28 @@ type Model struct {
 	from, signature string
 	composeBack     view
 
-	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
-	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
-	// (SetIdentity: from è derivato). menu è il modale `,` (settings.go).
-	th          theme.Theme
-	layout      string
-	markRead    string
-	address     string
-	name        string
-	menu        settingsMenu
 	discardOpen bool
 	draft       msg.Outgoing
 	confirmSend bool // conferma pre-invio aperta ("Invio a …" nella status bar)
 	sending     bool // invio in flight (da conferma a opDone): blocca un secondo sendCmd
+
+	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
+	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
+	// (SetIdentity: from è derivato). menu è il modale `,` (settings.go).
+	th       theme.Theme
+	layout   string
+	markRead string
+	address  string
+	name     string
+	menu     settingsMenu
+
+	// Vista a due colonne (Piano 7.2, Task 4): focus sull'anteprima (Tab),
+	// messaggio sotto il cursore mostrato a destra (prevRef, valido con prevHas)
+	// e token dei timer/fetch dell'anteprima (prevTok, split.go).
+	focusPreview bool
+	prevRef      msg.MessageRef
+	prevHas      bool
+	prevTok      int
 
 	// Wizard first-run (Piano 4, Task 5): attivo finché CompletedMsg — tutti
 	// i tasti vanno al wizard, il load/feed partono solo al completamento
@@ -204,9 +213,20 @@ func (m Model) beginSession() tea.Cmd {
 	return tea.Batch(connectCmd(m.store, m.ctx), m.spinner.Tick)
 }
 
-// Update gestisce i messaggi: risultati delle Cmd, tick dello spinner, tasti
-// di routing e resize del terminale.
+// Update gestisce i messaggi e tiene l'anteprima della vista a due colonne
+// allineata al cursore (syncPreview, dopo ogni messaggio).
 func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
+	next, cmd := m.update(ev)
+	nm, sync := next.(Model).syncPreview()
+	if sync == nil {
+		return nm, cmd
+	}
+	return nm, tea.Batch(cmd, sync)
+}
+
+// update è il routing dei messaggi: risultati delle Cmd, tick dello spinner,
+// tasti di routing e resize del terminale.
+func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	switch ev := ev.(type) {
 	case statusMsg:
 		// Timeout logico: lo status resta finché il prossimo evento non lo
@@ -378,9 +398,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il fetch è riuscito: si costruisce la thread view vera, dimensionata
 		// se la size del terminale è già nota (WindowSizeMsg arriva all'avvio).
 		m.thread = thread.New(m.pendingRef, ev.m, m.styles)
-		if m.width > 0 {
-			m.thread.SetSize(m.width, max(0, m.height-1))
-		}
+		m.relayout()
 		// Auto MarkRead sul primo fetch di un messaggio NON letto: cmd
 		// concatenata, errore SOLO in status (non fatale). La copia locale
 		// del ref passa a letta subito; refresh=false (Task 5): niente
@@ -505,8 +523,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case thread.BackMsg:
 		// Uscita dal thread: si torna all'inbox così com'era — nessun
-		// re-list, la lista conserva ref, cursore e stato.
+		// re-list, la lista conserva ref, cursore e stato. Con due colonne il
+		// thread torna alla colonna dell'anteprima (Piano 7.2, Task 4).
 		m.view = viewInbox
+		m.relayout()
 		return m, nil
 
 	case thread.OpenRequested:
@@ -583,6 +603,44 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = statusMsg{text: "impostazioni salvate", isOK: true}
 		return m, nil
+
+	case previewDue:
+		// Piano 7.2, Task 4: cursore fermo da 150 ms → fetch dell'anteprima, salvo
+		// token stantio o messaggio già caricato (A → B → A non rifetcha).
+		if ev.tok != m.prevTok || !m.previewVisible() || m.previewReady() {
+			return m, nil
+		}
+		m.pending++
+		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef.ID), m.spinner.Tick)
+
+	case previewLoaded:
+		// Esito del fetch dell'anteprima: scartato se il token non è più quello
+		// corrente o il messaggio non è più sotto il cursore (il doneOp chiude
+		// comunque l'op in volo).
+		m.doneOp()
+		if ev.tok != m.prevTok || !m.previewVisible() || ev.id != m.prevRef.ID {
+			return m, nil
+		}
+		if ev.err != nil {
+			m.status = statusMsg{text: fmt.Sprintf("anteprima: %v", ev.err), isErr: true}
+			return m, nil
+		}
+		if ev.m == nil {
+			m.status = statusMsg{text: "anteprima: risposta vuota dallo store", isErr: true}
+			return m, nil
+		}
+		m.thread = thread.New(m.prevRef, ev.m, m.styles)
+		m.relayout()
+		return m.previewMarkRead(ev.tok)
+
+	case previewReadDue:
+		// Segna come letto ritardato (U5, "dopo 2 secondi"): solo se il messaggio
+		// è ancora quello in anteprima, con lo stesso token e ancora non letto.
+		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.Ref().ID != ev.id || !m.thread.Ref().Unread {
+			return m, nil
+		}
+		m.thread.MarkRead()
+		return m, markRead(m.store, ev.id, true, false)
 
 	case composeLoaded:
 		// Risultato del fetch per r/f nell'inbox (Piano 4, Task 3). Come per
@@ -664,10 +722,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = ev.Width, ev.Height
-		// Il corpo occupa tutte le righe tranne l'ultima (status bar).
-		m.inbox.SetSize(ev.Width, max(0, m.height-1))
+		// Il corpo occupa tutte le righe tranne l'ultima (status bar). Con due
+		// colonne (Piano 7.2, Task 4) lista e anteprima prendono la loro quota.
+		m.relayout()
 		m.folderList.SetSize(ev.Width, max(0, m.height-2)) // -2: titolo del selettore + status bar
-		m.thread.SetSize(ev.Width, max(0, m.height-1))
 		if m.wizardActive {
 			// Gli input del wizard si adattano alla larghezza (Piano 4, Task 5).
 			m.wiz.SetWidth(ev.Width)
@@ -799,7 +857,7 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		if m.view == viewThread && m.thread.ModalOpen() {
+		if m.threadTarget() && m.thread.ModalOpen() {
 			// Modalità comando/filepicker del thread (Piano 4, Task 2):
 			// TUTTI i tasti vanno al thread — enter esegue/conferma, esc
 			// annulla, il resto è testo dell'input o navigazione del picker
@@ -841,6 +899,22 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.previewFocused() {
+			// Piano 7.2, Task 4 (U6): con il focus sull'anteprima esc torna alla
+			// lista (non esce dall'app) e invio apre a schermo intero il messaggio
+			// in anteprima. Il resto segue il routing sotto.
+			switch ev.String() {
+			case "esc":
+				m.focusPreview = false
+				return m, nil
+			case "enter":
+				ref, ok := m.previewRef()
+				if !ok {
+					return m, nil
+				}
+				return m, func() tea.Msg { return inbox.SelectedMsg{Ref: ref} }
+			}
+		}
 		// Il routing usa la keymap centrale (Task 9): stesse chiavi e stesso
 		// ordine del vecchio switch su ev.String() (a/s/v/l → q/esc → …).
 		switch {
@@ -859,6 +933,13 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// dal messaggio già caricato. Il composer precompilato sostituisce
 			// la vista corrente (il back del composer torna lì).
 			return m.startCompose(ev.String() == "f")
+		case key.Matches(ev, keys.Focus):
+			// Tab (Piano 7.2, Task 4, U6): alterna il focus lista/anteprima; senza
+			// due colonne non fa nulla.
+			if m.splitOn() && m.view == viewInbox {
+				m.focusPreview = !m.focusPreview
+			}
+			return m, nil
 		case key.Matches(ev, keys.Trash):
 			// # (Piano 7, Task 5): apre la conferma sul messaggio corrente (lista
 			// o thread). Nel cestino la conferma non si apre (askTrash).
@@ -914,9 +995,10 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(ev, keys.Command):
 			// `:` nel thread (Piano 4, Task 2): catturato dalla radice e
 			// delegato al thread, che apre la command line (:save/:open/:theme
-			// — cmdmode.go). Nelle altre viste non significa nulla: la key
-			// cade nella delega di coda senza effetti.
-			if m.view == viewThread {
+			// — cmdmode.go). Con il focus sull'anteprima (Piano 7.2, Task 4) vale
+			// lo stesso. Nelle altre viste non significa nulla: la key cade nella
+			// delega di coda senza effetti.
+			if m.threadTarget() {
 				var cmd tea.Cmd
 				m.thread, cmd = m.thread.Update(ev)
 				return m, cmd
@@ -927,6 +1009,16 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// SelectedMsg), nel thread alla viewport (j/k, `o`), nel composer al
 		// campo focalizzato (gate sopra).
 		if m.view == viewInbox {
+			if m.previewFocused() {
+				// Focus sull'anteprima (Piano 7.2, Task 4): j/k/pgup/pgdn/space/d/u
+				// scorrono il messaggio; la lista non si muove.
+				if !m.previewReady() {
+					return m, nil
+				}
+				var cmd tea.Cmd
+				m.thread, cmd = m.thread.Update(ev)
+				return m, cmd
+			}
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
 			return m.loadMoreAtEnd(cmd)
@@ -957,6 +1049,19 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.view == viewInbox {
+			// Due colonne (Piano 7.2, Task 4): la colonna destra è l'anteprima. La
+			// rotella la scorre (a prescindere dal focus); i click su di essa non
+			// fanno nulla, e il separatore conta come anteprima.
+			if m.splitOn() {
+				if list, _ := splitWidths(m.width); mouseX(ev) >= list {
+					if _, wheel := ev.(tea.MouseWheelMsg); wheel && m.previewReady() {
+						var cmd tea.Cmd
+						m.thread, cmd = m.thread.Update(ev)
+						return m, cmd
+					}
+					return m, nil
+				}
+			}
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
 			return m.loadMoreAtEnd(cmd)
@@ -1215,6 +1320,9 @@ func (m Model) body() string {
 	}
 	if m.folderOpen {
 		return m.foldersView()
+	}
+	if m.view == viewInbox && m.splitOn() {
+		return m.splitView()
 	}
 	switch m.view {
 	case viewThread:

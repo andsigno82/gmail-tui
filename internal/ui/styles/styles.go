@@ -31,6 +31,8 @@ type Styles struct {
 	Border          lipgloss.Style // riquadri (viewport, overlay)
 	Spinner         lipgloss.Style // spinner durante il caricamento
 	DemoBanner      lipgloss.Style // banner "demo mode" senza credenziali
+	Divider         lipgloss.Style // separatore lista/anteprima a due colonne (Piano 7.2, Task 4)
+	DividerFocus    lipgloss.Style // separatore con il focus sull'anteprima (slot primary)
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
@@ -53,6 +55,8 @@ func New(t theme.Theme) Styles {
 		Border:          lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(adaptive(t.Border)),
 		Spinner:         lipgloss.NewStyle().Foreground(adaptive(t.Accent)).Bold(true),
 		DemoBanner:      lipgloss.NewStyle().Foreground(onColor(t.Warning, t.Fg, t.Bg)).Background(adaptive(t.Warning)).Bold(true).Padding(0, 1),
+		Divider:         lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		DividerFocus:    lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
 	}
 }
 

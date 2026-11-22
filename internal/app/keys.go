@@ -162,7 +162,11 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 			// pubblicizzato perché funziona: l'uscita pulita resta possibile.
 			return []key.Binding{keys.Connect, keys.Quit, keys.ForceQuit}
 		}
-		return []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders, keys.Settings, keys.Help}
+		short := []key.Binding{keys.Quit, keys.Search, keys.Reply, keys.Forward, keys.Composer, keys.Archive, keys.Trash, keys.Star, keys.Read, keys.Label, keys.Folders}
+		if m.splitOn() {
+			short = append(short, keys.Focus) // Tab lista/anteprima: solo con due colonne (Piano 7.2, Task 4)
+		}
+		return append(short, keys.Settings, keys.Help)
 	}
 }
 
