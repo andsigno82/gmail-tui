@@ -100,6 +100,7 @@ type opDone struct {
 	deep     bool // refresh a profondità piena (D5, Piano 7 Task 3): solo Archive/Trash
 	send     bool
 	draftErr error           // Piano 9, Task 7: rimozione dalla Bozze fallita dopo un invio riuscito
+	observed []string        // Piano 9, Task 13: destinatari dell'invio riuscito, per la rubrica
 	retry    *pendingSend    // Piano 9, Task 9: invio fallito dopo la finestra → il composer si riapre con la bozza
 	gone     []msg.MessageID // ID usciti dalla cartella con l'op (Archive/Trash): la coda del refresh profondo non li riaccoda (fix review 1)
 	// localID/localRead: MarkRead riuscito su questo messaggio; lo stato di lettura

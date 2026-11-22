@@ -262,7 +262,7 @@ func deliverSend(sender Sender, st mail.MailStore, p *pendingSend) opDone {
 	if err := sender.Send(ctx, p.out); err != nil {
 		return opDone{label: "invio", err: err, send: true, retry: p}
 	}
-	res := opDone{label: "inviato", refresh: true, send: true}
+	res := opDone{label: "inviato", refresh: true, send: true, observed: addresses(p.out.To, p.out.Cc, p.out.Bcc)}
 	if p.draftID != "" {
 		dctx, dcancel := context.WithTimeout(context.Background(), cmd.SendTimeout)
 		defer dcancel()

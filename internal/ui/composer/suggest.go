@@ -152,3 +152,6 @@ func (m Model) suggestRows(f Field) string {
 	}
 	return b.String()
 }
+
+// Suggestions restituisce i suggerimenti mostrati (vuoti se la lista è chiusa).
+func (m Model) Suggestions() []Suggestion { return m.suggest }

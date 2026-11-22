@@ -14,6 +14,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/app"
 	"github.com/andsigno82/gmail-tui/internal/cmd"
 	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/contacts"
 	"github.com/andsigno82/gmail-tui/internal/keyring"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/mail/cache"
@@ -149,6 +150,13 @@ func runTUI(args []string, forceWizard bool) int {
 	m := app.New(store, sender, th)
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
 	m.SetPrefs(cfg.Layout, cfg.PreviewMarkRead)         // layout e segna come letto (Piano 7.2, Task 2-3)
+	// Rubrica e comando dei contatti (Piano 9, Task 10-13): in demo la rubrica resta
+	// in memoria e nessun comando utente viene eseguito.
+	if demo {
+		m.SetAddressBook(nil, nil)
+	} else {
+		m.SetAddressBook(openAddressBook(), cfg.AddressBookCmd)
+	}
 	if demo {
 		m.SetDemoBanner()
 	}
@@ -467,6 +475,24 @@ func newSMTPSender(cfg config.Config) (*smtp.Sender, bool) {
 		Username: cfg.Address,
 		Password: pw,
 	}), true
+}
+
+// openAddressBook apre la rubrica dei contatti in UserCacheDir/gmail-tui/contacts.json
+// (Piano 9, D9-F). Qualunque problema ⇒ nil: la rubrica resta in memoria.
+func openAddressBook() *contacts.Book {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return nil
+	}
+	path := filepath.Join(dir, "gmail-tui", "contacts.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil
+	}
+	b, err := contacts.Open(path)
+	if err != nil {
+		return nil
+	}
+	return b
 }
 
 // openCache apre la cache bbolt in UserCacheDir/gmail-tui/cache.db;

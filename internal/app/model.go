@@ -15,6 +15,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/config"
+	"github.com/andsigno82/gmail-tui/internal/contacts"
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
@@ -80,6 +81,14 @@ type Model struct {
 	draftBusy   bool
 	undo        *pendingSend
 	undoSeq     int
+
+	// Rubrica e suggerimenti dei contatti (Piano 9, Task 12-13): book è la rubrica
+	// (memoria di default, file nel main), addrCmd il comando esterno (config),
+	// addrWarned evita di ripetere l'avviso del comando in sessione, clock il tempo.
+	book       *contacts.Book
+	addrCmd    []string
+	addrWarned bool
+	clock      func() time.Time
 
 	// Impostazioni (Piano 7.2, Task 2-3): tema applicato (th), layout e segna
 	// come letto in anteprima (SetPrefs), indirizzo e nome del mittente
@@ -179,7 +188,9 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	if p, err := config.Path(); err == nil {
 		cfgPath = p
 	}
+	memBook, _ := contacts.Open("") // Piano 9: rubrica in memoria; il main la collega al file
 	return Model{
+		book: memBook, clock: time.Now,
 		store:      store,
 		sender:     sender,
 		styles:     st,
@@ -273,6 +284,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgsLoaded:
 		m.doneOp()
+		m.feedBook(false, refSenders(ev.refs)...) // mittenti in lista: senza incremento (Piano 9, D9-F)
 		// Il token del re-list silenzioso si libera SOLO al risultato del
 		// refresh in volo (fix review 5): un load non silenzioso o un risultato
 		// stante non riapre il coalescing di un refresh ancora in corso. Il
@@ -412,6 +424,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case msgLoaded:
 		m.doneOp()
+		if ev.m != nil {
+			m.feedBook(true, addresses(ev.m.To, ev.m.Cc)...) // destinatari del messaggio aperto: incremento
+		}
 		// Guardia anti-race (fix merge-gate): il risultato porta l'ID
 		// richiesto. Se non coincide col ref in attesa (open A lenta → esc →
 		// open B veloce: il risultato di A arriva per ultimo) o non siamo più
@@ -501,6 +516,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case opDone:
 		m.doneOp()
+		if ev.err == nil && len(ev.observed) > 0 {
+			m.feedBook(true, ev.observed...) // destinatari dell'invio riuscito: incremento (D9-F)
+		}
 		if ev.err == nil && len(ev.gone) > 0 {
 			// Piano 7, fix review 1: gli ID usciti dalla cartella (Archive/Trash)
 			// si tolgono dalla coda PRIMA del merge del refresh profondo, che
@@ -817,6 +835,16 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.sending = true // blocca un secondo invio finché opDone
 		m.pending++      // invio in flight: spinner finché opDone
 		return m, tea.Batch(sendCmd(m.sender, m.store, p), m.spinner.Tick)
+
+	case composer.SuggestQueryMsg:
+		// Piano 9, Task 12 (D9-H): suggerimenti per il frammento del campo A/Cc/Ccn.
+		cmd := m.suggestQuery(ev)
+		return m, cmd
+
+	case suggestionsLoaded:
+		// Esito del comando esterno (Piano 9, Task 12): merge con i locali, stantio scartato.
+		cmd := m.applySuggestions(ev)
+		return m, cmd
 
 	case composer.SendRequestedMsg:
 		// ctrl+s nel composer (Piano 4, Task 4): la bozza viene custodita e

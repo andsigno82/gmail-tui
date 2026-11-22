@@ -175,7 +175,7 @@ Scelte del piano (da confermare solo se contestate):
 
 **Test (RED prima):** `TestSuggestionsFromLocalBook`; `TestSuggestionsMergeExternalAndDedupe`; `TestStaleSuggestionsDiscarded`.
 
-- [ ] RED, implementazione, commit `feat(app): suggerimenti da rubrica locale e comando esterno (Piano 9, Task 12)`.
+- [x] RED, implementazione, commit `feat(app): suggerimenti da rubrica locale e comando esterno (Piano 9, Task 12)`.
 
 ## Task 13: rubrica alimentata dai messaggi; demo
 
