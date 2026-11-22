@@ -135,6 +135,22 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   the escaped text at priority 100. In goldmark v1.8.7 the renderers are sorted
   ascending and the lowest priority value wins (default 1000): do not raise it.
   `TestBuildMIMEMarkdownRawHTMLAsEscapedText` guards it.
+- **Gmail conversations (Piano 8)**: `ConversationMembers(mailbox, threadID)` lists a
+  thread's messages in one mailbox and never reads All Mail; the row actions `a`, `#`
+  and `v` call it. `Archive` and `Trash` refuse IDs in `[Gmail]/Tutti i messaggi`
+  (role `all`) through `refuseAllMail`: an expunge or MOVE there deletes the message
+  from the mail.
+- **Gmail IDs are `uint64`** (`MessageRef.GmailID`, `ThreadID`): serialize them as
+  decimal strings in JSON; values above 2^53 lose precision in JavaScript.
+- **Conversation bodies are lazy**: the thread holds the bodies of expanded messages
+  only. A body result carries the thread generation (`threadGen`) and the anchor ID,
+  and a `bodyLoaded` for another generation is dropped. Keep both checks in
+  `internal/app/model.go`.
+- **Cache schema**: bump `schemaVersion` in `internal/mail/cache/cache.go` whenever
+  `msg.Message` gains or changes a cached field, or old entries read as zero values.
+- **Gated store methods**: a new `Store` method acquires `s.gate`; a method that calls
+  another gated method passes `heldGate=true` (the gate is not reentrant, see
+  `fetchMessage` in `internal/mail/imap/fetch.go`).
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the
   source of the pinned version, not against docs or memory (e.g. `DialInsecure`,
   `UIDExpunge`). bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.

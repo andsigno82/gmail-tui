@@ -85,7 +85,7 @@ Modificati:
 
 **Test:** `go test ./third_party/go-imap/...` verde senza modifiche (baseline della copia); `go build ./...` e `go vet ./...` verdi.
 
-- [ ] Baseline (non c'è RED: è una copia) → impl → GREEN → Commit `chore(imap): vendor go-imap v2.0.0-beta.9 in third_party for Gmail patches`
+- [x] Baseline (non c'è RED: è una copia) → impl → GREEN → Commit `chore(imap): vendor go-imap v2.0.0-beta.9 in third_party for Gmail patches`
 
 ### Task 2: FETCH X-GM-MSGID, X-GM-THRID, X-GM-LABELS e msg-att sconosciuti
 
@@ -98,7 +98,7 @@ Modificati:
 
 **Test (RED prima):** FETCH con i tre attributi dai fixture della Wave 1 (esempi Google: `* 1 FETCH (X-GM-LABELS (\Inbox \Sent Important "Muy Importante"))`, `* 3 FETCH (X-GM-LABELS ())`); MSGID `1876409439502535953` e un valore sopra 2^63; attributo sconosciuto; label in modified UTF-7 (`&ANw-bung`).
 
-- [ ] RED → impl → GREEN → Commit `feat(imap-patch): parse X-GM-MSGID/THRID/LABELS and skip unknown fetch attributes`
+- [x] RED → impl → GREEN → Commit `feat(imap-patch): parse X-GM-MSGID/THRID/LABELS and skip unknown fetch attributes`
 
 ### Task 3: SEARCH X-GM-RAW, X-GM-THRID, X-GM-MSGID, X-GM-LABELS
 
@@ -108,7 +108,7 @@ Modificati:
 - Prima del test: leggere la issue #19 e la pagina Google, per confermare la sintassi quotata di X-GM-RAW sul fixture ufficiale e non da memoria.
 - Test: query con `"` e `\` (es. `subject:"a\b"`) codificata correttamente; THRID come decimale; combinazione con i criteri standard in AND.
 
-- [ ] RED → impl → GREEN → Commit `feat(imap-patch): SEARCH X-GM-RAW, X-GM-THRID, X-GM-MSGID, X-GM-LABELS`
+- [x] RED → impl → GREEN → Commit `feat(imap-patch): SEARCH X-GM-RAW, X-GM-THRID, X-GM-MSGID, X-GM-LABELS`
 
 ### Task 4: STORE X-GM-LABELS
 
@@ -117,7 +117,7 @@ Modificati:
 - `StoreLabels` con modalità `+`, `-`, set, e `.SILENT` opzionale. Nomi quotati se contengono spazi o caratteri speciali; `\Inbox` come atomo.
 - Serve alla rimozione label da qualunque cartella (Piano 10). In Piano 8 la primitiva è implementata e testata ma NON esposta in `MailStore`.
 
-- [ ] RED → impl → GREEN → Commit `feat(imap-patch): STORE X-GM-LABELS (+/-/set)`
+- [x] RED → impl → GREEN → Commit `feat(imap-patch): STORE X-GM-LABELS (+/-/set)`
 
 ### Task 5: contratto: `MessageRef`, `Query.Raw`, conversazioni; Mock
 
@@ -162,7 +162,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** `IsEmpty` con `Raw`; Mock raggruppa 3 messaggi di 2 thread in 2 conversazioni con Count, Unread, Participants corretti; `ThreadMessages` in ordine cronologico; `Raw` non vuoto non è `IsEmpty`.
 
-- [ ] RED → impl → GREEN → Commit `feat(store): conversations, Gmail ids, labels and raw query in the MailStore contract`
+- [x] RED → impl → GREEN → Commit `feat(store): conversations, Gmail ids, labels and raw query in the MailStore contract`
 
 ### Task 6: capability X-GM-EXT-1 e modalità Gmail dello Store
 
@@ -174,7 +174,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** scripted server con CAPABILITY con e senza `X-GM-EXT-1`: il client non invia mai X-GM-* senza la capability (verifica sul transcript).
 
-- [ ] RED → impl → GREEN → Commit `feat(imap): detect X-GM-EXT-1 and gate Gmail extension commands`
+- [x] RED → impl → GREEN → Commit `feat(imap): detect X-GM-EXT-1 and gate Gmail extension commands`
 
 ### Task 7: backend: conversazioni, thread e ID Gmail
 
@@ -193,7 +193,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** transcript scriptato per 2 thread su 3 messaggi: Count, Participants, Unread (basta un non letto), Latest nella mailbox; `ThreadMessages` in ordine; server senza capability (fallback); ID sopra 2^63 propagati senza troncamento.
 
-- [ ] RED → impl → GREEN → Commit `feat(imap): conversations and thread messages from X-GM-THRID`
+- [x] RED → impl → GREEN → Commit `feat(imap): conversations and thread messages from X-GM-THRID`
 
 ### Task 8: backend: ricerca `X-GM-RAW`, label, cache
 
@@ -206,7 +206,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** `Raw` produce il criterio `X-GM-RAW` con quoting corretto (query con `"`); errore senza Gmail; label filtrate; entry di cache con versione vecchia invalidata.
 
-- [ ] RED → impl → GREEN → Commit `feat(imap): native Gmail search via X-GM-RAW and per-message labels`
+- [x] RED → impl → GREEN → Commit `feat(imap): native Gmail search via X-GM-RAW and per-message labels`
 
 ### Task 9: UI: riga-conversazione in lista
 
@@ -219,7 +219,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** rendering a larghezza 80 e 140 (partecipanti, contatore, grassetto, chip troncati); fallback senza Gmail con output identico alla lista attuale (test esistenti invariati).
 
-- [ ] RED → impl → GREEN → Commit `feat(inbox): one row per conversation with participants, count and labels`
+- [x] RED → impl → GREEN → Commit `feat(inbox): one row per conversation with participants, count and labels`
 
 ### Task 10: UI: vista thread stile Gmail
 
@@ -232,7 +232,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** conversazione di 4 messaggi: 3 letti compressi, ultimo espanso; una risposta inviata compare espansa; apertura di un non letto lo segna letto; l'anteprima a due colonne non rompe il focus.
 
-- [ ] RED → impl → GREEN → Commit `feat(thread): Gmail-style conversation view with collapsed read messages`
+- [x] RED → impl → GREEN → Commit `feat(thread): Gmail-style conversation view with collapsed read messages`
 
 ### Task 11: UI: `/` con sintassi Gmail
 
@@ -245,7 +245,7 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** `/older_than:7d` produce `Raw` esatto; senza Gmail usa `ParseQuery`; errore di ricerca ripristina la lista.
 
-- [ ] RED → impl → GREEN → Commit `feat(search): pass Gmail search syntax verbatim as X-GM-RAW`
+- [x] RED → impl → GREEN → Commit `feat(search): pass Gmail search syntax verbatim as X-GM-RAW`
 
 ### Task 12: demo e Mock: conversazioni simulate
 
@@ -256,11 +256,11 @@ ThreadMessages(ctx context.Context, threadID uint64) ([]msg.MessageRef, error) /
 
 **Test:** lista con righe-conversazione, contatore e label visibili; apertura di una conversazione mostra la risposta dell'utente.
 
-- [ ] RED → impl → GREEN → Commit `feat(demo): simulated Gmail conversations and labels`
+- [x] RED → impl → GREEN → Commit `feat(demo): simulated Gmail conversations and labels`
 
 ### Task 13: documentazione e verifica (smoke su account reale di Andrea)
 
-- [ ] README (lista a conversazioni, vista thread, `/` con sintassi Gmail, label), CHANGELOG `[Unreleased]` in inglese, `docs/smoke-checklist.md`, `AGENTS.md` (regola 1 aggiornata, gotcha `heldGate` per i nuovi metodi, gotcha ID uint64 come stringa in JSON).
+- [x] README (lista a conversazioni, vista thread, `/` con sintassi Gmail, label), CHANGELOG `[Unreleased]` in inglese, `docs/smoke-checklist.md`, `AGENTS.md` (regola 1 aggiornata, gotcha `heldGate` per i nuovi metodi, gotcha ID uint64 come stringa in JSON).
 - [ ] Gate completi: `go test ./...`, `CGO_ENABLED=0 go build ./...`, `go vet ./...`, `govulncheck ./...` (obbligatorio: la copia patchata è nel build), lint.
 - [ ] `/code-review` sul branch, rilievi corretti.
 - [ ] **Smoke su account reale: solo Andrea, mai l'agente.** (1) `gmail-tui doctor` riporta X-GM-EXT-1; (2) una conversazione con risposta in Inviati compare come una riga con il conteggio giusto; (3) `/older_than:30d` dà risultati coerenti con la ricerca Gmail web; (4) una label utente compare in lista e non si duplica dopo `a`; (5) catturare un transcript reale **redatto** (nessun indirizzo, oggetto o corpo) da usare come fixture in `testdata/gmail/`.

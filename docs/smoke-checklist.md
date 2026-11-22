@@ -122,6 +122,20 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] A received message with Markdown (`**x**`) is shown as raw text in the app: expected, incoming Markdown is not interpreted.
 - [ ] Invalid config: set `layout = "wide"` in the config file and start the app: a warning naming the invalid field appears on stderr, the app runs in one column, and `name` and `signature` are still set.
 
+## Gmail conversations (Piano 8) — real account only
+
+- [ ] `gmail-tui doctor` prints the `X-GM-EXT-1` line as present on Gmail.
+- [ ] A conversation with a reply you sent (Sent folder) is one row in the list, with the participants, the message count in parentheses, and the row bold when any message is unread.
+- [ ] Opening it shows all messages in date order, your reply included: read ones collapsed, the latest and unread ones expanded. `j`/`k` choose a message, `Enter` expands it and its body loads.
+- [ ] `/older_than:30d` returns the same messages, count and subjects, as the Gmail web search for the same query.
+- [ ] `/in:sent` and `/-label:<something>` behave like Gmail web.
+- [ ] A user label appears as a colored chip and is not duplicated after `a` on the row.
+- [ ] `a` on a conversation in the Inbox removes its Inbox messages only: in Gmail web they remain in All Mail with their labels.
+- [ ] `#` on a conversation in the Inbox moves only its Inbox messages to Trash; messages in Sent stay where they are.
+- [ ] `r` on a selected message that is not the latest replies to that message; `o` and `:save` act on the selected message.
+- [ ] Spam and Trash messages are absent from a conversation opened from the Inbox, and present when it is opened from Trash.
+- [ ] Do not paste real addresses, subjects or bodies into the repo: redact any transcript before using it as a fixture (plan Task 13, point 5).
+
 ## Notifications (Piano 7.3)
 
 - [ ] `v` on a message: a toast "letta"/"non letta" appears top right and disappears after about 3 s; the status bar keeps its neutral color.

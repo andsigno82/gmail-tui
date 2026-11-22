@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Gmail conversations** — on Gmail accounts (`X-GM-EXT-1`) the list shows one row per conversation: participants, message count, unread state and user labels as colored chips. The thread view shows the whole conversation in date order: read messages collapsed, the latest and unread ones expanded. `j`/`k` choose a message, `Enter` or a click expands or collapses it.
+- **Gmail search** — `/` passes the query verbatim to Gmail (`X-GM-RAW`): `older_than:`, `in:`, `-label:` and the rest of the Gmail syntax work. Without Gmail the plain matcher is used.
+- **Gmail labels** — per-message labels (`X-GM-LABELS`) shown as colored chips in the list and in the thread.
+- **Doctor** — an informational line reports whether the server announces `X-GM-EXT-1`.
+- **In-tree go-imap** — `third_party/go-imap` (v2.0.0-beta.9 with the Gmail patches listed in `PATCHES.md`).
+
 - **Toast notifications** — action outcomes appear as toasts in the top-right corner, drawn with the lipgloss v2 compositor: info and success disappear after 3 s, errors stay until a key is pressed, up to 3 stacked (errors are never evicted by newer toasts). The status bar is neutral and keeps only lasting state; it is colored only for pending confirmations.
 - **Settings menu** — `,` opens a menu in the inbox and thread views: theme (live preview), reading layout, mark-as-read in preview, name and signature. `Enter` on a choice saves, `Esc` cancels and restores the previous theme and layout; `Ctrl+S` saves from any row.
 - **Two-column layout** — `layout = "split"` shows the list and a message preview side by side from 120 columns (list 35%, preview the rest). `Tab` moves focus to the preview; `preview_mark_read` (`immediate`, `delay`, `never`) sets when a previewed unread message is marked read. Click on the preview focuses it; double-click or `Enter` opens the message full screen.
@@ -25,6 +31,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- `a`, `#` and `v` on a list row act on the whole conversation in the current folder. Archive and Trash never touch All Mail.
+- Opening a conversation downloads the bodies of the expanded messages only.
+- The message cache moves to schema v2: cached message entries are downloaded again on the first start after the upgrade.
 - `gmail-tui login` updates the address and keeps `name`, `signature`, `theme`, `layout` and `preview_mark_read`; before, it reset name and signature and set the theme to `default`.
 - An invalid `layout` or `preview_mark_read` value is reset to its default for that field only (warning on stderr at startup); the other fields are kept, and saving from the settings menu or `:theme` repairs the same way.
 - The first-run wizard also starts when no password is available and the config has no address.
@@ -37,6 +46,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- The conversation message count `(N)` is never truncated in the list, even with long participant names.
 - Text on colored bars (status bar, OK and error messages, selected row, demo banner) had 1.0–3.5:1 contrast in some themes. The text color is now computed per theme and variant to reach WCAG AA (4.5:1), falling back to black or white.
 
 - IDLE reselects INBOX before each round, so push keeps working after operations on other folders.
