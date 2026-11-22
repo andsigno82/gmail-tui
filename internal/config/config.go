@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -114,6 +115,9 @@ func (c Config) Sanitized() Config {
 	if !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
 		c.PreviewMarkRead = d.PreviewMarkRead
 	}
+	if len(c.AddressBookCmd) > 0 && checkCommand(c.AddressBookCmd[0]) != nil {
+		c.AddressBookCmd = d.AddressBookCmd // Piano 9, review H: comando non valido → solo locale
+	}
 	return c
 }
 
@@ -128,6 +132,30 @@ func (c Config) Validate() error {
 	}
 	if c.PreviewMarkRead != "" && !slices.Contains(PreviewMarkReadValues(), c.PreviewMarkRead) {
 		return fmt.Errorf("%w: preview_mark_read %q, ammessi %s", ErrInvalid, c.PreviewMarkRead, strings.Join(PreviewMarkReadValues(), ", "))
+	}
+	if len(c.AddressBookCmd) > 0 {
+		if err := checkCommand(c.AddressBookCmd[0]); err != nil {
+			return fmt.Errorf("%w: address_book_cmd: %v", ErrInvalid, err)
+		}
+	}
+	return nil
+}
+
+// checkCommand accetta un percorso assoluto esistente o un nome senza separatori
+// risolto nel PATH (Piano 9, review H). Il percorso relativo è rifiutato: il
+// comando dei contatti non deve dipendere dalla directory di lavoro.
+func checkCommand(argv0 string) error {
+	if filepath.IsAbs(argv0) {
+		if _, err := os.Stat(argv0); err != nil {
+			return fmt.Errorf("comando %q non trovato", argv0)
+		}
+		return nil
+	}
+	if strings.ContainsAny(argv0, `/\`) {
+		return fmt.Errorf("percorso relativo %q non ammesso: usa un percorso assoluto o un nome nel PATH", argv0)
+	}
+	if _, err := exec.LookPath(argv0); err != nil {
+		return fmt.Errorf("comando %q non trovato nel PATH", argv0)
 	}
 	return nil
 }
