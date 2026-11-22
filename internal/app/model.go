@@ -1070,8 +1070,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
-		if m.undo != nil && ev.String() == "u" && m.view != viewComposer {
-			// Piano 9, Task 9 (D9-I): `u` fuori dal composer riporta l'invio in attesa.
+		if m.undo != nil && ev.String() == "u" && (m.view == viewInbox || m.view == viewThread) {
+			// Piano 9, Task 9 (D9-I) e review E: `u` riporta l'invio in attesa solo da
+			// inbox e thread; in ricerca, prompt o composer è testo o tasto della vista.
 			cmd := m.restoreUndo()
 			return m, cmd
 		}

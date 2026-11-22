@@ -366,3 +366,20 @@ func TestDemoDraftsFolderHasSample(t *testing.T) {
 		t.Error("demo: nessuna bozza d'esempio in Bozze")
 	}
 }
+
+// TestUndoKeyOnlyInInboxAndThread (Piano 9, review E): `u` annulla l'invio solo
+// in inbox e thread. In ricerca, in un prompt o in un selettore è testo/tasto
+// della vista: l'invio resta in attesa e il composer non si riapre.
+func TestUndoKeyOnlyInInboxAndThread(t *testing.T) {
+	rec := &senderRecorder{}
+	mm, _ := confirmSendAndUndoWindow(t, rec)
+	seq := mm.undo.seq
+	mm, _ = step(mm, pressKey("/")) // ricerca: la u è testo della query
+	mm, _ = step(mm, pressKey("u"))
+	if mm.currentView() == viewComposer {
+		t.Error("u in ricerca ha riaperto il composer")
+	}
+	if mm.undo == nil || mm.undo.seq != seq {
+		t.Error("u in ricerca ha annullato l'invio in attesa")
+	}
+}
