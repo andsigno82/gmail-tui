@@ -60,7 +60,17 @@ func (m *Model) previewVisible() bool {
 
 // previewReady dice se il thread mostra il corpo del messaggio in anteprima.
 func (m *Model) previewReady() bool {
-	return m.prevHas && m.thread.Loaded() && m.thread.AnchorID() == m.prevRef.ID
+	return m.prevHas && m.thread.Loaded() && m.thread.AnchorID() == m.prevAnchor()
+}
+
+// prevAnchor e l'ID con cui il thread dell'anteprima e stato costruito: quello
+// richiesto al caricamento (prevReq), che non cambia se la riga si riallinea alla
+// lista fresca (R2: prevRef prende l'ID fresco, il thread conserva la sua ancora).
+func (m *Model) prevAnchor() msg.MessageID {
+	if m.prevReq != "" {
+		return m.prevReq
+	}
+	return m.prevRef.ID
 }
 
 // threadTarget dice se i tasti del thread (command line, filepicker, scorrimento)
@@ -153,11 +163,12 @@ func (m *Model) syncPreview() tea.Cmd {
 		}
 		return nil
 	}
-	if m.prevHas && m.prevRef.ID == cur.ID {
+	// Piano 16, Task 10 (R2): stesso ID ma altro messaggio (GmailID) = altra riga.
+	if m.prevHas && m.prevRef.ID == cur.ID && m.prevRef.GmailID == cur.GmailID {
 		return nil
 	}
 	m.prevTok++
-	m.prevRef, m.prevHas = cur, true
+	m.prevRef, m.prevHas, m.prevReq = cur, true, cur.ID
 	return previewTimer(m.prevTok)
 }
 
@@ -182,10 +193,45 @@ func fetchPreview(st mail.MailStore, tok int, ref msg.MessageRef, folder mail.Ma
 	}
 }
 
+// fetchPreviewFor e fetchPreview per una riga che puo essere provvisoria (Piano 16,
+// Task 10): con prov il caricamento fresco usa solo il ThreadID (nessuna Cmd senza).
+func fetchPreviewFor(st mail.MailStore, tok int, ref msg.MessageRef, folder mail.Mailbox, prov bool) tea.Cmd {
+	if !prov {
+		return fetchPreview(st, tok, ref, folder)
+	}
+	if ref.ThreadID == 0 {
+		return nil
+	}
+	return func() tea.Msg {
+		refs, bodies, err := loadConv(context.Background(), st, ref, folder, true)
+		return previewLoaded{tok: tok, id: ref.ID, refs: refs, bodies: bodies, err: err}
+	}
+}
+
+// fetchPreviewCached e l'anteprima da istantanea (solo disco, nessuna rete).
+func fetchPreviewCached(st mail.MailStore, tok int, ref msg.MessageRef, prov bool) tea.Cmd {
+	sn, ok := st.(mail.Snapshotter)
+	if !ok {
+		return nil
+	}
+	return func() tea.Msg {
+		refs, bodies, ok := cachedConversation(sn, ref, prov)
+		if !ok {
+			return nil
+		}
+		return previewLoaded{tok: tok, id: ref.ID, refs: refs, bodies: bodies, cached: true}
+	}
+}
+
 // previewMarkRead applica il segna-come-letto all'anteprima appena caricata (U5):
 // subito → ora (con la stessa cmd del toggle senza refresh); dopo 2 s → timer
 // con token; mai → nulla. Solo messaggi non letti.
 func (m Model) previewMarkRead(tok int) (Model, tea.Cmd) {
+	if m.listSource == srcCached || m.threadCached {
+		// Piano 16, Task 10 (R1): su dati provvisori nessun segna-come-letto; riparte alla
+		// conferma della lista (realignOpen).
+		return m, nil
+	}
 	// Piano 8, Task 10: vale per tutti i non letti della conversazione in anteprima.
 	unread := m.thread.UnreadIDs()
 	if len(unread) == 0 {

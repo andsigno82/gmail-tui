@@ -71,6 +71,14 @@ type Model struct {
 	threadCached bool
 	openProv     bool
 	openGone     bool
+	// Piano 16, Task 10: openReq e prevReq sono l'ID con cui la conversazione aperta e
+	// l'anteprima sono state richieste (non cambiano se la riga si riallinea alla lista
+	// fresca, R2); openFresh e prevFreshTok dicono che il risultato fresco e gia arrivato
+	// (un risultato da cache tardivo si scarta).
+	openReq      msg.MessageID
+	openFresh    bool
+	prevReq      msg.MessageID
+	prevFreshTok int
 	rowRef       msg.MessageRef  // riga aperta nel thread: base delle azioni sulla conversazione a, #, l (Piano 8, review punto 4)
 	composer     composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
 	search       textinput.Model // query di ricerca (Task 6): la radice delega i tasti
@@ -520,11 +528,19 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.dirty {
 			follow = m.requestRefresh(false)
 		}
-		return m, tea.Batch(cmd, follow)
+		var realign tea.Cmd
+		if wasProv {
+			// Piano 16, Task 10 (R2): la conversazione aperta e l'anteprima si riallineano
+			// alla riga fresca per ThreadID + GmailID, mai per MessageID.
+			realign = m.realignOpen()
+		}
+		return m, tea.Batch(cmd, follow, realign)
 
 	case msgLoaded:
-		m.doneOp()
-		if ev.m != nil {
+		if !ev.cached {
+			m.doneOp() // il risultato da cache non e un'op in volo (Piano 16, Task 10)
+		}
+		if ev.m != nil && !ev.cached {
 			m.feedBook(true, addresses(ev.m.To, ev.m.Cc)...) // destinatari del messaggio aperto: incremento
 		}
 		// Guardia anti-race (fix merge-gate): il risultato porta l'ID
@@ -534,7 +550,22 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// del tutto: niente rebuild della thread, niente auto MarkRead,
 		// niente status. Il doneOp sopra è comunque giusto: ogni fetch
 		// incrementa pending e la sua risposta lo chiude.
-		if ev.requested != m.pendingRef.ID || m.view != viewThread {
+		// Piano 16, Task 10: la riga puo essersi riallineata alla lista fresca (pendingRef
+		// ha un ID nuovo): vale anche l'ID con cui l'apertura e stata richiesta (openReq).
+		if (ev.requested != m.pendingRef.ID && ev.requested != m.openReq) || m.view != viewThread {
+			return m, nil
+		}
+		if ev.cached {
+			// Conversazione da istantanea (D16-T13): provvisoria, mai segna-come-letto. Un
+			// risultato fresco gia arrivato vince sempre.
+			if m.openFresh || len(ev.refs) == 0 {
+				return m, nil
+			}
+			m.threadGen++
+			tw, th := m.threadSize()
+			m.thread = thread.NewLazyCachedSized(m.pendingRef, ev.refs, ev.bodies, m.styles, m.renderCache, tw, th)
+			m.threadCached = true
+			m.relayout()
 			return m, nil
 		}
 		if ev.err != nil {
@@ -548,19 +579,35 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, "apertura messaggio: risposta vuota dallo store")
 			return m, cmd
 		}
-		// Il fetch è riuscito: si costruisce la thread view vera (Piano 8, Task 10
-		// e 13: conversazione con i corpi degli espansi), dimensionata se la size
-		// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
-		// precedente sono scartati.
-		m.threadGen++
-		tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
-		m.thread = thread.NewLazyCachedSized(m.pendingRef, refs, bodies, m.styles, m.renderCache, tw, th)
-		m.relayout()
-		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
-			m.thread.MarkRead()
-			return m, markReadIDs(m.store, m.pendingRef, unread)
+		m.openFresh = true
+		var bodyCmd tea.Cmd
+		if m.threadCached && m.thread.Loaded() {
+			// Piano 16, Task 10 (R2): il thread mostrato dall'istantanea si riallinea ai dati
+			// freschi senza saltare (selezione, espansi e scroll per GmailID).
+			m.thread.Reconcile(refs, bodies)
+			m.threadCached = false
+			m.relayout()
+			bodyCmd = m.selectedBodyCmd()
+		} else {
+			// Il fetch è riuscito: si costruisce la thread view vera (Piano 8, Task 10
+			// e 13: conversazione con i corpi degli espansi), dimensionata se la size
+			// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
+			// precedente sono scartati.
+			m.threadGen++
+			tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
+			m.thread = thread.NewLazyCachedSized(m.pendingRef, refs, bodies, m.styles, m.renderCache, tw, th)
+			m.threadCached = false
+			m.relayout()
 		}
-		return m, nil
+		// Segna-come-letto automatico solo a thread fresco E riga confermata (R1): con la
+		// riga ancora provvisoria parte alla conferma della lista (realignOpen).
+		if !m.openProv && !m.openGone {
+			if unread := m.thread.UnreadIDs(); len(unread) > 0 {
+				m.thread.MarkRead()
+				return m, tea.Batch(bodyCmd, markReadIDs(m.store, m.pendingRef, unread))
+			}
+		}
+		return m, bodyCmd
 
 	case mailboxesLoaded:
 		// Risposta di ListMailboxes per il selettore (Piano 7, Task 4). Chiuso
@@ -771,16 +818,30 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// loop UI (spinner attivo finché msgLoaded non arriva).
 		m.pendingRef = ev.Ref
 		m.openProv, m.openGone = m.listSource == srcCached, false // Piano 16, Task 9 (R2): riga provvisoria
+		m.openReq, m.openFresh = ev.Ref.ID, false                 // Piano 16, Task 10: ID richiesto
 		m.view = viewThread
-		m.pending++ // fetch in flight
 		m.rowRef = ev.Ref
 		// Il thread è condiviso con l'anteprima: se contiene un altro messaggio
 		// (es. quello appena cestinato) si svuota, così finché il nuovo non arriva
 		// non si vede né si agisce sul precedente (segnalazione di Andrea, 2026-11-23).
-		if !m.thread.Loaded() || m.thread.AnchorID() != ev.Ref.ID {
+		reuse := m.thread.Loaded() && m.thread.AnchorID() == ev.Ref.ID
+		if !reuse {
 			m.thread = thread.Model{}
+			m.threadCached = false
 		}
-		return m, tea.Batch(fetchMsg(m.store, ev.Ref, m.folder), m.spinner.Tick)
+		// Piano 16, Task 10 (D16-T13): se c'e l'istantanea del thread si mostra subito (solo
+		// disco); il caricamento fresco di una riga provvisoria usa solo il ThreadID e, senza
+		// ThreadID, non parte (solo cache).
+		var cached tea.Cmd
+		if !reuse {
+			cached = fetchMsgCached(m.store, ev.Ref, m.openProv)
+		}
+		fresh := fetchMsgFor(m.store, ev.Ref, m.folder, m.openProv)
+		if fresh == nil {
+			return m, tea.Batch(cached, m.spinner.Tick)
+		}
+		m.pending++ // fetch fresco in flight
+		return m, tea.Batch(cached, fresh, m.spinner.Tick)
 
 	case thread.BackMsg:
 		// Uscita dal thread: si torna all'inbox così com'era — nessun
@@ -921,15 +982,43 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// riarmato, altrimenti il messaggio resta non letto.
 			return m.previewMarkRead(ev.tok)
 		}
+		// Piano 16, Task 10 (D16-T13): l'anteprima da istantanea parte subito (solo disco);
+		// il caricamento fresco, per una riga provvisoria, usa solo il ThreadID.
+		prov := m.listSource == srcCached
+		cached := fetchPreviewCached(m.store, ev.tok, m.prevRef, prov)
+		fresh := fetchPreviewFor(m.store, ev.tok, m.prevRef, m.folder, prov)
+		if fresh == nil {
+			return m, cached // riga provvisoria senza ThreadID: solo i dati in cache
+		}
 		m.pending++
-		return m, tea.Batch(fetchPreview(m.store, ev.tok, m.prevRef, m.folder), m.spinner.Tick)
+		return m, tea.Batch(cached, fresh, m.spinner.Tick)
 
 	case previewLoaded:
 		// Esito del fetch dell'anteprima: scartato se il token non è più quello
 		// corrente o il messaggio non è più sotto il cursore (il doneOp chiude
 		// comunque l'op in volo).
-		m.doneOp()
-		if ev.tok != m.prevTok || !m.previewVisible() || ev.id != m.prevRef.ID {
+		if !ev.cached {
+			m.doneOp() // il risultato da cache non e un'op in volo (Piano 16, Task 10)
+		}
+		// Piano 16, Task 10: la riga puo essersi riallineata (prevRef con ID nuovo): vale
+		// anche l'ID con cui l'anteprima e stata richiesta (prevReq).
+		if ev.tok != m.prevTok || !m.previewVisible() || (ev.id != m.prevRef.ID && ev.id != m.prevReq) {
+			return m, nil
+		}
+		// L'ancora del thread e l'ID richiesto, mai quello riallineato (prevAnchor).
+		anchor := m.prevRef
+		anchor.ID = ev.id
+		if ev.cached {
+			// Anteprima da istantanea: provvisoria, mai segna-come-letto; un fresco gia
+			// arrivato per questo token vince.
+			if m.prevFreshTok == ev.tok || len(ev.refs) == 0 {
+				return m, nil
+			}
+			m.threadGen++
+			tw, th := m.threadSize()
+			m.thread = thread.NewLazyCachedSized(anchor, ev.refs, ev.bodies, m.styles, m.renderCache, tw, th)
+			m.threadCached = true
+			m.relayout()
 			return m, nil
 		}
 		if ev.err != nil {
@@ -941,15 +1030,32 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, "anteprima: risposta vuota dallo store")
 			return m, cmd
 		}
-		m.threadGen++
-		tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
-		m.thread = thread.NewLazyCachedSized(m.prevRef, refs, bodies, m.styles, m.renderCache, tw, th)
-		m.relayout()
-		return m.previewMarkRead(ev.tok)
+		m.prevFreshTok = ev.tok
+		var bodyCmd tea.Cmd
+		if m.threadCached && m.thread.Loaded() && m.thread.AnchorID() == ev.id {
+			// Piano 16, Task 10 (R2): riallineo dell'anteprima da istantanea ai dati freschi.
+			m.thread.Reconcile(refs, bodies)
+			m.threadCached = false
+			m.relayout()
+			bodyCmd = m.selectedBodyCmd()
+		} else {
+			m.threadGen++
+			tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
+			m.thread = thread.NewLazyCachedSized(anchor, refs, bodies, m.styles, m.renderCache, tw, th)
+			m.threadCached = false
+			m.relayout()
+		}
+		nm, markCmd := m.previewMarkRead(ev.tok)
+		return nm, tea.Batch(bodyCmd, markCmd)
 
 	case thread.BodyRequested:
 		// Corpo di un messaggio della conversazione (Piano 8, Task 13): selezionato
 		// o espanso senza corpo; scaricato fuori dal loop UI.
+		if m.threadCached {
+			// Piano 16, Task 10 (D16-T13): su un thread da istantanea l'ID e d'epoca vecchia
+			// e nulla va chiesto al server; il corpo arriva col thread fresco.
+			return m, nil
+		}
 		m.pending++
 		return m, tea.Batch(fetchBody(m.store, m.threadGen, ev.Anchor, ev.ID), m.spinner.Tick)
 
@@ -972,6 +1078,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// è ancora quello in anteprima, con lo stesso token e ancora non letto.
 		if ev.tok != m.prevTok || !m.previewVisible() || !m.previewReady() || m.thread.AnchorID() != ev.id {
 			return m, nil
+		}
+		if m.listSource == srcCached || m.threadCached {
+			return m, nil // Piano 16, Task 10 (R1): su dati provvisori il timer non vale (riparte alla conferma)
 		}
 		unread := m.thread.UnreadIDs()
 		if len(unread) == 0 {

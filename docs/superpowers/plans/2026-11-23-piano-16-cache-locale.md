@@ -311,10 +311,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 - `TestPendingRefRealignedByGmailID` e `TestPendingRefMissingAfterRefreshRefusesConvActions`.
 - `TestPreviewFromSnapshot` (due colonne).
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(app): conversazione subito dall'istantanea con aggiornamento in background (Piano 16, Task 10)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(app): conversazione subito dall'istantanea con aggiornamento in background (Piano 16, Task 10)`.
 
 ## Task 11: cablaggio, permessi, demo, MCP
 

@@ -24,7 +24,8 @@ import (
 // snapStore e il finto store con istantanee: Connect attende gate (se non nil).
 type snapStore struct {
 	*mail.Mock
-	gate chan struct{}
+	gate       chan struct{} // Connect attende gate
+	threadGate chan struct{} // ThreadMessages attende threadGate (Piano 16, Task 10)
 
 	mu       sync.Mutex
 	snaps    map[string]mail.ConversationsSnapshot
@@ -113,6 +114,9 @@ func (s *snapStore) FetchMessage(ctx context.Context, id msg.MessageID) (*msg.Me
 
 func (s *snapStore) ThreadMessages(ctx context.Context, id uint64) ([]msg.MessageRef, error) {
 	s.rec(fmt.Sprintf("ThreadMessages:%d", id))
+	if s.threadGate != nil {
+		<-s.threadGate
+	}
 	return s.Mock.ThreadMessages(ctx, id)
 }
 
