@@ -356,6 +356,41 @@ func BenchmarkStartupToFirstList(b *testing.B) {
 	}
 }
 
+// BenchmarkStartupFromSnapshot (Piano 16, Task 13): lavoro sul loop UI dall'avvio alla
+// prima lista mostrata dall'istantanea (50 righe, Snapshotter finto in memoria) con
+// Connect ANCORA bloccato: WindowSize, splash, esito dell'istantanea, View con le righe.
+// La latenza del disco (bbolt) e della rete e fuori da questo numero: la misura end to end
+// con cache vera e Connect lento sta in cmd/gmail-tui (TestStartupFirstListFromSnapshot).
+func BenchmarkStartupFromSnapshot(b *testing.B) {
+	for _, d := range perfDims {
+		b.Run(d.name(), func(b *testing.B) {
+			var mt meter
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				st := newSnapStore(perfStore()) // Connect non viene mai lanciato: la misura e la sola istantanea
+				rows := make([]mail.Conversation, 50)
+				for k := range rows {
+					rows[k] = snapRow("INBOX", uint32(k+1), uint64(k+1), uint64(5000+k), fmt.Sprintf("istantanea %02d", k))
+				}
+				st.snaps[""] = mail.ConversationsSnapshot{Rows: rows, SavedAt: time.Now()}
+				m := New(st, noopSender{}, perfTheme(b))
+				m.SetPrefs(config.LayoutSingle, config.PreviewMarkReadNever)
+				mt.skipPreview = true
+				b.StartTimer()
+				m, _ = mt.stepM(m, tea.WindowSizeMsg{Width: d.w, Height: d.h})
+				_ = mt.viewM(m) // splash
+				// Come Init: la stessa Cmd d'avvio che legge l'istantanea (in parallelo a Connect).
+				m, _ = mt.stepM(m, loadSnapshot(st, m.folder.Name, m.folderGen)())
+				if v := mt.viewM(m); !strings.Contains(v, "istantanea 00") {
+					b.Fatal("la prima View non mostra le righe dell'istantanea")
+				}
+			}
+			mt.report(b)
+		})
+	}
+}
+
 // --- benchmark: tasti in lista (stato stazionario) ---------------------------
 
 func benchListKey(b *testing.B, layout string, withView bool) {
