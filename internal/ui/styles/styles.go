@@ -51,10 +51,8 @@ type Styles struct {
 	// (richiesta di Andrea, 2026-11-23).
 	LabelsTint []lipgloss.Style
 
-	// Piano 15, Task 2: campi del contratto per i Task 6-16. Fino al Task 9 sono
-	// segnaposto solo con colore di testo (nessun Background, nessuna sfumatura):
-	// il test di contrasto tabellare non li vede e TestNewTuttiITemi li trova con
-	// ANSI. Il Task 9 li sostituisce con i valori derivati dal tema.
+	// Piano 15, Task 2: campi del contratto per i Task 6-16; valorizzati nel
+	// Task 9 con colori derivati dagli slot del tema (vedi New).
 	LinkWarn      lipgloss.Style   // link con dominio diverso dal testo mostrato (D15-07)
 	LinkDashed    lipgloss.Style   // link sottolineato tratteggiato (D15-07)
 	Button        lipgloss.Style   // bottone a riquadro (D15-01)
@@ -79,6 +77,7 @@ type Styles struct {
 // slot è risolta adattivamente al rendering dal background del terminale.
 func New(t theme.Theme) Styles {
 	tint := mescola(t.Bg, t.Selection, frazioneTinta)
+	ombra := scurisci(t.Bg, frazioneOmbra) // Piano 15, Task 9 (D15-T11)
 	return Styles{
 		ListNormal:      lipgloss.NewStyle().Foreground(adaptive(t.Fg)),
 		ListUnread:      lipgloss.NewStyle().Foreground(adaptive(t.Unread)).Bold(true),
@@ -110,33 +109,81 @@ func New(t theme.Theme) Styles {
 		Labels:          labelStyles(labelSlots(t)),
 		LabelsTint:      labelStylesTint(labelSlots(t), tint, t.Fg),
 
-		// Segnaposto del Piano 15, Task 2 (valori reali nel Task 9).
-		LinkWarn:      lipgloss.NewStyle().Foreground(adaptive(t.Warning)),
-		LinkDashed:    lipgloss.NewStyle().Foreground(adaptive(linkSlot(t))),
-		Button:        lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
-		ButtonFocus:   lipgloss.NewStyle().Foreground(adaptive(t.Primary)).Bold(true),
-		ButtonHost:    lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
-		ChipAttach:    lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
-		ChipImage:     lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
-		QuoteBar:      repeatStyle(lipgloss.NewStyle().Foreground(adaptive(t.Quoted)), 4),
+		// Piano 15, Task 9: valori derivati dagli slot del tema (campi del Task 2).
+		// Gli stili con sfondo usano onColor (eccezione U1: nero/bianco); i testi
+		// senza sfondo usano onColor sul bg del tema, così il contrasto WCAG >= 4.5:1
+		// vale in ogni tema, dark e light. Le sfumature (D15-T12) stanno solo nei
+		// bordi e nel titolo, calcolate dai consumatori con Blend1D (overlay: primary da
+		// OverlayBorder, accent da Spinner): mai negli stili di testo.
+		LinkWarn: lipgloss.NewStyle().
+			Foreground(onColorPrima(t.Bg, t.Error, t.Warning, linkSlot(t), t.Fg)).
+			UnderlineStyle(lipgloss.UnderlineCurly).UnderlineColor(adaptive(t.Error)),
+		LinkDashed: lipgloss.NewStyle().
+			Foreground(adaptive(linkSlot(t))).
+			UnderlineStyle(lipgloss.UnderlineDashed).UnderlineColor(adaptive(linkSlot(t))),
+		Button: lipgloss.NewStyle().
+			Foreground(onColorPrima(tint, t.Accent, t.Primary, t.Fg)).Background(adaptive(tint)).
+			BorderForeground(adaptive(t.Accent)),
+		ButtonFocus: lipgloss.NewStyle().
+			Foreground(onColorPrima(t.Primary, t.Bg, t.Fg)).Background(adaptive(t.Primary)).Bold(true).
+			BorderForeground(adaptive(t.Primary)),
+		ButtonHost:    lipgloss.NewStyle().Foreground(onColorPrima(t.Bg, t.Muted, t.Fg)),
+		ChipAttach:    lipgloss.NewStyle().Foreground(onColorPrima(tint, t.Accent, t.Primary, t.Fg)).Background(adaptive(tint)),
+		ChipImage:     lipgloss.NewStyle().Foreground(onColorPrima(tint, t.Muted, t.Fg)).Background(adaptive(tint)),
+		QuoteBar:      quoteBarStyles(t, numLivelliCitazione),
 		TableBorder:   lipgloss.NewStyle().Foreground(adaptive(t.Border)),
-		TableHeader:   lipgloss.NewStyle().Foreground(adaptive(t.Primary)).Bold(true),
+		TableHeader:   lipgloss.NewStyle().Foreground(onColorPrima(tint, t.Primary, t.Fg)).Background(adaptive(tint)).Bold(true),
 		TableCell:     lipgloss.NewStyle().Foreground(adaptive(t.Fg)),
-		BadgeAvatar:   labelStyles(labelSlots(t)),
-		FolderCount:   lipgloss.NewStyle().Foreground(adaptive(t.Unread)).Bold(true),
-		FolderTree:    lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		BadgeAvatar:   badgeStyles(labelSlots(t), t),
+		FolderCount:   lipgloss.NewStyle().Foreground(onColorPrima(t.Unread, t.Bg, t.Fg)).Background(adaptive(t.Unread)).Bold(true),
+		FolderTree:    lipgloss.NewStyle().Foreground(onColorPrima(t.Bg, t.Muted, t.Fg)),
 		OverlayBorder: lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
-		OverlayShadow: lipgloss.NewStyle().Foreground(adaptive(t.Border)),
-		StatusSegment: repeatStyle(lipgloss.NewStyle().Foreground(adaptive(t.Fg)), 2),
+		OverlayShadow: lipgloss.NewStyle().Foreground(onColorPrima(ombra, t.Fg, t.Bg)).Background(adaptive(ombra)),
+		StatusSegment: statusSegmentStyles(t, t.Selection, t.Border),
 		StatusSep:     lipgloss.NewStyle().Foreground(adaptive(t.Border)),
 	}
 }
 
-// repeatStyle ripete lo stile n volte (segnaposto delle liste, Piano 15, Task 2).
-func repeatStyle(s lipgloss.Style, n int) []lipgloss.Style {
+// numLivelliCitazione è il numero di livelli di annidamento distinti delle
+// citazioni (Piano 15, Task 9, D15-03); oltre, i consumatori ciclano con %.
+const numLivelliCitazione = 4
+
+// frazioneOmbra è la quota di scurimento del bg per l'ombra delle finestre
+// (Piano 15, Task 9, D15-T11).
+const frazioneOmbra = 0.35
+
+// quoteBarStyles costruisce le barre delle citazioni: n colori sfumati da quoted
+// (livello 0) a primary (ultimo) con Blend1D, calcolati per variante dark e light
+// separatamente (nessuna dipendenza dallo stato di compat).
+func quoteBarStyles(t theme.Theme, n int) []lipgloss.Style {
+	qD, qL := t.Quoted.Resolve()
+	pD, pL := t.Primary.Resolve()
+	dark := lipgloss.Blend1D(n, lipgloss.Color(qD), lipgloss.Color(pD))
+	light := lipgloss.Blend1D(n, lipgloss.Color(qL), lipgloss.Color(pL))
 	out := make([]lipgloss.Style, n)
 	for i := range out {
-		out[i] = s
+		out[i] = lipgloss.NewStyle().Foreground(adaptive(theme.Slot{Dark: hexColore(dark[i]), Light: hexColore(light[i])}))
+	}
+	return out
+}
+
+// badgeStyles costruisce i badge delle iniziali: sfondo = slot del palette delle
+// label (stesso ordine, quindi stesso indice di labelIndex), testo onColor in
+// grassetto (Piano 15, Task 9, D15-05).
+func badgeStyles(slots []theme.Slot, t theme.Theme) []lipgloss.Style {
+	out := make([]lipgloss.Style, len(slots))
+	for i, s := range slots {
+		out[i] = lipgloss.NewStyle().Foreground(onColorPrima(s, t.Bg, t.Fg)).Background(adaptive(s)).Bold(true)
+	}
+	return out
+}
+
+// statusSegmentStyles costruisce i segmenti della barra di stato: sfondi in
+// alternanza, testo onColor (Piano 15, Task 9, D15-12).
+func statusSegmentStyles(t theme.Theme, bgs ...theme.Slot) []lipgloss.Style {
+	out := make([]lipgloss.Style, len(bgs))
+	for i, bg := range bgs {
+		out[i] = lipgloss.NewStyle().Foreground(onColorPrima(bg, t.Fg, t.Bg)).Background(adaptive(bg))
 	}
 	return out
 }
@@ -284,28 +331,54 @@ const minContrast = 4.5
 // sceglie il primo tra fg e base (lo slot bg del tema) con contrasto WCAG >=
 // 4.5 rispetto a bg; altrimenti nero o bianco, quello con contrasto maggiore.
 func onColor(bg, fg, base theme.Slot) color.Color {
+	return onColorPrima(bg, fg, base)
+}
+
+// onColorPrima generalizza onColor a una catena di candidati (Piano 15, Task 9):
+// per ogni variante sceglie il primo slot con contrasto >= 4.5 su bg, altrimenti
+// nero o bianco (eccezione U1, unico colore non derivato dal tema).
+func onColorPrima(bg theme.Slot, cands ...theme.Slot) color.Color {
 	bgD, bgL := bg.Resolve()
-	fgD, fgL := fg.Resolve()
-	baseD, baseL := base.Resolve()
+	var dark, light []color.Color
+	for _, c := range cands {
+		d, l := c.Resolve()
+		dark = append(dark, lipgloss.Color(d))
+		light = append(light, lipgloss.Color(l))
+	}
 	return compat.AdaptiveColor{
-		Dark:  textOn(lipgloss.Color(bgD), lipgloss.Color(fgD), lipgloss.Color(baseD)),
-		Light: textOn(lipgloss.Color(bgL), lipgloss.Color(fgL), lipgloss.Color(baseL)),
+		Dark:  textOn(lipgloss.Color(bgD), dark...),
+		Light: textOn(lipgloss.Color(bgL), light...),
 	}
 }
 
 // textOn applica la regola di onColor a un singolo lato (dark o light).
-func textOn(bg, fg, base color.Color) color.Color {
-	if contrastRatio(fg, bg) >= minContrast {
-		return fg
-	}
-	if contrastRatio(base, bg) >= minContrast {
-		return base
+func textOn(bg color.Color, cands ...color.Color) color.Color {
+	for _, c := range cands {
+		if contrastRatio(c, bg) >= minContrast {
+			return c
+		}
 	}
 	black, white := lipgloss.Color("#000000"), lipgloss.Color("#ffffff")
 	if contrastRatio(black, bg) >= contrastRatio(white, bg) {
 		return black
 	}
 	return white
+}
+
+// scurisci scurisce lo slot di frac (0-1) con lipgloss.Darken, per variante
+// (Piano 15, Task 9, D15-T11): il risultato è ancora uno slot derivato dal tema.
+func scurisci(s theme.Slot, frac float64) theme.Slot {
+	d, l := s.Resolve()
+	return theme.Slot{
+		Dark:  hexColore(lipgloss.Darken(lipgloss.Color(d), frac)),
+		Light: hexColore(lipgloss.Darken(lipgloss.Color(l), frac)),
+	}
+}
+
+// hexColore formatta un colore come #rrggbb (8 bit per canale).
+func hexColore(c color.Color) string {
+	r, g, b, _ := c.RGBA()
+	return fmt.Sprintf("#%02x%02x%02x", r>>8, g>>8, b>>8)
 }
 
 // contrastRatio è il rapporto di contrasto WCAG 2.x tra due colori (da 1 a 21).

@@ -316,10 +316,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** estensione di `TestContrastoStiliConSfondo` (`styles_test.go:180`) a tutti i nuovi stili con sfondo, su tutti i temi embedded, dark e light, WCAG ≥ 4.5:1; le sfumature non compaiono in `Button`, `ChipAttach`, `Link*`; `QuoteBar` ha 4 elementi.
 
-- [ ] Test RED (estensione tabellare).
-- [ ] Valori e derivati.
-- [ ] Gate.
-- [ ] Commit `feat(styles): colori derivati e contrasto dei nuovi stili (Piano 15, Task 9)`.
+- [x] Test RED (estensione tabellare).
+- [x] Valori e derivati.
+- [x] Gate.
+- [x] Commit `feat(styles): colori derivati e contrasto dei nuovi stili (Piano 15, Task 9)`.
 
 ## Task 10: albero cartelle (`internal/ui/foldertree`)
 
