@@ -76,7 +76,9 @@ func (s *slowStore) ListConversations(ctx context.Context, q msg.Query, pg mail.
 func (s *slowStore) CachedConversations(box string) (mail.ConversationsSnapshot, bool) {
 	return s.snap.CachedConversations(box)
 }
-func (s *slowStore) CachedThread(id uint64) (mail.ThreadSnapshot, bool) { return s.snap.CachedThread(id) }
+func (s *slowStore) CachedThread(id uint64) (mail.ThreadSnapshot, bool) {
+	return s.snap.CachedThread(id)
+}
 func (s *slowStore) CachedMessage(id msg.MessageID) (*msg.Message, bool) {
 	return s.snap.CachedMessage(id)
 }
