@@ -18,14 +18,14 @@ func Attachment(name, ctype string, size int64, index int, c Ctx) Out {
 	if nm == "" {
 		nm = "(senza nome)"
 	}
-	nm = truncCols(nm, attachNameCols)
+	nm = TruncCols(nm, attachNameCols)
 	tp := cleanText(ctype)
 	if tp == "" {
 		tp = "tipo sconosciuto"
 	}
 	chip := "▣ " + nm + " · " + tp + " · " + humanSize(size)
 	if c.Width > 0 {
-		chip = truncCols(chip, c.Width)
+		chip = TruncCols(chip, c.Width)
 	}
 	return Out{
 		Lines: []string{c.St.ChipAttach.Render(chip)},

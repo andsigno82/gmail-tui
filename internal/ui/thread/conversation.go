@@ -11,7 +11,6 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/render"
@@ -181,7 +180,7 @@ func (m Model) renderTitle(i int) string {
 	if e.expanded {
 		mark = "▾"
 	}
-	head := truncWidth(fmt.Sprintf("%s %s · %s", mark, e.ref.From, FormatDate(e.ref.Date)), m.width)
+	head := render.TruncCols(fmt.Sprintf("%s %s · %s", mark, e.ref.From, FormatDate(e.ref.Date)), m.width)
 	style := m.st.ListNormal
 	switch {
 	case i == m.sel:
@@ -190,27 +189,6 @@ func (m Model) renderTitle(i int) string {
 		style = m.st.ListUnread
 	}
 	return style.Render(head)
-}
-
-// truncWidth tronca s alla larghezza w (con ellissi), contando le colonne visibili.
-func truncWidth(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) <= w {
-		return s
-	}
-	var b strings.Builder
-	cur := 0
-	for _, r := range s {
-		rw := lipgloss.Width(string(r))
-		if cur+rw > w-1 {
-			break
-		}
-		b.WriteRune(r)
-		cur += rw
-	}
-	return b.String() + "…"
 }
 
 // needBody chiede il corpo del messaggio i se non è ancora caricato (Piano 8,

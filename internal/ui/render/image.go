@@ -11,7 +11,7 @@ import (
 // maxAltCols e la larghezza massima del testo alternativo in colonne.
 const maxAltCols = 80
 
-// truncCols è in button.go (versione che gestisce anche larghezza 0).
+// TruncCols è in button.go (versione che gestisce anche larghezza 0).
 
 // Image rende un'immagine come chip "[img: alt]" ("[img]" con alt vuoto). L'alt
 // e troncato a 80 colonne e comunque entro c.Width. Nessuna zona.
@@ -27,7 +27,7 @@ func Image(alt string, c Ctx) Out {
 		if max < 1 {
 			max = 1
 		}
-		text = "[img: " + truncCols(alt, max) + "]"
+		text = "[img: " + TruncCols(alt, max) + "]"
 	}
 	return Out{Lines: []string{c.St.ChipImage.Render(text)}, Zones: [][]Zone{nil}}
 }

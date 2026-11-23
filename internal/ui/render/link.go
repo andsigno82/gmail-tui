@@ -11,7 +11,6 @@ import (
 	"hash/fnv"
 	"net/url"
 	"strings"
-	"unicode"
 
 	"charm.land/lipgloss/v2"
 
@@ -37,33 +36,13 @@ func osc8Open(u, id string) string {
 // warnMarker precede il testo di un link sospetto: mai solo colore (D15-T6).
 const warnMarker = "⚠ "
 
-// cleanText rende il testo mostrato una sola riga sicura: controlli e caratteri
-// di formato (U+202E, U+200B...) tolti, ogni spazio (a capo e tab compresi)
-// diventa uno spazio singolo, bordi tagliati.
-func cleanText(s string) string {
-	s = strings.Map(func(r rune) rune {
-		switch {
-		case unicode.IsSpace(r):
-			return ' '
-		case unicode.IsControl(r), unicode.Is(unicode.Cf, r):
-			return -1
-		}
-		return r
-	}, s)
-	return strings.Join(strings.Fields(s), " ")
-}
+// cleanText rende il testo mostrato una sola riga sicura (filtro unico di
+// richtext: controlli e caratteri di formato tolti, spazi collassati).
+func cleanText(s string) string { return richtext.CleanLine(s) }
 
-// cleanHref toglie dall'URL controlli, spazi e caratteri di formato: un ESC o BEL
-// non deve poter chiudere l'OSC 8 ne iniettare sequenze (stessa regola di
-// cleanURL del thread, in piu i caratteri di formato).
-func cleanHref(s string) string {
-	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || unicode.IsSpace(r) || unicode.Is(unicode.Cf, r) {
-			return -1
-		}
-		return r
-	}, s)
-}
+// cleanHref toglie dall'URL spazi, controlli e caratteri di formato (filtro unico
+// di richtext, lo stesso di richtext.sanitizeURL).
+func cleanHref(s string) string { return richtext.CleanHref(s) }
 
 // safeHref ripulisce raw e dice se e apribile: schema http, https o mailto, con
 // host (o indirizzo) e lunghezza entro maxLinkLen. Ritorna anche l'URL parsato.

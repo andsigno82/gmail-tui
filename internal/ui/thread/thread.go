@@ -25,6 +25,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/childenv"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg/richtext"
 	"github.com/andsigno82/gmail-tui/internal/ui/render"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
@@ -410,7 +411,7 @@ func (m Model) renderHeader() string {
 		v := cleanHeader(p[1])
 		if textW > 0 {
 			// chiave + ":" a sinistra, due colonne di padding del valore.
-			v = truncWidth(v, max(1, textW-lipgloss.Width(p[0]+":")-2))
+			v = render.TruncCols(v, max(1, textW-lipgloss.Width(p[0]+":")-2))
 		}
 		kvs[i] = m.st.ThreadHeaderKey.Render(p[0]+":") + m.st.ThreadHeader.Render(v)
 		natural = max(natural, lipgloss.Width(kvs[i]))
@@ -434,17 +435,11 @@ func (m Model) renderHeader() string {
 	return strings.Join(lines, "\n")
 }
 
-// cleanHeader toglie dai valori della scheda i caratteri di controllo (a capo
-// compresi): un Subject o un From non fidato non deve rompere le righe della
-// scheda ne iniettare sequenze nel terminale.
-func cleanHeader(s string) string {
-	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) && !unicode.IsSpace(r) {
-			return -1
-		}
-		return r
-	}, s)), " ")
-}
+// cleanHeader toglie dai valori della scheda controlli e caratteri di formato (a
+// capo compresi): un Subject o un From non fidato non deve rompere le righe della
+// scheda, iniettare sequenze nel terminale ne mascherarsi con bidi o zero-width.
+// Filtro unico (richtext.Unsafe, revisione Piano 15, punto 4).
+func cleanHeader(s string) string { return richtext.CleanLine(s) }
 
 // renderAttachments prepara i chip degli allegati (Piano 15, Task 14, D15-06):
 // un render.Attachment per allegato, con Index = posizione in full.Attachments.

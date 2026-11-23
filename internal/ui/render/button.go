@@ -40,7 +40,7 @@ func Button(b richtext.Block, c Ctx) Out {
 	rb := lipgloss.RoundedBorder()
 	rows := []string{rb.TopLeft + strings.Repeat(rb.Top, inner+2) + rb.TopRight}
 	for _, l := range lines {
-		rows = append(rows, rb.Left+" "+padCols(truncCols(l, inner), inner)+" "+rb.Right)
+		rows = append(rows, rb.Left+" "+padCols(TruncCols(l, inner), inner)+" "+rb.Right)
 	}
 	rows = append(rows, rb.BottomLeft+strings.Repeat(rb.Bottom, inner+2)+rb.BottomRight)
 
@@ -92,8 +92,8 @@ func runsHref(rs []richtext.Run) string {
 	return ""
 }
 
-// truncCols tronca s a w colonne (lipgloss.Width), chiudendo con "…" se serve.
-func truncCols(s string, w int) string {
+// TruncCols tronca s a w colonne (lipgloss.Width), chiudendo con "…" se serve.
+func TruncCols(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}
