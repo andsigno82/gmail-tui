@@ -311,3 +311,16 @@ func TestReconcileNoRerenderOfUnchangedBodies(t *testing.T) {
 		t.Errorf("voci in cache %d -> %d: nessuna voce nuova attesa", n, len(rc.order))
 	}
 }
+
+// Piano 16, Task 13: MissingBodies elenca selezionato ed espansi senza corpo.
+func TestMissingBodiesListsSelectedAndExpandedWithoutBody(t *testing.T) {
+	c := cachedFixture()
+	bodies := bodiesOf(c)
+	delete(bodies, c[0].Ref.ID) // primo: letto, compresso, senza corpo: non richiesto
+	delete(bodies, c[3].Ref.ID) // ultimo: espanso e selezionato, senza corpo
+	m := NewLazy(c[3].Ref, refsOf(c), bodies, testStyles(t))
+	got := m.MissingBodies()
+	if len(got) != 1 || got[0] != c[3].Ref.ID {
+		t.Fatalf("MissingBodies = %v, voglio solo %s", got, c[3].Ref.ID)
+	}
+}

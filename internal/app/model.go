@@ -587,7 +587,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread.Reconcile(refs, bodies)
 			m.threadCached = false
 			m.relayout()
-			bodyCmd = m.selectedBodyCmd()
+			bodyCmd = m.missingBodiesCmd()
 		} else {
 			// Il fetch è riuscito: si costruisce la thread view vera (Piano 8, Task 10
 			// e 13: conversazione con i corpi degli espansi), dimensionata se la size
@@ -1037,7 +1037,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread.Reconcile(refs, bodies)
 			m.threadCached = false
 			m.relayout()
-			bodyCmd = m.selectedBodyCmd()
+			bodyCmd = m.missingBodiesCmd()
 		} else {
 			m.threadGen++
 			tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo

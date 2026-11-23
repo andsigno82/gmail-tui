@@ -143,3 +143,17 @@ func (m *Model) Reconcile(refs []msg.MessageRef, bodies map[msg.MessageID]*msg.M
 		m.reveal()
 	}
 }
+
+// MissingBodies elenca gli ID dei messaggi senza corpo che lo schermo richiede: il
+// selezionato e gli espansi (Piano 16, Task 13). Dopo Reconcile un messaggio espanso a
+// mano mentre il thread era provvisorio (la richiesta del corpo era ignorata) non ha
+// ancora il corpo fresco: la radice lo chiede.
+func (m Model) MissingBodies() []msg.MessageID {
+	var out []msg.MessageID
+	for i, e := range m.conv {
+		if e.full == nil && (i == m.sel || e.expanded) {
+			out = append(out, e.ref.ID)
+		}
+	}
+	return out
+}

@@ -473,3 +473,37 @@ func TestPreviewDelayedReadDroppedWhileCached(t *testing.T) {
 		t.Error("il timer del segna-come-letto non vale su un'anteprima da istantanea")
 	}
 }
+
+// Piano 16, Task 13 (dubbio b): un messaggio espanso a mano mentre il thread era
+// provvisorio e senza corpo in cache deve avere il corpo fresco dopo la conciliazione,
+// non restare su "corpo in caricamento…".
+func TestExpandedWithoutBodyGetsFreshBodyAfterReconcile(t *testing.T) {
+	st, _ := cvFixture(true)
+	delete(st.bodies, msg.NewID(cvAll, 51)) // il messaggio 0 (GmailID 11, letto) non ha corpo in cache
+	m := applySnapshot(t, snapModel(t, st), st)
+	m, cached, fresh := cvOpen(t, m)
+	m, _ = step(m, *cached)
+	m, _ = step(m, pressKey("k"))
+	m, _ = step(m, pressKey("k")) // selezione sul messaggio 0
+	if g := m.thread.Ref().GmailID; g != 11 {
+		t.Fatalf("selezione = GmailID %d, voglio 11", g)
+	}
+	m, _ = step(m, pressKey("enter")) // lo espande: senza corpo, la richiesta e ignorata (provvisorio)
+	m, _ = step(m, pressKey("j"))
+	m, _ = step(m, pressKey("j")) // la selezione torna sull'ultimo, che ha il corpo
+	if g := m.thread.Ref().GmailID; g != 13 {
+		t.Fatalf("selezione = GmailID %d, voglio 13", g)
+	}
+	m, cmd := step(m, *fresh)
+	for _, ms := range fire(cmd) {
+		if _, ok := ms.(bodyLoaded); ok {
+			m, _ = step(m, ms)
+		}
+	}
+	if st.called("FetchMessage:"+string(msg.NewID("INBOX", 20))) == 0 {
+		t.Errorf("il corpo del messaggio espanso senza corpo non e stato richiesto: %v", st.touched())
+	}
+	if v := plain(m); !strings.Contains(v, "corpo fresco 20") {
+		t.Errorf("il messaggio espanso non mostra il corpo fresco\n%s", v)
+	}
+}

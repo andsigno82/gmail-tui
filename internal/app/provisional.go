@@ -118,14 +118,23 @@ func (m *Model) realignOpen() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// selectedBodyCmd chiede il corpo del messaggio selezionato se dopo la conciliazione
-// manca (un BodyRequested arrivato sul thread provvisorio e stato ignorato).
-func (m *Model) selectedBodyCmd() tea.Cmd {
-	if !m.thread.Loaded() || m.thread.Msg() != nil {
+// missingBodiesCmd chiede i corpi che dopo la conciliazione mancano: del messaggio
+// selezionato e degli espansi (un BodyRequested arrivato sul thread provvisorio e stato
+// ignorato). Piano 16, Task 13: prima si chiedeva solo il selezionato e un messaggio
+// espanso a mano mentre il thread era provvisorio restava su "corpo in caricamento".
+func (m *Model) missingBodiesCmd() tea.Cmd {
+	if !m.thread.Loaded() {
 		return nil
 	}
-	m.pending++
-	return tea.Batch(fetchBody(m.store, m.threadGen, m.thread.AnchorID(), m.thread.Ref().ID), m.spinner.Tick)
+	var cmds []tea.Cmd
+	for _, id := range m.thread.MissingBodies() {
+		m.pending++
+		cmds = append(cmds, fetchBody(m.store, m.threadGen, m.thread.AnchorID(), id))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(append(cmds, m.spinner.Tick)...)
 }
 
 // isActionKey dice se il tasto e un'azione che agisce su righe o messaggi: a, #, s,
