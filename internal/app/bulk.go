@@ -18,7 +18,7 @@ import (
 )
 
 // selectedConvs restituisce le conversazioni selezionate, nell'ordine della lista.
-func (m Model) selectedConvs() []mail.Conversation {
+func (m *Model) selectedConvs() []mail.Conversation {
 	var out []mail.Conversation
 	for _, c := range m.inbox.Conversations() {
 		if m.sel[c.Latest.ID] {
@@ -30,7 +30,7 @@ func (m Model) selectedConvs() []mail.Conversation {
 
 // selectedRefs sono i messaggi più recenti delle conversazioni selezionate (la
 // riga della lista), nell'ordine della lista.
-func (m Model) selectedRefs() []msg.MessageRef {
+func (m *Model) selectedRefs() []msg.MessageRef {
 	convs := m.selectedConvs()
 	refs := make([]msg.MessageRef, len(convs))
 	for i, c := range convs {
@@ -41,7 +41,7 @@ func (m Model) selectedRefs() []msg.MessageRef {
 
 // roleOfBox è il ruolo noto della mailbox box: quella mostrata o la posta in
 // arrivo; altrove "" (ignoto), come rowRole (Piano 10, Task 3).
-func (m Model) roleOfBox(box string) string {
+func (m *Model) roleOfBox(box string) string {
 	if strings.EqualFold(box, m.folder.Name) {
 		return m.folder.Role
 	}

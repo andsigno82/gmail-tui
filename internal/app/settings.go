@@ -257,7 +257,7 @@ func (m Model) stopEditing() Model {
 // settingsView rende il menu impostazioni: titolo e una riga per voce, con la
 // voce selezionata evidenziata (ListSelected, colore calcolato di Piano 7.2,
 // Task 1). Il campo in modifica rende il proprio widget.
-func (m Model) settingsView() string {
+func (m *Model) settingsView() string {
 	st := m.styles
 	var b strings.Builder
 	b.WriteString("\n") // riga vuota sotto il titolo della finestra
@@ -281,7 +281,7 @@ const settingsHelp = "↑↓ voce · ←→ valore · invio modifica/salva · ct
 
 // settingsValueText rende il valore di una voce: ‹ valore › per le voci a
 // scelta, il testo (o il widget in modifica) per Nome e Firma.
-func (m Model) settingsValueText(r settingsRow) string {
+func (m *Model) settingsValueText(r settingsRow) string {
 	st := m.styles
 	switch r {
 	case rowTheme:

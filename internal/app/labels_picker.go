@@ -229,7 +229,7 @@ func gmailMode(st mail.MailStore) bool {
 
 // labelTargets sono le conversazioni su cui agisce il pannello: la selezione se c'è,
 // altrimenti la riga operata (come a/#/s/v singoli).
-func (m Model) labelTargets() []mail.Conversation {
+func (m *Model) labelTargets() []mail.Conversation {
 	if m.view == viewInbox && len(m.sel) > 0 {
 		return m.selectedConvs()
 	}
@@ -357,7 +357,7 @@ func allMailIDs(ctx context.Context, st mail.MailStore, convs []mail.Conversatio
 
 // labelPickView è il corpo del pannello: titolo con il numero di conversazioni, filtro,
 // righe. Con filtro senza corrispondenze invita a creare l'etichetta col nome digitato.
-func (m Model) labelPickView() string {
+func (m *Model) labelPickView() string {
 	if m.labelPick.loading {
 		return m.windowFor(m.styles.ListDate.Render("caricamento etichette…"), "etichette", labelPickMinW)
 	}

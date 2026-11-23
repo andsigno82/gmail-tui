@@ -18,7 +18,7 @@ import (
 
 // window rende la finestra aperta in questo momento ("" se nessuna): stesso ordine
 // di precedenza di prima (menu, pannello label, selettore cartelle).
-func (m Model) window() string {
+func (m *Model) window() string {
 	switch {
 	case m.menu.open:
 		return m.settingsView()
@@ -33,7 +33,7 @@ func (m Model) window() string {
 // windowFor incornicia content in un overlay.Window con titolo, largo quanto il
 // contenuto piu largo (almeno minW colonne interne) e alto quanto le sue righe;
 // larghezza e altezza non superano il corpo meno l'ombra.
-func (m Model) windowFor(content, title string, minW int) string {
+func (m *Model) windowFor(content, title string, minW int) string {
 	lines := strings.Split(content, "\n")
 	inner := max(minW, lipgloss.Width(title))
 	for _, l := range lines {
@@ -55,7 +55,7 @@ func (m Model) windowFor(content, title string, minW int) string {
 // overlayWindow sovrappone win, centrata, alla vista base: la base si porta alla
 // dimensione del corpo cosi il centro e quello dello schermo (senza barra). Senza
 // size nota (prima del primo WindowSizeMsg) resta solo la finestra.
-func (m Model) overlayWindow(base, win string) string {
+func (m *Model) overlayWindow(base, win string) string {
 	if m.width <= 0 {
 		return win
 	}
@@ -66,7 +66,7 @@ func (m Model) overlayWindow(base, win string) string {
 }
 
 // modeName e il segmento "modo" della barra di stato.
-func (m Model) modeName() string {
+func (m *Model) modeName() string {
 	switch {
 	case m.menu.open:
 		return "IMPOSTAZIONI"
@@ -90,7 +90,7 @@ func (m Model) modeName() string {
 
 // segmentBar compone la barra di stato a segmenti: modo, cartella (nelle viste che
 // ne hanno una), stato (selezione, spinner, testo persistente) e aiuto breve.
-func (m Model) segmentBar() string {
+func (m *Model) segmentBar() string {
 	segs := []statusline.Segment{{Text: m.modeName(), Kind: statusline.SegMode}}
 	switch m.view {
 	case viewInbox, viewThread, viewSearch:
@@ -128,7 +128,7 @@ func (m Model) segmentBar() string {
 // plainHelp e l'help breve della vista corrente come testo semplice "tasto azione",
 // separato da " · " e tagliato a voci intere in avail colonne (con "…" se ne
 // restano fuori): lo stile lo da il segmento della barra.
-func (m Model) plainHelp(avail int) string {
+func (m *Model) plainHelp(avail int) string {
 	var parts []string
 	for _, b := range m.shortHelpFor(m.labelOpen, m.view) {
 		if !b.Enabled() {

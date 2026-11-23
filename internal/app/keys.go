@@ -131,7 +131,7 @@ func newHelp(st styles.Styles) help.Model {
 // shortHelpFor è l'help breve per lo stato dato (vista + prompt label): la
 // status bar lo rende sempre visibile, accanto all'eventuale testo di status.
 // La lunghezza è trattata dal truncamento di bubbles/help (SetWidth).
-func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
+func (m *Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 	if m.labelPickOpen {
 		// Pannello label (Piano 10, Task 7): tab (o spazio a filtro vuoto) cambia, invio applica, esc chiude.
 		return []key.Binding{keys.PickToggle, keys.Apply, keys.Cancel}
@@ -190,7 +190,7 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 
 // fullHelpFor è l'help completo per lo stato dato: gruppi (colonne) per
 // categoria. L'overlay `?` lo rende con bubbles/help (FullHelpView).
-func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
+func (m *Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
 	if m.labelPickOpen {
 		return [][]key.Binding{{keys.PickToggle, keys.PickMove, keys.Apply, keys.Cancel}}
 	}

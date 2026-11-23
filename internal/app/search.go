@@ -95,6 +95,6 @@ func searchCmd(st mail.MailStore, q msg.Query, raw string, box string, gen int) 
 
 // searchBody rende il corpo della vista ricerca: riga input e hint dei tasti
 // (l'help contestuale vero arriva in Task 9).
-func (m Model) searchBody() string {
+func (m *Model) searchBody() string {
 	return m.search.View() + "\n\n" + m.styles.HelpView.Render("invio cerca · esc annulla")
 }

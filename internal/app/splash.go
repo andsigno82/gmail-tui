@@ -120,7 +120,7 @@ func (m *Model) SetVersion(v string) { m.version = v }
 
 // splashOn dice se il corpo mostra lo splash: la lista non è ancora arrivata e
 // non c'è il wizard.
-func (m Model) splashOn() bool {
+func (m *Model) splashOn() bool {
 	return !m.listLoaded && !m.wizardActive && m.view == viewInbox
 }
 
@@ -137,7 +137,7 @@ func splashErrText(err error) string {
 }
 
 // splashView rende lo splash al centro del corpo (altezza = schermo - barra).
-func (m Model) splashView() string {
+func (m *Model) splashView() string {
 	var phase string
 	switch {
 	case m.connErr != "":
@@ -162,7 +162,7 @@ func (m Model) splashView() string {
 
 // center posiziona s al centro del corpo; senza size nota (prima del primo
 // WindowSizeMsg) lo restituisce com'è.
-func (m Model) center(s string) string {
+func (m *Model) center(s string) string {
 	if m.width <= 0 || m.height <= 1 {
 		return s
 	}
@@ -170,7 +170,7 @@ func (m Model) center(s string) string {
 }
 
 // folderLabel è il nome leggibile della cartella mostrata.
-func (m Model) folderLabel() string {
+func (m *Model) folderLabel() string {
 	if m.folder.Name == "" {
 		return "Posta in arrivo"
 	}
@@ -180,7 +180,7 @@ func (m Model) folderLabel() string {
 // listBody rende la lista nella colonna w x h: le righe, oppure se il caricamento
 // è finito e la lista è davvero vuota un messaggio neutro centrato (mai il
 // "No items." della lista né un testo che sembri un errore).
-func (m Model) listBody(w, h int) string {
+func (m *Model) listBody(w, h int) string {
 	if !m.listLoaded || len(m.refs) > 0 {
 		return m.inbox.View()
 	}

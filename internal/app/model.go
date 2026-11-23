@@ -289,7 +289,8 @@ func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	} else {
 		next, cmd = m.update(ev)
 	}
-	nm, sync := next.(Model).syncPreview()
+	nm := next.(Model)
+	sync := nm.syncPreview()
 	if rc := nm.thread.RenderCmd(); rc != nil {
 		cmd = tea.Batch(cmd, rc)
 	}
@@ -1474,7 +1475,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
-			return m.loadMoreAtEnd(cmd)
+			cmd = m.loadMoreAtEnd(cmd) // statement a parte: muta m prima del return
+			return m, cmd
 		}
 		if m.view == viewThread {
 			var cmd tea.Cmd
@@ -1522,7 +1524,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.inbox, cmd = m.inbox.Update(ev)
-			return m.loadMoreAtEnd(cmd)
+			cmd = m.loadMoreAtEnd(cmd) // statement a parte: muta m prima del return
+			return m, cmd
 		}
 		if m.view == viewThread {
 			var cmd tea.Cmd
@@ -1671,13 +1674,16 @@ func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 // parte con una ricerca attiva (non paginata), con la lista già esaurita, o con
 // una pagina in volo (mai due richieste insieme). L'offset è il numero di righe
 // caricate: il dedup di moreLoaded assorbe gli slittamenti.
-func (m Model) loadMoreAtEnd(cmd tea.Cmd) (Model, tea.Cmd) {
+//
+// Ricevitore puntatore (come requestRefresh): muta m, va chiamato PRIMA di restituire
+// il Model; evita la copia da ~340 KB a ogni tasto in lista.
+func (m *Model) loadMoreAtEnd(cmd tea.Cmd) tea.Cmd {
 	if m.queryRaw != "" || m.exhausted || m.loadingMore || !m.inbox.AtEnd() {
-		return m, cmd
+		return cmd
 	}
 	m.loadingMore = true
 	m.pending++
-	return m, tea.Batch(cmd, loadMore(m.store, m.folder.Name, len(m.refs), m.queryRaw, m.listGen), m.spinner.Tick)
+	return tea.Batch(cmd, loadMore(m.store, m.folder.Name, len(m.refs), m.queryRaw, m.listGen), m.spinner.Tick)
 }
 
 // fetchMsg esegue FetchMessage fuori dal loop UI (risultato: msgLoaded).
@@ -1731,7 +1737,7 @@ func (m *Model) SetConfigPath(path string) {
 // content rende corpo + status bar, con il corpo esteso fino alla riga sopra
 // la barra (la barra resta sull'ultima riga del terminale). Con il terminale
 // sotto il minimo rende SOLO la schermata di avviso (Task 9).
-func (m Model) content() string {
+func (m *Model) content() string {
 	if m.tooSmall() {
 		return m.minSizeView()
 	}
@@ -1755,7 +1761,7 @@ func (m Model) content() string {
 // senza toast (o senza size nota) il contenuto torna identico; con toast il
 // compositor nativo di lipgloss v2 disegna i riquadri in alto a destra (Z=1)
 // sopra il corpo e la barra di stato, che è il layer base (Z=0).
-func (m Model) overlayToasts(content string) string {
+func (m *Model) overlayToasts(content string) string {
 	if m.width <= 0 {
 		return content
 	}
@@ -1769,14 +1775,14 @@ func (m Model) overlayToasts(content string) string {
 
 // tooSmall dice se la finestra è sotto il minimo 80×24 (solo quando la size è
 // nota: prima del primo WindowSizeMsg la TUI rende il contenuto normale).
-func (m Model) tooSmall() bool {
+func (m *Model) tooSmall() bool {
 	return m.width > 0 && (m.width < minWidth || m.height < minHeight)
 }
 
 // minSizeView è la schermata di avviso per i terminali troppo piccoli (Task
 // 9, View-only): mostra la size corrente e il minimo richiesto. Nessun corpo
 // né status bar: non c'è nulla di sensato da mostrare a quelle dimensioni.
-func (m Model) minSizeView() string {
+func (m *Model) minSizeView() string {
 	body := m.styles.ThreadHeader.Render("gmail-tui") + "\n\n" +
 		fmt.Sprintf("terminale troppo piccolo: %d×%d\n", m.width, m.height) +
 		fmt.Sprintf("servono almeno %d×%d colonne\n", minWidth, minHeight) +
@@ -1787,7 +1793,7 @@ func (m Model) minSizeView() string {
 // helpOverlay rende l'help completo (toggle `?`, Task 9): il titolo con
 // l'hint di chiusura e le colonne dei gruppi (bubbles/help FullHelpView) in
 // un riquadro a tema.
-func (m Model) helpOverlay() string {
+func (m *Model) helpOverlay() string {
 	title := m.styles.ThreadHeader.Render("aiuto") +
 		m.styles.ListDate.Render("  esc/? chiudi")
 	return title + "\n" +
@@ -1798,7 +1804,7 @@ func (m Model) helpOverlay() string {
 // thread è la lettura del messaggio (Task 5, placeholder durante il fetch),
 // la ricerca è il textinput della query (Task 6), il composer i campi di
 // scrittura (Piano 4, Task 3).
-func (m Model) body() string {
+func (m *Model) body() string {
 	// Piano 15, Task 16 (D15-11): menu `,`, pannello label e selettore `m` sono
 	// finestre sovrapposte, centrate sopra la vista corrente (non la sostituiscono).
 	if win := m.window(); win != "" {
@@ -1808,7 +1814,7 @@ func (m Model) body() string {
 }
 
 // viewBody rende la vista attiva senza finestre sovrapposte.
-func (m Model) viewBody() string {
+func (m *Model) viewBody() string {
 	if m.splashOn() {
 		return m.splashView() // Piano 15, Task 16b: splash finché non arriva la lista
 	}
@@ -1840,7 +1846,7 @@ func (m Model) viewBody() string {
 // visibile, Task 9 — l'help breve per la vista corrente (bubbles/help). Lo
 // stato resta in barra neutra (Piano 7.3): le conferme modali sono le sole
 // barre colorate.
-func (m Model) statusBar() string {
+func (m *Model) statusBar() string {
 	if m.labelOpen {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
 		// stesso al posto dello status, che resta custodito sotto.
@@ -1877,7 +1883,7 @@ func (m Model) statusBar() string {
 }
 
 // renderBar applica lo stile dato (a larghezza piena quando la size è nota).
-func (m Model) renderBar(st lipgloss.Style, s string) string {
+func (m *Model) renderBar(st lipgloss.Style, s string) string {
 	if m.width > 0 {
 		st = st.Width(m.width)
 	}

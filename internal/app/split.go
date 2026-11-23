@@ -34,7 +34,7 @@ const (
 
 // splitOn dice se la vista a due colonne è attiva: layout split e larghezza
 // sufficiente (la soglia è quella di U4).
-func (m Model) splitOn() bool {
+func (m *Model) splitOn() bool {
 	return m.layout == config.LayoutSplit && m.width >= splitMinWidth
 }
 
@@ -48,30 +48,30 @@ func splitWidths(width int) (list, preview int) {
 
 // previewFocused dice se il focus è sull'anteprima (Tab): solo nella vista
 // inbox a due colonne.
-func (m Model) previewFocused() bool {
+func (m *Model) previewFocused() bool {
 	return m.focusPreview && m.splitOn() && m.view == viewInbox
 }
 
 // previewVisible dice se l'anteprima è in uso: vista inbox a due colonne con un
 // messaggio sotto il cursore.
-func (m Model) previewVisible() bool {
+func (m *Model) previewVisible() bool {
 	return m.splitOn() && m.view == viewInbox && m.prevHas
 }
 
 // previewReady dice se il thread mostra il corpo del messaggio in anteprima.
-func (m Model) previewReady() bool {
+func (m *Model) previewReady() bool {
 	return m.prevHas && m.thread.Loaded() && m.thread.AnchorID() == m.prevRef.ID
 }
 
 // threadTarget dice se i tasti del thread (command line, filepicker, scorrimento)
 // vanno al thread: vista thread a schermo intero, o anteprima con il focus.
-func (m Model) threadTarget() bool {
+func (m *Model) threadTarget() bool {
 	return m.view == viewThread || (m.previewFocused() && m.previewReady())
 }
 
 // previewRef è il messaggio dell'anteprima: la copia del thread quando è
 // caricata (stato aggiornato da MarkRead e op), altrimenti la riga del cursore.
-func (m Model) previewRef() (msg.MessageRef, bool) {
+func (m *Model) previewRef() (msg.MessageRef, bool) {
 	if !m.prevHas {
 		return msg.MessageRef{}, false
 	}
@@ -122,7 +122,7 @@ func (m *Model) sizeThread() {
 // threadSize e la misura del thread: l'intera vista se e aperto a schermo intero,
 // altrimenti la colonna dell'anteprima (due colonne). Senza size nota (0, 0), cosi
 // i costruttori del thread non anticipano una misura inventata.
-func (m Model) threadSize() (w, h int) {
+func (m *Model) threadSize() (w, h int) {
 	if m.width == 0 {
 		return 0, 0
 	}
@@ -138,9 +138,12 @@ func (m Model) threadSize() (w, h int) {
 // cursore (movimento, refresh, cambio cartella o ricerca) apre un nuovo token e
 // il timer di caricamento. Lista vuota → anteprima vuota. Fuori dalla vista
 // inbox a due colonne non fa nulla.
-func (m Model) syncPreview() (Model, tea.Cmd) {
+//
+// Ricevitore puntatore: muta il Model del chiamante senza le copie da ~340 KB che il
+// valore costava a ogni messaggio (indagine prestazioni dopo il Piano 15).
+func (m *Model) syncPreview() tea.Cmd {
 	if !m.splitOn() || m.view != viewInbox {
-		return m, nil
+		return nil
 	}
 	cur, ok := m.inbox.SelectedRef()
 	if !ok {
@@ -148,14 +151,14 @@ func (m Model) syncPreview() (Model, tea.Cmd) {
 			m.prevHas, m.prevRef = false, msg.MessageRef{}
 			m.prevTok++
 		}
-		return m, nil
+		return nil
 	}
 	if m.prevHas && m.prevRef.ID == cur.ID {
-		return m, nil
+		return nil
 	}
 	m.prevTok++
 	m.prevRef, m.prevHas = cur, true
-	return m, previewTimer(m.prevTok)
+	return previewTimer(m.prevTok)
 }
 
 // previewTimer è il ritardo di 150 ms prima del fetch dell'anteprima.
@@ -202,7 +205,7 @@ func (m Model) previewMarkRead(tok int) (Model, tea.Cmd) {
 // previewView rende la colonna dell'anteprima alla larghezza e altezza date:
 // il thread se il corpo è caricato, un testo attenuato altrimenti. Le righe
 // troppo lunghe si troncano (nessun a capo che sposti la status bar).
-func (m Model) previewView(w, h int) string {
+func (m *Model) previewView(w, h int) string {
 	var body string
 	switch {
 	case !m.prevHas:
@@ -223,7 +226,7 @@ func (m Model) previewView(w, h int) string {
 
 // splitView compone le due colonne con il separatore verticale: il colore del
 // separatore indica il focus (slot primary sull'anteprima attiva).
-func (m Model) splitView() string {
+func (m *Model) splitView() string {
 	list, preview := splitWidths(m.width)
 	h := max(0, m.height-1)
 	left := lipgloss.NewStyle().MaxWidth(list).Height(h).MaxHeight(h).Render(m.listBody(list, h))

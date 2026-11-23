@@ -53,7 +53,7 @@ func newLabelInput(st styles.Styles) textinput.Model {
 // currentRef restituisce il ref su cui operare: nel thread è il ref del
 // messaggio aperto (la copia più aggiornata: stato al fetch + MarkRead + op
 // ottimistiche), nell'inbox è il ref della riga sotto il cursore.
-func (m Model) currentRef() (msg.MessageRef, bool) {
+func (m *Model) currentRef() (msg.MessageRef, bool) {
 	if m.view == viewThread {
 		if !m.thread.Loaded() {
 			return msg.MessageRef{}, false // fetch in corso: nessun ref
@@ -83,7 +83,7 @@ func (m Model) currentRef() (msg.MessageRef, bool) {
 // review punto 4, regola del coordinatore): come dalla lista, sono la riga aperta,
 // indipendentemente dal messaggio selezionato nel thread. Nella lista con due colonne
 // è la riga sotto il cursore (l'anteprima). Altrove è currentRef.
-func (m Model) opRef() (msg.MessageRef, bool) {
+func (m *Model) opRef() (msg.MessageRef, bool) {
 	if m.view == viewThread {
 		return m.rowRef, m.rowRef.ID != ""
 	}
@@ -213,7 +213,7 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 // ricerca `label:Work` mostra righe di Work. Piano 7, fix code-review 1. Senza
 // ref (lista vuota, thread in caricamento) ricade sulla cartella mostrata: lo
 // zero value di folder è la posta in arrivo ("INBOX").
-func (m Model) opBox() string {
+func (m *Model) opBox() string {
 	if ref, ok := m.opRef(); ok {
 		if box, _, err := ref.ID.Split(); err == nil {
 			return box
@@ -236,7 +236,7 @@ func (m Model) cancelLabel() (Model, tea.Cmd) {
 // `l` (Piano 7.1, Task 5). È noto all'app solo se è la cartella mostrata o la
 // posta in arrivo; altrove restituisce "" (ignoto): una riga cercata con label:
 // da un'altra cartella non ha ruolo noto e il backend decide.
-func (m Model) rowRole() string {
+func (m *Model) rowRole() string {
 	return m.roleOfBox(m.opBox())
 }
 
@@ -564,7 +564,7 @@ func (m *Model) rememberConvs(convs []mail.Conversation) {
 // convsOf costruisce le righe-conversazione dei ref della lista (Piano 8, Task 9):
 // il riepilogo noto per ID, con il messaggio più recente dato dal ref stesso;
 // senza riepilogo, una conversazione di un solo messaggio.
-func (m Model) convsOf(refs []msg.MessageRef) []mail.Conversation {
+func (m *Model) convsOf(refs []msg.MessageRef) []mail.Conversation {
 	out := make([]mail.Conversation, len(refs))
 	for i, r := range refs {
 		c, ok := m.sums[r.ID]

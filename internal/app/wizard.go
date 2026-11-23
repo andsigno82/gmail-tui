@@ -119,6 +119,6 @@ func (m Model) savedSettings() config.Config {
 }
 
 // wizardBody è il corpo della vista wizard (il View del modello del wizard).
-func (m Model) wizardBody() string {
+func (m *Model) wizardBody() string {
 	return m.wiz.View()
 }

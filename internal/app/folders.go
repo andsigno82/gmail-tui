@@ -189,7 +189,7 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 // l'albero delle cartelle (foldertree.Render, una riga per nodo). Finché
 // ListMailboxes non risponde (nessuna riga) mostra il caricamento. Se l'albero è
 // più alto dello spazio, si scorre per tenere visibile la riga del cursore.
-func (m Model) foldersView() string {
+func (m *Model) foldersView() string {
 	p := m.folderPick
 	if len(p.rows) == 0 {
 		return m.windowFor(m.styles.ListDate.Render("caricamento cartelle…"), "cartelle e label", folderMinW)
