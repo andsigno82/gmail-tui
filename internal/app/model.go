@@ -8,7 +8,6 @@ import (
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
-	"charm.land/bubbles/v2/list"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -157,7 +156,8 @@ type Model struct {
 	loadingMore   bool                   // pagina successiva in volo: mai due richieste insieme (Piano 7, Task 3)
 	folder        mail.Mailbox           // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
 	folderOpen    bool                   // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
-	folderList    list.Model             // elenco del selettore cartelle (bubbles/list, folders.go)
+	folderPick    folderPicker           // albero del selettore cartelle e contatori (foldertree, Piano 15, Task 15)
+	unreadGen     int                    // generazione della richiesta dei contatori: i risultati di altre generazioni sono stantii (unread.go)
 	labelPickOpen bool                   // pannello label su selezione aperto (Piano 10, Task 7)
 	labelPick     labelPicker            // stato del pannello label (Piano 10, Task 7)
 	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
@@ -219,23 +219,22 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	return Model{
 		exit: &exitLog{},
 		book: memBook, clock: time.Now,
-		store:      store,
-		sender:     sender,
-		styles:     st,
-		toast:      toast.New(st),
-		spinner:    spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
-		help:       newHelp(st),
-		inbox:      inbox.New(nil, st),
-		folderList: newFolderList(st),
-		search:     newSearchInput(st),
-		label:      newLabelInput(st),
-		cfgPath:    cfgPath,
-		view:       viewInbox,
-		th:         th,
-		layout:     config.LayoutSingle,
-		markRead:   config.PreviewMarkReadDelay,
-		ctx:        ctx,
-		cancel:     cancel,
+		store:    store,
+		sender:   sender,
+		styles:   st,
+		toast:    toast.New(st),
+		spinner:  spinner.New(spinner.WithSpinner(spinner.MiniDot), spinner.WithStyle(st.Spinner)),
+		help:     newHelp(st),
+		inbox:    inbox.New(nil, st),
+		search:   newSearchInput(st),
+		label:    newLabelInput(st),
+		cfgPath:  cfgPath,
+		view:     viewInbox,
+		th:       th,
+		layout:   config.LayoutSingle,
+		markRead: config.PreviewMarkReadDelay,
+		ctx:      ctx,
+		cancel:   cancel,
 		// Il Connect d'avvio emesso da Init è già in flight (bugfix
 		// 2026-11-22): pending parte da 1 così la status bar mostra lo
 		// spinner finché connResult non arriva — il load vero incrementa
@@ -524,17 +523,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.toast.Push(toast.Error, fmt.Sprintf("cartelle: %v", ev.err))
 			return m, cmd
 		}
-		items := make([]list.Item, len(ev.boxes))
-		cur := 0
-		for i, b := range ev.boxes {
-			items[i] = folderItem{box: b}
-			if canonicalFolder(b) == m.folder {
-				cur = i
-			}
-		}
-		cmd := m.folderList.SetItems(items)
-		m.folderList.Select(cur)
-		return m, cmd
+		// Piano 15, Task 15: albero su foldertree, cursore sulla cartella corrente.
+		m.folderPick.load(ev.boxes, m.folder)
+		return m, nil
 
 	case moreLoaded:
 		// Pagina successiva (scroll in fondo, Piano 7, Task 3). Stante se la
@@ -624,6 +615,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, cmd
 		}
+		// Piano 15, Task 15: un'op che cambia lettura o composizione della lista
+		// ricarica i contatori del selettore (se aperto). Prima del return: muta m.
+		var unreadCmd tea.Cmd
+		if ev.refresh || ev.localID != "" {
+			unreadCmd = m.refreshUnreadIfOpen()
+		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
 		var toastCmd tea.Cmd
 		if ev.undo != nil {
@@ -657,9 +654,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// Piano 7, fix code-review 3: requestRefresh muta m (ricevitore puntatore):
 			// va chiamato prima di restituire m, mai nella stessa return.
 			follow := m.requestRefresh(ev.deep)
-			return m, tea.Batch(toastCmd, localCmd, follow)
+			return m, tea.Batch(toastCmd, localCmd, follow, unreadCmd)
 		}
-		return m, tea.Batch(toastCmd, localCmd)
+		return m, tea.Batch(toastCmd, localCmd, unreadCmd)
 
 	case notifyResult:
 		// Piano 11, Task 4 e review punti 1, 7: il processo è finito (si libera il
@@ -693,7 +690,18 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 	case changeEvt:
 		// Evento push del feed (Task 8): re-list silenzioso guidato dal tipo
 		// di cambio + loop ri-armato (handleChange in watch.go).
-		return m.handleChange(ev)
+		// Piano 15, Task 15: posta nuova o flag cambiati ricaricano i contatori
+		// (selettore aperto). Prima del return: refreshUnreadIfOpen muta m.
+		var unreadCmd tea.Cmd
+		if ev.c.Kind == mail.ChangeNewMail || ev.c.Kind == mail.ChangeFlags {
+			unreadCmd = m.refreshUnreadIfOpen()
+		}
+		m, cmd := m.handleChange(ev)
+		return m, tea.Batch(cmd, unreadCmd)
+
+	case unreadLoaded:
+		// Contatori dei non letti (Piano 15, Task 15): stantii scartati, errore muto.
+		return m.applyUnread(ev), nil
 
 	case inbox.SelectedMsg:
 		if m.view == viewInbox && m.folder.Role == "drafts" {
@@ -1080,7 +1088,6 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Il corpo occupa tutte le righe tranne l'ultima (status bar). Con due
 		// colonne (Piano 7.2, Task 4) lista e anteprima prendono la loro quota.
 		m.relayout()
-		m.folderList.SetSize(ev.Width, max(0, m.height-2)) // -2: titolo del selettore + status bar
 		if m.wizardActive {
 			// Gli input del wizard si adattano alla larghezza (Piano 4, Task 5).
 			m.wiz.SetWidth(ev.Width)
@@ -1156,18 +1163,22 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.folderOpen {
 			// Selettore cartelle aperto (Piano 7, Task 4): invio apre la cartella
-			// sotto il cursore, esc chiude, il resto naviga la lista (j/k, frecce,
-			// pagine). Le op della lista dietro non scattano (come col prompt).
+			// sotto il cursore, esc chiude, j/k e frecce navigano l'albero (Piano 15,
+			// Task 15). Le op della lista dietro non scattano (come col prompt).
 			switch ev.String() {
 			case "enter":
 				return m.chooseFolder()
 			case "esc":
 				m.folderOpen = false
 				return m, nil
+			case "up", "k":
+				m.folderPick.move(-1)
+				return m, nil
+			case "down", "j":
+				m.folderPick.move(1)
+				return m, nil
 			default:
-				var cmd tea.Cmd
-				m.folderList, cmd = m.folderList.Update(ev)
-				return m, cmd
+				return m, nil
 			}
 		}
 		if m.trashOpen {
@@ -1557,7 +1568,6 @@ func (m *Model) applyStyles(st styles.Styles) {
 	m.spinner.Style = st.Spinner
 	m.help = newHelp(st)
 	m.inbox.SetStyles(st)
-	m.folderList.SetDelegate(folderDelegate{st: st})
 	m.thread.SetStyles(st)
 	if m.menu.open {
 		m.menu.name.SetStyles(settingsInputStyles(st))

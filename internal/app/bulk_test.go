@@ -97,7 +97,7 @@ func TestBulkTrashRefusedInTrashFolder(t *testing.T) {
 	m := pagedModel(t, rec)
 	m, cmd := step(m, pressKey("m"))
 	m = applyAll(t, m, cmd)
-	m.folderList.Select(1) // [Gmail]/Trash
+	m.folderPick.cursor = 1 // [Gmail]/Trash
 	m, cmd = step(m, pressKey("enter"))
 	m = applyAll(t, m, cmd)
 	if m.folder.Name != "[Gmail]/Trash" {

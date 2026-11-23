@@ -418,10 +418,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** `unread_test.go` con `mail.Mock`: i contatori arrivano nel selettore; un `Change` ricarica; risultato stantio scartato; errore: il selettore resta senza contatori (nessun toast).
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(app): albero cartelle e contatori non letti (Piano 15, Task 15)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(app): albero cartelle e contatori non letti (Piano 15, Task 15)`.
 
 ## Task 16: finestre, statusline, clic su bottoni e allegati (`internal/app`)
 

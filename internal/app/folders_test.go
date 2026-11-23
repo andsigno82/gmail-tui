@@ -53,7 +53,7 @@ func openPicker(tb testing.TB, m Model) Model {
 // pickFolder sceglie nel selettore la cartella di indice i (cursore + invio).
 func pickFolder(tb testing.TB, m Model, i int) (Model, tea.Cmd) {
 	tb.Helper()
-	m.folderList.Select(i)
+	m.folderPick.cursor = i
 	return step(m, pressKey("enter"))
 }
 
@@ -67,7 +67,7 @@ func TestFolderPickerOpensAndLists(t *testing.T) {
 	if !m.folderOpen || m.pending != 0 {
 		t.Fatalf("dopo il caricamento: open=%v pending=%d, voglio true e 0", m.folderOpen, m.pending)
 	}
-	if got := len(m.folderList.Items()); got != 4 {
+	if got := len(m.folderPick.rows); got != 4 {
 		t.Fatalf("cartelle nel selettore = %d, voglio 4", got)
 	}
 	if v := m.View().Content; !strings.Contains(v, "Cestino") || !strings.Contains(v, "Inviati") {
@@ -86,8 +86,8 @@ func TestFolderPickerEscCloses(t *testing.T) {
 		t.Fatal("esc non chiude il selettore")
 	}
 	m = applyAll(t, m, cmd) // risposta tardiva
-	if m.folderOpen || len(m.folderList.Items()) != 0 || m.folder.Name != "" {
-		t.Errorf("risposta tardiva dopo esc: open=%v items=%d folder=%q", m.folderOpen, len(m.folderList.Items()), m.folder.Name)
+	if m.folderOpen || len(m.folderPick.rows) != 0 || m.folder.Name != "" {
+		t.Errorf("risposta tardiva dopo esc: open=%v items=%d folder=%q", m.folderOpen, len(m.folderPick.rows), m.folder.Name)
 	}
 	if m.pending != 0 {
 		t.Errorf("pending = %d dopo la risposta tardiva, voglio 0", m.pending)

@@ -67,7 +67,7 @@ func TestSelectionResetOnFolderChange(t *testing.T) {
 	}
 	m, cmd := step(m, pressKey("m"))
 	m = applyAll(t, m, cmd)
-	m.folderList.Select(1) // [Gmail]/Sent
+	m.folderPick.cursor = 1 // [Gmail]/Sent
 	m, cmd = step(m, pressKey("enter"))
 	m = applyAll(t, m, cmd)
 	if m.folder.Name != "[Gmail]/Sent" {

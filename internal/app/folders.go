@@ -1,20 +1,21 @@
 // Selettore cartelle e label (Piano 7, Task 4, tasto `m`): una modale con
-// bubbles/list sopra il corpo, come il help overlay. L'elenco viene da
+// l'albero di internal/ui/foldertree (Piano 15, Task 15, D15-09: label annidate
+// sul Delimiter, contatori dei non letti) sopra il corpo, come il help overlay.
+// Il selettore come finestra sovrapposta e del Task 16. L'elenco viene da
 // MailStore.ListMailboxes (ruoli SPECIAL-USE, mai nomi localizzati). La
 // cartella corrente vive in Model.folder, separata dalla query di ricerca.
 package app
 
 import (
 	"context"
-	"fmt"
-	"io"
+	"strings"
 
-	"charm.land/bubbles/v2/list"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2/tree"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
-	"github.com/andsigno82/gmail-tui/internal/ui/styles"
+	"github.com/andsigno82/gmail-tui/internal/ui/foldertree"
 )
 
 // mailboxesLoaded è il risultato di ListMailboxes per il selettore (Piano 7,
@@ -64,57 +65,62 @@ func inFolder(q msg.Query, box string) msg.Query {
 	return q
 }
 
-// folderItem adatta una mailbox all'interfaccia list.Item del selettore.
-type folderItem struct {
-	box mail.Mailbox
+// folderPicker e lo stato del selettore `m` (Piano 15, Task 15): l'albero di
+// foldertree, le sue righe selezionabili (in ordine di albero), il cursore come
+// indice in rows e gli ultimi contatori dei non letti. E un valore dentro il
+// Model: i metodi con ricevitore puntatore agiscono sulla copia del chiamante,
+// che poi ritorna il Model (gotcha del value receiver, AGENTS.md).
+type folderPicker struct {
+	boxes  []mail.Mailbox
+	tree   *tree.Tree
+	rows   []foldertree.Row
+	cursor int
+	counts map[string]int
 }
 
-// FilterValue implementa list.Item (il filtraggio del selettore è disabilitato).
-func (i folderItem) FilterValue() string { return folderName(i.box) }
-
-// folderDelegate rende una riga per cartella con gli slot della lista del tema.
-type folderDelegate struct {
-	st styles.Styles
+// reset svuota l'albero (non i contatori: restano visibili fino al ricaricamento).
+func (p *folderPicker) reset() {
+	p.boxes, p.tree, p.rows, p.cursor = nil, nil, nil, 0
 }
 
-// Height implementa list.ItemDelegate: una riga per cartella.
-func (d folderDelegate) Height() int { return 1 }
+// load costruisce l'albero da boxes e porta il cursore sulla cartella corrente.
+func (p *folderPicker) load(boxes []mail.Mailbox, current mail.Mailbox) {
+	p.boxes = boxes
+	p.tree = foldertree.Build(boxes, folderName)
+	p.rows = foldertree.Rows(p.tree)
+	p.cursor = 0
+	for i, r := range p.rows {
+		if b, ok := p.box(r.Name); ok && canonicalFolder(b) == current {
+			p.cursor = i
+			return
+		}
+	}
+}
 
-// Spacing implementa list.ItemDelegate: nessuna riga vuota fra le righe.
-func (d folderDelegate) Spacing() int { return 0 }
+// box ritrova la mailbox dal nome IMAP.
+func (p folderPicker) box(name string) (mail.Mailbox, bool) {
+	for _, b := range p.boxes {
+		if b.Name == name {
+			return b, true
+		}
+	}
+	return mail.Mailbox{}, false
+}
 
-// Update implementa list.ItemDelegate: nessun update per item.
-func (d folderDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
-
-// Render implementa list.ItemDelegate: marcatore sul cursore, nome della cartella.
-func (d folderDelegate) Render(w io.Writer, m list.Model, index int, li list.Item) {
-	it, ok := li.(folderItem)
-	if !ok {
+// move sposta il cursore di d righe, senza uscire dall'albero (nessun giro).
+func (p *folderPicker) move(d int) {
+	if len(p.rows) == 0 {
 		return
 	}
-	name := folderName(it.box)
-	if index == m.Index() {
-		fmt.Fprint(w, d.st.ListSelected.Render("▸ "+name))
-		return
-	}
-	fmt.Fprint(w, d.st.ListNormal.Render("  "+name))
+	p.cursor = min(max(p.cursor+d, 0), len(p.rows)-1)
 }
 
-// newFolderList costruisce la lista del selettore senza decorazioni bubbles (le
-// stringhe e i colori di bubbles non sono del tema): titolo e help li rende
-// foldersView.
-func newFolderList(st styles.Styles) list.Model {
-	l := list.New(nil, folderDelegate{st: st}, 0, 0)
-	l.SetShowTitle(false)
-	l.SetShowStatusBar(false)
-	l.SetShowPagination(false)
-	l.SetShowHelp(false)
-	l.SetFilteringEnabled(false)
-	// Piano 7, fix code-review 5: q/esc della bubbles/list ritornerebbero tea.Quit,
-	// bypassando quitCmd (cancel del ctx del feed Watch). Il picker chiude con esc
-	// nel modello (model.go, ramo folderOpen); q non fa nulla.
-	l.DisableQuitKeybindings()
-	return l
+// selected e la mailbox sotto il cursore.
+func (p folderPicker) selected() (mail.Mailbox, bool) {
+	if p.cursor < 0 || p.cursor >= len(p.rows) {
+		return mail.Mailbox{}, false
+	}
+	return p.box(p.rows[p.cursor].Name)
 }
 
 // listMailboxes esegue ListMailboxes fuori dal loop UI (risultato: mailboxesLoaded).
@@ -126,22 +132,26 @@ func listMailboxes(st mail.MailStore) tea.Cmd {
 }
 
 // openFolders apre il selettore (`m`): la lista arriva con ListMailboxes; fino
-// ad allora la modale mostra il caricamento.
+// ad allora la modale mostra il caricamento. I contatori dei non letti partono
+// insieme (Piano 15, Task 15), fuori dal loop UI e senza spinner: se falliscono
+// il selettore resta senza contatori.
 func (m Model) openFolders() (Model, tea.Cmd) {
 	m.folderOpen = true
+	m.folderPick.reset()
 	m.pending++
-	return m, tea.Batch(listMailboxes(m.store), m.spinner.Tick)
+	unread := m.requestUnread()
+	return m, tea.Batch(listMailboxes(m.store), m.spinner.Tick, unread)
 }
 
 // chooseFolder chiude il selettore e passa alla cartella sotto il cursore. La
 // stessa cartella chiude e basta: nessuna rilettura.
 func (m Model) chooseFolder() (Model, tea.Cmd) {
 	m.folderOpen = false
-	it, ok := m.folderList.SelectedItem().(folderItem)
+	sel, ok := m.folderPick.selected()
 	if !ok {
 		return m, nil
 	}
-	box := canonicalFolder(it.box)
+	box := canonicalFolder(sel)
 	if box == m.folder {
 		return m, nil
 	}
@@ -175,14 +185,25 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	return m, tea.Batch(clearRows, loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
 }
 
-// foldersView rende il corpo del selettore: titolo con l'hint dei tasti e la
-// lista delle cartelle. Finché ListMailboxes non risponde (lista vuota) mostra
-// il caricamento.
+// foldersView rende il corpo del selettore: titolo con l'hint dei tasti e
+// l'albero delle cartelle (foldertree.Render, una riga per nodo). Finché
+// ListMailboxes non risponde (nessuna riga) mostra il caricamento. Se l'albero è
+// più alto dello spazio, si scorre per tenere visibile la riga del cursore.
 func (m Model) foldersView() string {
-	if len(m.folderList.Items()) == 0 {
+	p := m.folderPick
+	if len(p.rows) == 0 {
 		return m.styles.ListDate.Render("caricamento cartelle…")
 	}
 	title := m.styles.ThreadHeader.Render("cartelle e label") +
 		m.styles.ListDate.Render("  invio apre · esc chiude")
-	return title + "\n" + m.folderList.View()
+	out, rows := foldertree.Render(p.tree, p.cursor, p.counts, m.styles)
+	lines := strings.Split(out, "\n")
+	if visible := m.height - 2; visible > 0 && len(lines) > visible { // -2: titolo + status bar
+		off := 0
+		if p.cursor < len(rows) && rows[p.cursor].Line >= visible {
+			off = rows[p.cursor].Line - visible + 1
+		}
+		lines = lines[off : off+visible]
+	}
+	return title + "\n" + strings.Join(lines, "\n")
 }
