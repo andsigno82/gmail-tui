@@ -228,6 +228,15 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   solo in variabili d'ambiente sanificate; un processo alla volta, timeout
   5 s con kill del gruppo; solo messaggi non letti, anche dopo uno standby
 
+### Piano 10 — Smistamento (selezione, annulla, label)
+- Selezione multipla `x`/`X`/esc con casella; a/#/l/s/v sulla selezione
+  (regola Gmail per v e s); selezione ripulita a ogni refresh
+- Annulla `u` per 10 s di archivia (ripristino di \Inbox su Gmail) e cestino
+  (MOVE di ritorno + label); l'ultima azione annullabile vince
+- Pannello label `l` con caselle e stato misto via STORE ±X-GM-LABELS (label
+  di sistema come atomi, mai quotate); `msg.IsUserLabel` unica definizione
+- Review: nessun problema alto; demo con Tutti i messaggi
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
