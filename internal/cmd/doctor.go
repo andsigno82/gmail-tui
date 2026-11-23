@@ -70,7 +70,8 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string, probe Cap
 
 	if dir, err := os.UserCacheDir(); err == nil {
 		cacheDir := filepath.Join(dir, "gmail-tui")
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		// Piano 16, D16-T15: la cartella della cache è privata (0700), come in cache.Open.
+		if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 			fmt.Fprintf(out, "cache: %s NON SCRIVIBILE: %v\n", cacheDir, err)
 			problems++
 		} else {
