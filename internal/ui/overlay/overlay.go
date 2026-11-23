@@ -1,7 +1,8 @@
 // Package overlay disegna finestre sovrapposte con ombra sopra una vista già
 // renderizzata (Piano 15, Task 12, D15-11). Usa il compositor nativo di lipgloss
 // v2: uno Layer con celle di spazio stilizzate copre le celle sottostanti (spike
-// verificato nei test), quindi l'ombra è un layer di spazi colorati spostato di
+// verificato nei test), quindi l'ombra è un layer di retino ░ (stile classico
+// TUI, decisione di Andrea 2026-11-23) nel colore dello slot border, spostato di
 // (+2, +1) sotto la finestra. Le celle del terminale non hanno alpha: nessuna
 // trasparenza vera (D15-T11). Nessun colore fisso: tutto deriva da styles.Styles.
 package overlay
@@ -11,19 +12,18 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"charm.land/lipgloss/v2/compat"
 
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
-// Spostamento dell'ombra rispetto alla finestra (D15-T11), quota di Darken e
+// Spostamento dell'ombra rispetto alla finestra (D15-T11), carattere del retino e
 // dimensioni minime (Piano 15, Task 12).
 const (
-	shadowDX     = 2
-	shadowDY     = 1
-	shadowDarken = 0.55
-	minW, minH   = 3, 3 // bordo + almeno una cella interna
-	paddingMinW  = 5    // sotto questa larghezza interna niente padding orizzontale
+	shadowDX    = 2
+	shadowDY    = 1
+	shadowRune  = "░"
+	minW, minH  = 3, 3 // bordo + almeno una cella interna
+	paddingMinW = 5    // sotto questa larghezza interna niente padding orizzontale
 )
 
 // Window rende il contenuto in un riquadro di w x h celle esterne con bordo
@@ -72,7 +72,8 @@ func Overlay(base, win string, x, y int, st styles.Styles) string {
 	x = min(max(x, 0), max(bw-ww-shadowDX, 0))
 	y = min(max(y, 0), max(bh-wh-shadowDY, 0))
 
-	shadow := lipgloss.NewStyle().Background(shadowColor(st)).Width(ww).Height(wh).Render("")
+	row := strings.Repeat(shadowRune, ww)
+	shadow := st.OverlayShadow.UnsetBackground().Render(strings.TrimSuffix(strings.Repeat(row+"\n", wh), "\n"))
 	out := lipgloss.NewCompositor(
 		lipgloss.NewLayer(base),
 		lipgloss.NewLayer(shadow).X(x+shadowDX).Y(y+shadowDY).Z(1),
@@ -92,34 +93,6 @@ func Center(base, win string) (x, y int) {
 	x = (lipgloss.Width(base) - lipgloss.Width(win)) / 2
 	y = (lipgloss.Height(base) - lipgloss.Height(win)) / 2
 	return max(x, 0), max(y, 0)
-}
-
-// shadowColor è lo sfondo dell'ombra: il Background di OverlayShadow se il tema
-// lo definisce, altrimenti il suo primo piano scurito con Darken. Nessun colore
-// fisso (Piano 15, Task 12).
-func shadowColor(st styles.Styles) color.Color {
-	if bg := st.OverlayShadow.GetBackground(); !isNone(bg) {
-		return bg
-	}
-	return darken(st.OverlayShadow.GetForeground())
-}
-
-// darken scurisce entrambe le varianti di un colore adattivo (la variante
-// resta risolta al rendering dal terminale, come per gli altri stili).
-func darken(c color.Color) color.Color {
-	if a, ok := c.(compat.AdaptiveColor); ok {
-		return compat.AdaptiveColor{Light: lipgloss.Darken(a.Light, shadowDarken), Dark: lipgloss.Darken(a.Dark, shadowDarken)}
-	}
-	return lipgloss.Darken(c, shadowDarken)
-}
-
-// isNone dice se lo stile non ha un colore impostato (NoColor o nil).
-func isNone(c color.Color) bool {
-	if c == nil {
-		return true
-	}
-	_, none := c.(lipgloss.NoColor)
-	return none
 }
 
 // gradientText colora ogni lettera lungo la sfumatura a->b, in grassetto.

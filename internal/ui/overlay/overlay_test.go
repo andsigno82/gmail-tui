@@ -176,7 +176,7 @@ func TestOverlayCoperturaEOmbra(t *testing.T) {
 	inShadow := func(cx, cy int) bool {
 		return !inWin(cx, cy) && cx >= x+2 && cx < x+2+ww && cy >= y+1 && cy < y+1+wh
 	}
-	var ombraBg string
+	var ombraFg string
 	for cy := 0; cy < bh; cy++ {
 		for cx := 0; cx < bw; cx++ {
 			c := g[cy][cx]
@@ -186,13 +186,14 @@ func TestOverlayCoperturaEOmbra(t *testing.T) {
 					t.Errorf("cella (%d,%d) sotto la finestra non coperta", cx, cy)
 				}
 			case inShadow(cx, cy):
-				if c.r != ' ' || c.bg == "" {
-					t.Errorf("ombra assente in (%d,%d): rune=%q bg=%q", cx, cy, c.r, c.bg)
+				// Retino (richiesta di Andrea, 2026-11-23): ░ nel colore del bordo, senza sfondo.
+				if c.r != '░' || c.fg == "" || c.bg != "" {
+					t.Errorf("ombra assente in (%d,%d): rune=%q fg=%q bg=%q", cx, cy, c.r, c.fg, c.bg)
 				}
-				if ombraBg == "" {
-					ombraBg = c.bg
+				if ombraFg == "" {
+					ombraFg = c.fg
 				}
-				if c.bg != ombraBg {
+				if c.fg != ombraFg {
 					t.Errorf("ombra non uniforme in (%d,%d)", cx, cy)
 				}
 			default:
@@ -202,53 +203,26 @@ func TestOverlayCoperturaEOmbra(t *testing.T) {
 			}
 		}
 	}
-	// La finestra sta sopra l'ombra: nessuna cella della finestra ha il colore dell'ombra
-	// come sfondo.
+	// La finestra sta sopra l'ombra: nessuna cella della finestra è un retino.
 	for cy := y; cy < y+wh; cy++ {
 		for cx := x; cx < x+ww; cx++ {
-			if g[cy][cx].bg == ombraBg {
-				t.Errorf("cella (%d,%d) della finestra ha lo sfondo dell'ombra", cx, cy)
+			if g[cy][cx].r == '░' {
+				t.Errorf("cella (%d,%d) della finestra mostra il retino dell'ombra", cx, cy)
 			}
 		}
 	}
 }
 
-// L'ombra deriva dal tema: senza Background nello stile è il primo piano
-// scurito (Darken); con Background impostato (Task 9) si usa quello.
+// L'ombra deriva dal tema: il retino ░ ha il primo piano dello stile OverlayShadow
+// (slot border, Task 9) e nessuno sfondo: il contenuto sotto non viene scurito.
 func TestOmbraDerivataDalTema(t *testing.T) {
 	st := stylesPer(t, theme.Names()[0])
 	st.OverlayShadow = lipgloss.NewStyle().Foreground(lipgloss.Color("#8090a0"))
 	out := Overlay(griglia(30, 10), Window("a", "", st, 8, 4), 2, 2, st)
-	ombra := celle(out)[3][10] // (x+2+... ) dentro l'ombra: colonna 2+8 = 10, riga 3
-	if ombra.bg == "" {
-		t.Fatalf("ombra senza sfondo: %+v", ombra)
+	ombra := celle(out)[3][10] // dentro l'ombra: colonna 2+8 = 10, riga 3
+	if ombra.r != '░' || ombra.fg != "128;144;160" || ombra.bg != "" {
+		t.Errorf("ombra = %+v, attesa ░ con fg 128;144;160 e senza sfondo", ombra)
 	}
-	var r, g, b int
-	if _, err := sscan3(ombra.bg, &r, &g, &b); err != nil {
-		t.Fatal(err)
-	}
-	if r >= 0x80 || g >= 0x90 || b >= 0xa0 {
-		t.Errorf("ombra %q non più scura del primo piano #8090a0", ombra.bg)
-	}
-
-	st.OverlayShadow = lipgloss.NewStyle().Background(lipgloss.Color("#102030"))
-	out = Overlay(griglia(30, 10), Window("a", "", st, 8, 4), 2, 2, st)
-	if got := celle(out)[3][10].bg; got != "16;32;48" {
-		t.Errorf("Background dello stile non usato: %q", got)
-	}
-}
-
-func sscan3(s string, r, g, b *int) (int, error) {
-	p := strings.Split(s, ";")
-	vals := []*int{r, g, b}
-	for i, v := range p {
-		n := 0
-		for _, ch := range v {
-			n = n*10 + int(ch-'0')
-		}
-		*vals[i] = n
-	}
-	return 3, nil
 }
 
 // Center posiziona la finestra al centro della base.
@@ -281,7 +255,7 @@ func TestOverlayClampEDimensioni(t *testing.T) {
 	// Posizione fuori: la finestra viene riportata dentro e l'ombra resta visibile.
 	out := Overlay(base, win, 100, 100, st)
 	g := celle(out)
-	if g[bh-1][bw-1].bg == "" {
+	if g[bh-1][bw-1].r != '░' {
 		t.Errorf("ombra non riportata dentro la base: ultima cella %+v", g[bh-1][bw-1])
 	}
 
