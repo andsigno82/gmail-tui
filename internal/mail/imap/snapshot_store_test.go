@@ -327,6 +327,42 @@ func TestFetchHitDoesNotServeOtherEpoch(t *testing.T) {
 	}
 }
 
+// R3 (Piano 16, Task 13): anche la SELECT di ConversationMembers registra l'epoca; senza,
+// un ID uscito da qui e letto cache-first servirebbe il corpo di un'epoca vecchia.
+func TestConversationMembersNotesEpoch(t *testing.T) {
+	c := openTestCache(t)
+	stale := &msg.Message{Ref: msg.MessageRef{ID: "INBOX:3", GmailID: 1003, ThreadID: 100}, BodyText: "CORPO D'EPOCA VECCHIA"}
+	if err := c.SetMessage("INBOX", snapInboxEp+1, stale); err != nil {
+		t.Fatalf("SetMessage: %v", err)
+	}
+	s := snapStore(t, c)
+	if _, err := s.ConversationMembers(context.Background(), "INBOX", 100); err != nil {
+		t.Fatalf("ConversationMembers: %v", err)
+	}
+	if _, ok := s.CachedMessage("INBOX:3"); ok {
+		t.Fatal("il corpo d'epoca vecchia non e stato scartato dalla SELECT dei membri")
+	}
+}
+
+// R3 (Piano 16, Task 13): la SELECT di baseline del Watch registra l'epoca di INBOX: i
+// nuovi arrivi emessi dal Watch non possono incontrare corpi d'epoca vecchia in cache.
+func TestWatchBaselineNotesEpoch(t *testing.T) {
+	c := openTestCache(t)
+	stale := &msg.Message{Ref: msg.MessageRef{ID: "INBOX:9", GmailID: 1009, ThreadID: 100}, BodyText: "CORPO D'EPOCA VECCHIA"}
+	if err := c.SetMessage("INBOX", snapInboxEp+1, stale); err != nil {
+		t.Fatalf("SetMessage: %v", err)
+	}
+	s := snapStore(t, c)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if _, err := s.Watch(ctx); err != nil {
+		t.Fatalf("Watch: %v", err)
+	}
+	if _, ok := s.CachedMessage("INBOX:9"); ok {
+		t.Fatal("il corpo d'epoca vecchia non e stato scartato dalla baseline del Watch")
+	}
+}
+
 func TestFetchTracesCacheHitAndMiss(t *testing.T) {
 	var buf bytes.Buffer
 	trace.Install(trace.New(&buf, ""))

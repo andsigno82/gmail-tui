@@ -237,9 +237,11 @@ func (s *Store) ConversationMembers(ctx context.Context, mailbox string, threadI
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+	sel, err := c.Select(mailbox, nil).Wait()
+	if err != nil {
 		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
+	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 13, R3: ogni SELECT che produce ID
 	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("imap thread members search: %w", err)
