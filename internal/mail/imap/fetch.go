@@ -14,6 +14,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 // ErrMessageNotFound è wrappato nell'errore ritornato quando il fetch di un
@@ -57,8 +58,11 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 			return nil, fmt.Errorf("cache get %s: %w", id, err)
 		}
 		if ok {
+			// Piano 16, Task 8: traccia hit (solo conteggio e byte, mai ID).
+			trace.CacheLookup(trace.OpFetchBody, trace.ModeHit, "", 1, len(m.BodyText)+len(m.BodyHTML))
 			return m, nil // hit: zero rete, NESSUNA attesa sul gate
 		}
+		trace.CacheLookup(trace.OpFetchBody, trace.ModeMiss, "", 0, 0)
 	}
 
 	// Miss: da qui si tocca la rete — il gate rompe l'eventuale IDLE del
@@ -95,7 +99,9 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 		}
 	}
 
-	if s.opts.Cache != nil {
+	// Piano 16, Task 8, D16-T10: il post-filtro has:attachment (heldGate) legge la cache ma
+	// non scrive corpi mai aperti: una ricerca su 500 messaggi svuoterebbe i 200 aperti.
+	if s.opts.Cache != nil && !heldGate {
 		if err := s.opts.Cache.SetMessage(mailbox, uidValidity, m); err != nil {
 			return nil, fmt.Errorf("cache set %s: %w", id, err)
 		}
@@ -178,6 +184,7 @@ func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap
 	if err != nil {
 		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
+	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 8, R3
 
 	section := &imap.FetchItemBodySection{Peek: true} // BODY.PEEK[] = messaggio intero, senza \Seen
 	gm := s.gmailOn()                                 // X-GM-* del messaggio solo se il server li annuncia (Piano 8)

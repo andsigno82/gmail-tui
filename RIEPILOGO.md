@@ -258,6 +258,22 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Revisione indipendente: 3 medi (phishing) e 5 bassi corretti; fix extra:
   riconnessione dopo UnreadCounts lento e Watch che rilegge il client
 
+### Piano 16 — Cache locale e istantanee (2026-11-23)
+- Lista e thread compaiono subito dall'istantanea locale, con "aggiornamento…"
+  e l'età dei dati nella barra; il server li conferma in background
+- Dati provvisori in sola lettura (R1): le azioni sono rifiutate con toast
+  finché la lista fresca della cartella non arriva (R2: sostituzione per intero)
+- Regola d'epoca UIDVALIDITY (R3) e guardia `mail.Guard` che rifiuta gli ID non
+  confermati dal server senza rete (R4)
+- Corpi: ultimi 200 messaggi aperti (LRU); cache schema 4 con migrazione dalla 3;
+  account legato per hash; cartella 0700, file 0600; nessuna cache in demo
+- Connect, wizard e doctor con budget 90 s (Q16-7)
+- Misura simulata: prima lista da istantanea 17-41 ms, thread già visto 7-14 ms
+- Revisione T13: corretti corpi degli espansi dopo la conciliazione, epoca
+  registrata da ogni SELECT, anteprima riallineata; test di `cmd` isolati dalla
+  cache reale (TestBackendFactory l'aveva migrata allo schema 4)
+- Da provare su account reale: sezione Piano 16 di `docs/smoke-checklist.md`
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**

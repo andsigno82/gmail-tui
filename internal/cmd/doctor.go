@@ -23,8 +23,9 @@ type CapsProbe func(ctx context.Context) ([]string, error)
 // (SPECIAL-USE, LIST-EXTENDED) usano; Gmail le annuncia tutte.
 var requiredCaps = []string{"MOVE", "UIDPLUS", "SPECIAL-USE", "LIST-EXTENDED"}
 
-// probeTimeout è il budget del probe IMAP (variabile per i test).
-var probeTimeout = 30 * time.Second
+// probeTimeout è il budget del probe IMAP (variabile per i test). 90 s: Piano 16,
+// Q16-7, come connectTimeout della TUI (il LOGIN reale può superare i 30 s).
+var probeTimeout = 90 * time.Second
 
 // Doctor diagnostica la configurazione e stampa un report.
 // exit code: 0 tutto ok (anche con config assente), 1 problemi bloccanti.
@@ -69,7 +70,8 @@ func Doctor(out io.Writer, cfgPath string, getenv func(string) string, probe Cap
 
 	if dir, err := os.UserCacheDir(); err == nil {
 		cacheDir := filepath.Join(dir, "gmail-tui")
-		if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		// Piano 16, D16-T15: la cartella della cache è privata (0700), come in cache.Open.
+		if err := os.MkdirAll(cacheDir, 0o700); err != nil {
 			fmt.Fprintf(out, "cache: %s NON SCRIVIBILE: %v\n", cacheDir, err)
 			problems++
 		} else {

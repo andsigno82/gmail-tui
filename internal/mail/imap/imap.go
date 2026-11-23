@@ -51,6 +51,10 @@ type Store struct {
 	// intestazioni dei nuovi messaggi: nil in produzione (si usa fetchRefs).
 	headersFn func(mailbox string, uids []imap.UID) ([]msg.MessageRef, error)
 
+	// clock (Piano 16, Task 8) e l'orologio delle istantanee (SavedAt): nil in
+	// produzione (time.Now), iniettabile nei test.
+	clock func() time.Time
+
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
 	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox
@@ -323,18 +327,26 @@ func (s *Store) connected() (*imapclient.Client, error) {
 // Watch solo a sequenza conclusa, così la SELECT non può essere scavalcata
 // da una SELECT del Watch tra SEARCH e FETCH.
 func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, error) {
+	refs, _, err := s.listMessages(ctx, q, pg)
+	return refs, err
+}
+
+// listMessages e il corpo di ListMessages; restituisce anche la UIDVALIDITY della SELECT
+// (0 per la ricerca X-GM-RAW, che non e salvata), usata da ListConversations senza
+// Gmail per l'istantanea (Piano 16, Task 8).
+func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]msg.MessageRef, uint32, error) {
 	if q.Raw != "" { // Piano 8, Task 8: ricerca X-GM-RAW paginata in memoria
 		refs, err := s.searchRaw(ctx, q)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
-		return pageRefs(refs, pg), nil
+		return pageRefs(refs, pg), 0, nil
 	}
 	defer s.acquire(ctx)()
 
-	mailbox, uids, err := s.selectAndSearch(ctx, q)
+	mailbox, uids, uidValidity, err := s.selectAndSearch(ctx, q)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	if q.HasAttachment {
@@ -343,11 +355,11 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		// filterWithAttachment usa fetchMessage(heldGate=true).
 		refs, err := s.fetchRefs(mailbox, uids)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		refs, err = s.filterWithAttachment(ctx, refs)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		limit := pg.Limit
 		if limit == 0 {
@@ -355,9 +367,9 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		}
 		start, end := pageWindow(len(refs), pg.Offset, limit)
 		if start >= end {
-			return nil, nil
+			return nil, uidValidity, nil
 		}
-		return refs[start:end], nil
+		return refs[start:end], uidValidity, nil
 	}
 
 	limit := pg.Limit
@@ -366,37 +378,42 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 	}
 	start, end := pageWindow(len(uids), pg.Offset, limit)
 	if start >= end {
-		return nil, nil
+		return nil, uidValidity, nil
 	}
-	return s.fetchRefs(mailbox, uids[start:end])
+	refs, err := s.fetchRefs(mailbox, uids[start:end])
+	return refs, uidValidity, err
 }
 
 // selectAndSearch è il passo 1-2 condiviso da ListMessages e Search:
 // Select della mailbox di q (q.Label o "INBOX" se vuota: la label seleziona
 // la mailbox, non è un criterio SEARCH) e UIDSearch con i criteri tradotti
-// da searchCriteria(q). Ritorna gli UID matchanti in ordine ascendente.
-func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []imap.UID, error) {
+// da searchCriteria(q). Ritorna gli UID matchanti in ordine ascendente e la
+// UIDVALIDITY della SELECT (gia registrata con noteEpoch: Piano 16, Task 8, R3).
+func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []imap.UID, uint32, error) {
 	if err := ctx.Err(); err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
 	c, err := s.connected()
 	if err != nil {
-		return "", nil, err
+		return "", nil, 0, err
 	}
 
 	mailbox := "INBOX"
 	if q.Label != "" {
 		mailbox = q.Label
 	}
-	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
-		return "", nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	sel, err := c.Select(mailbox, nil).Wait()
+	if err != nil {
+		return "", nil, 0, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
+	// Piano 16, Task 8, R3: l'epoca si registra prima di ogni riga.
+	s.noteEpoch(mailbox, sel.UIDValidity)
 
 	data, err := c.UIDSearch(searchCriteria(q), nil).Wait()
 	if err != nil {
-		return "", nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
+		return "", nil, 0, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
 	}
-	return mailbox, data.AllUIDs(), nil // UID ascendenti
+	return mailbox, data.AllUIDs(), sel.UIDValidity, nil // UID ascendenti
 }
 
 // fetchRefs è il passo 3-5 condiviso da ListMessages e Search: UIDFetch

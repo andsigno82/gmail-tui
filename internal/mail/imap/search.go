@@ -41,7 +41,7 @@ func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, erro
 	}
 	defer s.acquire(ctx)()
 
-	mailbox, uids, err := s.selectAndSearch(ctx, q)
+	mailbox, uids, _, err := s.selectAndSearch(ctx, q)
 	if err != nil {
 		return nil, err
 	}

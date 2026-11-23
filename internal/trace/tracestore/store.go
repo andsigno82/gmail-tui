@@ -60,6 +60,65 @@ func (s *store) GmailExt() bool {
 	return ok && g.GmailExt()
 }
 
+// Piano 16, Task 2: il wrapper inoltra mail.Snapshotter allo store interno
+// (stesso schema di GmailExt); se l'interno non lo implementa risponde miss.
+// Piano 16, Task 7: ogni lettura emette un evento cache (esito e ruolo, mai ID).
+var _ mail.Snapshotter = (*store)(nil)
+
+// cacheMode traduce l'esito di una lettura dalla cache nella modalita della traccia.
+func cacheMode(ok bool) string {
+	if ok {
+		return trace.ModeHit
+	}
+	return trace.ModeMiss
+}
+
+func (s *store) CachedConversations(mailbox string) (mail.ConversationsSnapshot, bool) {
+	var r mail.ConversationsSnapshot
+	ok := false
+	if sn, is := s.in.(mail.Snapshotter); is {
+		r, ok = sn.CachedConversations(mailbox)
+	}
+	n := 0
+	if ok {
+		n = len(r.Rows)
+	}
+	trace.CacheLookup(trace.OpSnapList, cacheMode(ok), s.role(mailbox), n, 0)
+	return r, ok
+}
+
+func (s *store) CachedThread(threadID uint64) (mail.ThreadSnapshot, bool) {
+	var r mail.ThreadSnapshot
+	ok := false
+	if sn, is := s.in.(mail.Snapshotter); is {
+		r, ok = sn.CachedThread(threadID)
+	}
+	n := 0
+	if ok {
+		n = len(r.Refs)
+	}
+	trace.CacheLookup(trace.OpSnapThread, cacheMode(ok), "", n, 0)
+	return r, ok
+}
+
+func (s *store) CachedMessage(id msg.MessageID) (*msg.Message, bool) {
+	var m *msg.Message
+	ok := false
+	if sn, is := s.in.(mail.Snapshotter); is {
+		m, ok = sn.CachedMessage(id)
+	}
+	n, b := 0, 0
+	if ok && m != nil {
+		n, b = 1, len(m.BodyText)+len(m.BodyHTML)
+	}
+	role := ""
+	if mb, _, err := id.Split(); err == nil {
+		role = s.role(mb)
+	}
+	trace.CacheLookup(trace.OpSnapBody, cacheMode(ok), role, n, b)
+	return m, ok
+}
+
 // role traduce un nome di cartella nel ruolo da tracciare. Vuoto = INBOX; un nome
 // non noto (ListMailboxes non ancora letto) vale "label".
 func (s *store) role(name string) string {

@@ -31,7 +31,7 @@ internal/mail/        MailStore interface (store.go) + in-memory Mock (mock.go)
 internal/mcpserver/   MCP server over stdio (`gmail-tui mcp`), read-only Reader, untrusted-content markers (Piano 14); never imports go-imap
 internal/mail/imap/   the ONLY IMAP implementation (go-imap v2), IDLE watch, idleGate
 internal/mail/smtp/   MIME builder + STARTTLS sender (go-smtp)
-internal/mail/cache/  bbolt cache, invalidated by uidvalidity
+internal/mail/cache/  bbolt cache: message bodies (LRU, 200), folder and thread snapshots, invalidated by uidvalidity
 internal/msg/         normalized types, MIME parsing (enmime), Gmail-style query parser, richtext (body → blocks, Piano 15)
 internal/cmd/         CLI subcommands: doctor, fetch, login, send
 internal/config/      TOML config at ~/.config/gmail-tui/config.toml
@@ -171,6 +171,23 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   `internal/app/model.go`.
 - **Cache schema**: bump `schemaVersion` in `internal/mail/cache/cache.go` whenever
   `msg.Message` gains or changes a cached field, or old entries read as zero values.
+  Piano 16 moved it to 4; the 3 to 4 migration (`migrate.go`) keeps the message bodies.
+- **Snapshots are provisional (Piano 16, R1-R4)**: `mail.Snapshotter` is optional, not part
+  of `MailStore`. Its rows and threads carry MessageIDs of an old epoch, so they are
+  read-only until a fresh `ListConversations` replaces the list. Every action key goes
+  through `refuseWhileProvisional` (`internal/app/provisional.go`): a new action key must be
+  added to `isActionKey`. `mail.Guard` (`internal/mail/guard.go`) refuses any unconfirmed
+  MessageID with `mail.ErrNotConfirmed` before the network; snapshot results never confirm IDs.
+- **Reconcile by ThreadID + GmailID, never by UID or MessageID**: a UID is reused only
+  with a new UIDVALIDITY. Use `freshRow` (`internal/app/provisional.go`). The IMAP store
+  calls `Cache.NoteUIDValidity` (`internal/mail/imap/snapshot.go`), which drops the bodies
+  and snapshots of a mailbox whose epoch changed (R3).
+- **Wrappers forward `Snapshotter`**: `tracestore` and `mail.Guard` forward it as they do
+  `GmailExt`. The Mock does not implement it, so demo mode has no snapshots.
+- **LRU touches are buffered**: reads record touches in memory (`pending`, `lru.go`) and
+  write them at the next write or at `Close`. `Close` compacts only above 4 MiB with more
+  than half of the file free. The `has:attachment` post-filter writes no bodies and no touches
+  (D16-T10).
 - **Gated store methods**: a new `Store` method acquires `s.gate`; a method that calls
   another gated method passes `heldGate=true` (the gate is not reentrant, see
   `fetchMessage` in `internal/mail/imap/fetch.go`).

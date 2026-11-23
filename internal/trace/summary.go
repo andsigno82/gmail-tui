@@ -109,6 +109,14 @@ func Summarize(r io.Reader, w io.Writer) error {
 		return g
 	}
 
+	// Piano 16, Task 7: esiti della cache per tipo (Op) e durate dell'istantanea mostrata.
+	type cacheStat struct {
+		hit, miss, epoch int
+		age              []int64
+	}
+	var cacheOrder []string
+	cacheOps := map[string]*cacheStat{}
+
 	for sc.Scan() {
 		var e Event
 		if err := json.Unmarshal(sc.Bytes(), &e); err != nil || e.K == "" {
@@ -148,6 +156,23 @@ func Summarize(r io.Reader, w io.Writer) error {
 				viewBytesAll = append(viewBytesAll, int64(e.ViewBytes))
 			}
 			frames = append(frames, frame{label: label, screen: e.Screen, t: e.T, upd: e.Upd, view: e.View, viewBytes: e.ViewBytes})
+		case "cache":
+			c, ok := cacheOps[e.Op]
+			if !ok {
+				c = &cacheStat{}
+				cacheOps[e.Op] = c
+				cacheOrder = append(cacheOrder, e.Op)
+			}
+			switch e.Mode {
+			case ModeHit:
+				c.hit++
+			case ModeMiss:
+				c.miss++
+			case ModeEpoch:
+				c.epoch++
+			case ModeAge:
+				c.age = append(c.age, e.Dur)
+			}
 		case "phase":
 			phases = append(phases, e)
 		case "body":
@@ -247,6 +272,23 @@ func Summarize(r io.Reader, w io.Writer) error {
 			fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%s\n", k, len(g.dur),
 				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)),
 				kib(float64(sumOf(g.bytes))/float64(len(g.bytes))))
+		}
+		_ = tw.Flush()
+	}
+	if len(cacheOrder) > 0 {
+		fmt.Fprintln(w, "\nCache (hit rate per tipo; eta mediana dell'istantanea mostrata)")
+		fmt.Fprintln(tw, "tipo\thit\tmiss\tepoca\thit rate\teta mediana")
+		for _, k := range cacheOrder {
+			c := cacheOps[k]
+			rate := "-"
+			if tot := c.hit + c.miss; tot > 0 {
+				rate = fmt.Sprintf("%.1f%%", 100*float64(c.hit)/float64(tot))
+			}
+			age := "-"
+			if len(c.age) > 0 {
+				age = secs(median(c.age))
+			}
+			fmt.Fprintf(tw, "%s\t%d\t%d\t%d\t%s\t%s\n", k, c.hit, c.miss, c.epoch, rate, age)
 		}
 		_ = tw.Flush()
 	}

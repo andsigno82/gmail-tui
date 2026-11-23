@@ -84,6 +84,7 @@ type msgLoaded struct {
 	bodies    map[msg.MessageID]*msg.Message // corpi già scaricati: gli espansi all'apertura
 	err       error
 	requested msg.MessageID
+	cached    bool // Piano 16, Task 10: da istantanea (provvisorio), non dal server
 }
 
 // opDone è il risultato di una mutazione (feedback in status bar). refresh
@@ -187,6 +188,7 @@ type previewLoaded struct {
 	refs   []msg.MessageRef // righe della conversazione (Piano 8, Task 13)
 	bodies map[msg.MessageID]*msg.Message
 	err    error
+	cached bool // Piano 16, Task 10: da istantanea (provvisorio), non dal server
 }
 
 // bodyLoaded è il corpo di un messaggio della conversazione richiesto alla selezione

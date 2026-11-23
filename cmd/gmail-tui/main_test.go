@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/mail/imap"
 	"github.com/andsigno82/gmail-tui/internal/mail/smtp"
+	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
 // Conformance (Piano 4, Task 4): sia il Sender SMTP che il Mock soddisfano
@@ -215,16 +217,106 @@ func TestSelectStoreIMAP(t *testing.T) {
 
 // --- backendFactory ------------------------------------------------------------
 
-// TestBackendFactory (Piano 4, Task 5): la factory passata al wizard costruisce
-// i backend REALI con le credenziali verificate SENZA toccare la rete (il dial
-// avviene alla prima operazione).
+// TestBackendFactory (Piano 4, Task 5; Piano 16, Task 11): la factory passata al
+// wizard costruisce i backend REALI con le credenziali verificate SENZA toccare
+// la rete (il dial avviene alla prima operazione). Lo store è avvolto dalla
+// guardia R4: un ID non confermato è rifiutato senza rete.
 func TestBackendFactory(t *testing.T) {
-	store, sender := backendFactory("user@gmail.com", "pw")
-	if _, ok := store.(*imap.Store); !ok {
-		t.Errorf("store = %T, voglio *imap.Store", store)
-	}
+	store, sender := backendsWith("user@gmail.com", "pw", nil)
 	if _, ok := sender.(*smtp.Sender); !ok {
 		t.Errorf("sender = %T, voglio *smtp.Sender", sender)
+	}
+	err := store.MarkRead(context.Background(), []msg.MessageID{msg.NewID("INBOX", 7)}, true)
+	if !errors.Is(err, mail.ErrNotConfirmed) {
+		t.Errorf("MarkRead su ID non confermato = %v, voglio mail.ErrNotConfirmed", err)
+	}
+}
+
+// --- cache legata all'account (Piano 16, Task 11) ------------------------------
+
+// isolaCache porta UserCacheDir e UserConfigDir in una cartella temporanea.
+func isolaCache(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+}
+
+// cacheDirDi è la cartella della cache (UserCacheDir/gmail-tui) sotto l'isolamento.
+func cacheDirDi(t *testing.T) string {
+	t.Helper()
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(dir, "gmail-tui")
+}
+
+// Piano 16, Task 11, D16-A4/D16-T15: senza password (demo) nessun file di cache.
+func TestDemoCreatesNoCacheFile(t *testing.T) {
+	isolaCache(t)
+	if c := cacheFor("ada@example.com", ""); c != nil {
+		closeCache(c)
+		t.Fatal("cacheFor senza password = cache aperta, voglio nil")
+	}
+	if _, err := os.Stat(filepath.Join(cacheDirDi(t), "cache.db")); !os.IsNotExist(err) {
+		t.Errorf("file cache in demo: err = %v, voglio file assente", err)
+	}
+}
+
+// Piano 16, Task 11, D16-A4: cartella 0700 e cache.db 0600.
+func TestOpenCacheDirIs0700(t *testing.T) {
+	isolaCache(t)
+	c := openCache("ada@example.com")
+	if c == nil {
+		t.Fatal("openCache = nil, voglio cache aperta")
+	}
+	defer closeCache(c)
+	assertPerm(t, cacheDirDi(t), 0o700)
+	assertPerm(t, filepath.Join(cacheDirDi(t), "cache.db"), 0o600)
+}
+
+// Piano 16, Task 11: una cartella 0755 creata da versioni precedenti viene
+// riportata a 0700 all'apertura della cache.
+func TestOpenCacheTightensExistingDir(t *testing.T) {
+	isolaCache(t)
+	dir := cacheDirDi(t)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c := openCache("ada@example.com")
+	if c == nil {
+		t.Fatal("openCache = nil, voglio cache aperta")
+	}
+	defer closeCache(c)
+	assertPerm(t, dir, 0o700)
+}
+
+// Piano 16, Task 11: lo store reale è avvolto dalla guardia R4 e inoltra
+// l'istantanea (Snapshotter) anche con la traccia spenta.
+func TestRealStoreIsGuardedAndSnapshotter(t *testing.T) {
+	st := realStore(imap.NewStore(imap.Options{Addr: imapAddr, Username: "ada@example.com", Password: "pw"}))
+	if _, ok := st.(mail.Snapshotter); !ok {
+		t.Fatalf("store reale = %T, voglio mail.Snapshotter", st)
+	}
+	err := st.MarkRead(context.Background(), []msg.MessageID{msg.NewID("INBOX", 7)}, true)
+	if !errors.Is(err, mail.ErrNotConfirmed) {
+		t.Errorf("MarkRead su ID non confermato = %v, voglio mail.ErrNotConfirmed", err)
+	}
+}
+
+func assertPerm(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != want {
+		t.Errorf("permessi di %s = %o, voglio %o", filepath.Base(path), got, want)
 	}
 }
 

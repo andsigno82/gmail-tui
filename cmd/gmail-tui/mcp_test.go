@@ -2,6 +2,8 @@ package main
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,6 +11,33 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 )
+
+// Piano 16, Task 11, D16-T16: il server MCP non apre la cache (nessun dato
+// stantio): con una password e stdin chiuso il server termina senza creare
+// cache.db.
+func TestMCPDoesNotOpenCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("GMAIL_APP_PASSWORD", "pw")
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = devNull.Close() }()
+	old := os.Stdin
+	os.Stdin = devNull
+	t.Cleanup(func() { os.Stdin = old })
+	_ = runMCP(nil)
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "gmail-tui", "cache.db")); !os.IsNotExist(err) {
+		t.Errorf("runMCP ha aperto la cache: err = %v, voglio file assente", err)
+	}
+}
 
 // Piano 14, Task 5: --help esce 0 senza leggere la config né toccare la rete.
 func TestRunMCPHelpExitsZero(t *testing.T) {

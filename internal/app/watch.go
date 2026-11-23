@@ -53,12 +53,16 @@ func startWatch(st mail.MailStore, ctx context.Context) tea.Cmd {
 	}
 }
 
-// connectCmd chiama Store.Connect fuori dal loop UI con un budget di 30s
-// (stesso valore del wizard): l'esito torna come connResult e decide se
-// partire con load/Watch (bugfix 2026-11-22).
+// connectTimeout e il budget del Connect d'avvio: 90 s (Piano 16, Q16-7; il LOGIN
+// misurato, 28,9 s, era a ridosso dei 30 s di prima).
+const connectTimeout = 90 * time.Second
+
+// connectCmd chiama Store.Connect fuori dal loop UI con un budget di connectTimeout:
+// l'esito torna come connResult e decide se partire con load/Watch (bugfix
+// 2026-11-22).
 func connectCmd(st mail.MailStore, ctx context.Context) tea.Cmd {
 	return func() tea.Msg {
-		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		c, cancel := context.WithTimeout(ctx, connectTimeout)
 		defer cancel()
 		return connResult{err: st.Connect(c)}
 	}

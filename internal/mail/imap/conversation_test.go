@@ -76,14 +76,33 @@ type gmailFetch struct {
 // All Mail, il FETCH tutti i messaggi della cartella (il client filtra gli UID).
 func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 	t.Helper()
+	return scriptedGmailServerOpts(t, boxes, gmailServerOpts{})
+}
+
+// gmailServerOpts sono le varianti del server scriptato (Piano 16, Task 8).
+type gmailServerOpts struct {
+	epochs map[string]uint32 // UIDVALIDITY annunciata dalla SELECT per mailbox (0/assente = nessuna)
+	trash  bool              // LIST con \Trash e capability MOVE
+}
+
+func scriptedGmailServerOpts(t *testing.T, boxes map[string][]gmailFetch, o gmailServerOpts) string {
+	t.Helper()
 	box := ""
 	respond := func(cmd string) []string {
 		switch {
 		case strings.HasPrefix(cmd, "LIST"):
-			return []string{`* LIST (\HasNoChildren) "/" INBOX`, `* LIST (\HasNoChildren \All) "/" "[Gmail]/All Mail"`}
+			lines := []string{`* LIST (\HasNoChildren) "/" INBOX`, `* LIST (\HasNoChildren \All) "/" "[Gmail]/All Mail"`}
+			if o.trash {
+				lines = append(lines, `* LIST (\HasNoChildren \Trash) "/" "[Gmail]/Trash"`)
+			}
+			return lines
 		case strings.HasPrefix(cmd, "SELECT"):
 			box = strings.Trim(strings.TrimPrefix(cmd, "SELECT "), `"`)
-			return []string{fmt.Sprintf("* %d EXISTS", len(boxes[box]))}
+			lines := []string{fmt.Sprintf("* %d EXISTS", len(boxes[box]))}
+			if v := o.epochs[box]; v != 0 {
+				lines = append(lines, fmt.Sprintf("* OK [UIDVALIDITY %d] epoca", v))
+			}
+			return lines
 		case strings.HasPrefix(cmd, "UID SEARCH"):
 			// come Gmail: i criteri X-GM-THRID nel comando filtrano i thread
 			wanted := map[string]bool{}
@@ -140,7 +159,11 @@ func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 		}
 		return nil
 	}
-	return scriptedIMAP(t, "IMAP4rev1 X-GM-EXT-1 UIDPLUS", respond)
+	caps := "IMAP4rev1 X-GM-EXT-1 UIDPLUS"
+	if o.trash {
+		caps += " MOVE"
+	}
+	return scriptedIMAP(t, caps, respond)
 }
 
 func TestListConversationsGmailOneRowPerThread(t *testing.T) {

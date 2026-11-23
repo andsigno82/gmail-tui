@@ -14,7 +14,7 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] With no config and no `GMAIL_APP_PASSWORD`, `gmail-tui` starts the **wizard**: welcome step shows the 2FA instructions and the app-passwords URL; `o` opens that URL in the browser; `Enter` continues; `s` skips.
 - [ ] Address step: empty + `Enter` → error ("inserisci l'indirizzo…"); no `@` → error ("manca @"); valid address → next step.
 - [ ] Password step: input is masked (`*`); `Esc` goes back to the address step keeping the typed value.
-- [ ] Wrong password at the test step: connection test fails within its 30 s budget, a clear error is shown and the wizard returns to the password step with the credentials retained — retry works.
+- [ ] Wrong password at the test step: connection test fails within its 90 s budget, a clear error is shown and the wizard returns to the password step with the credentials retained — retry works.
 - [ ] Correct password: wizard completes, the config file is written (`~/.config/gmail-tui/config.toml` on Linux, `~/Library/Application Support/gmail-tui/config.toml` on macOS) **without the password** (grep it), the password is in the keychain, the real inbox loads and the status bar shows "configurazione completata — connesso come …".
 - [ ] With a config present but no password: **demo mode** — full-width yellow banner "demo mode — set GMAIL_APP_PASSWORD", inbox seeded with 6 realistic messages (3 unread ●, 2 starred ★).
 - [ ] Wizard skip (`s`): lands in the same seeded demo mode with the banner.
@@ -243,3 +243,19 @@ Run on Andrea's Ghostty terminal to measure where the time goes. Do not paste th
 - [ ] `gmail-tui trace <path>` prints the summary: startup timeline, `MailStore` operations with the gate wait columns, messages with `Update`/`View`, the slowest frames, bytes per `View` and the body rendering rows.
 - [ ] Privacy: `grep -ciE "@|http|<your label names>|<a subject>" <path>` prints 0; typed letters appear only as `"key":"char"`.
 - [ ] Paste the summary in the chat to compare startup, key and message-opening times with the demo mode.
+
+## Local cache and snapshots (Piano 16) — real account only
+
+Run the steps in order: the second start needs the cache filled by the first. Close gmail-tui between steps unless a step says otherwise.
+
+- [ ] Demo mode (no password, `s` in the wizard): no `cache.db` appears in the `gmail-tui` user cache directory.
+- [ ] First real start with an empty cache: the splash stays until the first list arrives. Quit.
+- [ ] Second real start: the list appears before Connect finishes; the status bar shows `aggiornamento… (dati di N fa)`, where N matches the time since the last session. When the fresh list arrives, that text disappears.
+- [ ] While `aggiornamento…` shows, press `a` on a row: toast `aggiornamento in corso: azione disponibile tra poco`. The message stays in INBOX (check on the Gmail web). The same toast for `s`, `#` and `r`.
+- [ ] After the text disappears, `a` on the same row works, and the message that moves is the one on that row (check on the Gmail web).
+- [ ] Open a conversation seen before: the thread shows at once. The fresh version replaces it without moving the cursor or collapsing expanded messages.
+- [ ] Connect failure with a snapshot: turn Wi-Fi off and start. The list stays; the status bar reads `connessione fallita — lista non aggiornata, premi R per riprovare`; the toast `connessione fallita: …` appears; `a` shows the provisional toast. Turn Wi-Fi on and press `R`: the status clears when the fresh list arrives, and `a` works.
+- [ ] Account change: set another `address` in the config and start. No mail of the previous account appears before Connect. `cache.db` is still there (its account hash changed).
+- [ ] Permissions: `ls -ld` on the `gmail-tui` cache folder shows `drwx------`; `ls -l` on `cache.db` shows `-rw-------`.
+- [ ] Trace: with `GMAIL_TUI_TRACE=1` on the second start, the file contains `"k":"cache"` events with `"op":"snap_list"` and `"mode":"hit"`; `gmail-tui trace <path>` runs without errors.
+- [ ] Delete the `gmail-tui` cache folder with gmail-tui closed. The next start behaves like the first one (splash until Connect).

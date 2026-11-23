@@ -238,6 +238,11 @@ func openAttachment(st mail.MailStore, id msg.MessageID, part int, ext string) t
 // clickAttachment gestisce thread.AttachmentClickMsg: scarta i messaggi stantii e gli
 // indici fuori range; un tipo non in allowlist da un toast e non scrive nulla.
 func (m Model) clickAttachment(ev thread.AttachmentClickMsg) (Model, tea.Cmd) {
+	if reason := m.provisionalReason(); reason != "" {
+		// Piano 16, Task 9 (R1): l'allegato si legge dal server per ID.
+		cmd := m.toast.Push(toast.Info, reason)
+		return m, cmd
+	}
 	cur := m.thread.Msg()
 	if cur == nil || m.thread.Ref().ID != ev.ID || ev.Index < 0 || ev.Index >= len(cur.Attachments) {
 		return m, nil

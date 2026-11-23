@@ -5,6 +5,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -22,7 +23,23 @@ import (
 // cestino restano fuori (Q5/D8-7), salvo quando la cartella corrente è spam o
 // cestino: allora si aggiungono i suoi membri. La riga aperta c'è sempre.
 func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox) ([]msg.MessageRef, map[msg.MessageID]*msg.Message, error) {
+	return loadConv(ctx, st, ref, folder, false)
+}
+
+// errConvGone: la conversazione di una riga provvisoria non esiste piu sul server.
+var errConvGone = errors.New("conversazione non più disponibile")
+
+// loadConv e loadConversation; con prov (riga di una lista provvisoria, Piano 16,
+// Task 10, D16-T13) lavora SOLO col ThreadID: X-GM-THRID e globale in Gmail,
+// indipendente dall'epoca, mentre ref.ID (mailbox + UID d'epoca vecchia) non si
+// passa mai al server (un FetchMessage(ref.ID) mostrerebbe un altro messaggio). Gli
+// ID usati sono solo quelli che ThreadMessages e ConversationMembers restituiscono
+// (confermati). Il chiamante non lo invoca con prov e ThreadID 0.
+func loadConv(ctx context.Context, st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox, prov bool) ([]msg.MessageRef, map[msg.MessageID]*msg.Message, error) {
 	if ref.ThreadID == 0 {
+		if prov {
+			return nil, nil, errConvGone // difesa: senza ThreadID si legge solo la cache
+		}
 		mm, err := st.FetchMessage(ctx, ref.ID)
 		if err != nil {
 			return nil, nil, err
@@ -56,7 +73,9 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 		}
 		extra = append(extra, members...)
 	}
-	extra = append(extra, ref.ID)
+	if !prov {
+		extra = append(extra, ref.ID)
+	}
 	for _, id := range extra {
 		if haveID[id] {
 			continue
@@ -73,6 +92,9 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 		bodies[id] = mm
 		all = append(all, mm.Ref)
 	}
+	if len(all) == 0 {
+		return nil, nil, errConvGone
+	}
 	sort.SliceStable(all, func(i, j int) bool { return all[i].Date.Before(all[j].Date) })
 	for _, id := range thread.DefaultExpanded(all) {
 		if bodies[id] != nil {
@@ -85,6 +107,76 @@ func loadConversation(ctx context.Context, st mail.MailStore, ref msg.MessageRef
 		bodies[id] = mm
 	}
 	return all, bodies, nil
+}
+
+// cachedConversation costruisce la conversazione di ref dalla sola cache locale
+// (Piano 16, Task 10, D16-T13): i ref di CachedThread (dedup per GmailID come
+// copyKey, ordine cronologico) con i corpi di CachedMessage; i corpi mancanti
+// restano vuoti ("caricamento…"). Senza ThreadID, il solo messaggio della riga, solo
+// se la riga e provvisoria (per una riga fresca FetchMessage e gia cache-first).
+// ok false = niente in cache. Il risultato e PROVVISORIO.
+func cachedConversation(sn mail.Snapshotter, ref msg.MessageRef, prov bool) ([]msg.MessageRef, map[msg.MessageID]*msg.Message, bool) {
+	if ref.ThreadID == 0 {
+		if !prov {
+			return nil, nil, false
+		}
+		mm, ok := sn.CachedMessage(ref.ID)
+		if !ok || mm == nil {
+			return nil, nil, false
+		}
+		return []msg.MessageRef{mm.Ref}, map[msg.MessageID]*msg.Message{mm.Ref.ID: mm}, true
+	}
+	snap, ok := sn.CachedThread(ref.ThreadID)
+	if !ok || len(snap.Refs) == 0 {
+		return nil, nil, false
+	}
+	have := make(map[string]bool, len(snap.Refs))
+	all := make([]msg.MessageRef, 0, len(snap.Refs))
+	for _, r := range snap.Refs {
+		if !have[copyKey(r)] {
+			have[copyKey(r)] = true
+			all = append(all, r)
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Date.Before(all[j].Date) })
+	bodies := make(map[msg.MessageID]*msg.Message, len(all))
+	for _, r := range all {
+		if mm, ok := sn.CachedMessage(r.ID); ok && mm != nil {
+			bodies[r.ID] = mm
+		}
+	}
+	return all, bodies, true
+}
+
+// fetchMsgCached e la Cmd dell'apertura da istantanea (nessuna Cmd senza
+// Snapshotter o senza niente in cache: nessun messaggio). Solo disco, nessuna rete.
+func fetchMsgCached(st mail.MailStore, ref msg.MessageRef, prov bool) tea.Cmd {
+	sn, ok := st.(mail.Snapshotter)
+	if !ok {
+		return nil
+	}
+	return func() tea.Msg {
+		refs, bodies, ok := cachedConversation(sn, ref, prov)
+		if !ok {
+			return nil
+		}
+		return msgLoaded{refs: refs, bodies: bodies, requested: ref.ID, cached: true}
+	}
+}
+
+// fetchMsgFor e fetchMsg per una riga che puo essere provvisoria: con prov il
+// caricamento fresco usa solo il ThreadID; senza ThreadID nessuna Cmd (solo cache).
+func fetchMsgFor(st mail.MailStore, ref msg.MessageRef, folder mail.Mailbox, prov bool) tea.Cmd {
+	if !prov {
+		return fetchMsg(st, ref, folder)
+	}
+	if ref.ThreadID == 0 {
+		return nil
+	}
+	return func() tea.Msg {
+		refs, bodies, err := loadConv(context.Background(), st, ref, folder, true)
+		return msgLoaded{refs: refs, bodies: bodies, err: err, requested: ref.ID}
+	}
 }
 
 // copyKey identifica il messaggio: il GmailID (uguale in ogni mailbox), o l'ID se

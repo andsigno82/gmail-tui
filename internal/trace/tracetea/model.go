@@ -30,6 +30,10 @@ type state struct {
 	connected  bool // connResult visto
 	listLoaded bool // primo msgsLoaded visto
 	listView   bool // prima View dopo il caricamento della lista emessa
+
+	// Piano 16, Task 7: lista mostrata dall'istantanea (prima della lista fresca).
+	snapPending bool // snapshotLoaded visto con la lista ancora non caricata
+	snapView    bool // fase snapshot_list_view emessa
 }
 
 // Model e il wrapper: implementa tea.Model e inoltra ExitMessages.
@@ -94,6 +98,14 @@ func (w Model) View() tea.View {
 		w.st.firstView = true
 		trace.Emit(trace.Event{K: "phase", Op: "first_view"})
 	}
+	if w.st.snapPending {
+		w.st.snapPending = false
+		// Piano 16, Task 7: la fase vale solo se la lista fresca non e ancora arrivata.
+		if !w.st.listLoaded && !w.st.snapView {
+			w.st.snapView = true
+			trace.Emit(trace.Event{K: "phase", Op: "snapshot_list_view"})
+		}
+	}
 	if w.st.listLoaded && !w.st.listView {
 		w.st.listView = true
 		trace.Emit(trace.Event{K: "phase", Op: "first_list_view"})
@@ -127,6 +139,9 @@ func (w Model) phaseAfterUpdate(op string) {
 	case strings.HasSuffix(op, ".msgsLoaded") && !w.st.listLoaded:
 		w.st.listLoaded = true
 		trace.Emit(trace.Event{K: "phase", Op: "list_loaded"})
+	case strings.HasSuffix(op, ".snapshotLoaded") && !w.st.listLoaded && !w.st.snapView:
+		// Piano 16, Task 7: la prima lista da istantanea, emessa alla View successiva.
+		w.st.snapPending = true
 	}
 }
 

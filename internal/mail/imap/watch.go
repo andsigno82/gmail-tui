@@ -130,7 +130,7 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	// l'idle loop: qui il watch-goroutine non esiste ancora (niente idling
 	// possibile), acquire può solo attendere ops in flight.
 	release := s.acquire(ctx)
-	st, err := baselineState(c)
+	st, err := s.baselineState(c)
 	release()
 	if err != nil {
 		return nil, err
@@ -387,6 +387,7 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 	if err != nil {
 		return fmt.Errorf("imap select %s: %w", st.mailbox, err)
 	}
+	s.noteEpoch(st.mailbox, sel.UIDValidity) // Piano 16, Task 13, R3: gli ID degli eventi escono da questa SELECT
 	if sel.UIDValidity != st.uidValid {
 		// Nuova epoca della mailbox: ri-baseline senza eventi (gli UID
 		// vecchi e nuovi non sono confrontabili).
@@ -456,11 +457,12 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 
 // baselineState seleziona INBOX e ne ricava lo stato iniziale: UIDVALIDITY e
 // UID più alto esistente (0 se vuota).
-func baselineState(c *imapclient.Client) (*watchState, error) {
+func (s *Store) baselineState(c *imapclient.Client) (*watchState, error) {
 	sel, err := c.Select("INBOX", nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("imap select INBOX: %w", err)
 	}
+	s.noteEpoch("INBOX", sel.UIDValidity) // Piano 16, Task 13, R3: anche la SELECT del Watch
 	last, err := highestUID(c)
 	if err != nil {
 		return nil, err
