@@ -11,10 +11,12 @@ package thread
 
 import (
 	"net/url"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/msg/richtext"
 	"github.com/andsigno82/gmail-tui/internal/ui/render"
 )
 
@@ -65,7 +67,16 @@ func linkLabel(s string) string {
 	if u.Opaque != "" {
 		return u.Opaque
 	}
-	return u.Host
+	// Host in punycode se ha caratteri non ASCII: un'omografia non si legge come il
+	// dominio vero (revisione Piano 15, punto 3).
+	host := richtext.ASCIIHost(u.Hostname())
+	if strings.HasPrefix(u.Host, "[") {
+		host = "[" + host + "]"
+	}
+	if p := u.Port(); p != "" {
+		host += ":" + p
+	}
+	return host
 }
 
 // OpenURL apre un URL gia sanificato nel browser di sistema (stesso comando senza

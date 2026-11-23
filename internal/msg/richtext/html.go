@@ -2,7 +2,6 @@ package richtext
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 	"strings"
 	"unicode"
@@ -404,7 +403,7 @@ func (w *walker) button(n *html.Node) (Block, bool) {
 	return Block{
 		Kind: KindButton,
 		Runs: []Run{{Text: label, Href: href}},
-		Host: hostOf(href),
+		Host: HrefHost(href), // ASCII (punycode): un'omografia non si legge come il dominio vero (revisione 2026-11-23)
 		Warn: DomainMismatch(label, href),
 	}, true
 }
@@ -423,26 +422,6 @@ func findLink(n *html.Node) *html.Node {
 		}
 	}
 	return nil
-}
-
-// hostOf e' il dominio di destinazione di un href gia' sanificato: l'host per
-// http(s), il dominio dell'indirizzo per mailto; minuscolo.
-func hostOf(href string) string {
-	u, err := url.Parse(href)
-	if err != nil {
-		return ""
-	}
-	if strings.EqualFold(u.Scheme, "mailto") {
-		addr := u.Opaque
-		if i := strings.IndexByte(addr, '?'); i >= 0 {
-			addr = addr[:i]
-		}
-		if i := strings.LastIndexByte(addr, '@'); i >= 0 {
-			return strings.ToLower(addr[i+1:])
-		}
-		return ""
-	}
-	return strings.ToLower(u.Hostname())
 }
 
 // list converte <ul>/<ol>. Ogni elemento e' un Block paragrafo: Runs = testo

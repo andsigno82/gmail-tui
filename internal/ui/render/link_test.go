@@ -73,7 +73,14 @@ func TestLinkPhishingTable(t *testing.T) {
 		{"numero decimale", "1.5", "https://evil.example/", false},
 		{"nome file (TLD non ICANN)", "file.txt", "https://evil.example/", false},
 		{"una parola", "Scarica", "https://evil.example/", false},
-		{"frase con dominio dentro", "vai su amazon.it ora", "https://evil.example/", false},
+		// Fail-safe (revisione 2026-11-23): i domini dentro una frase contano.
+		{"frase con dominio dentro", "vai su amazon.it ora", "https://evil.example/", true},
+		{"frase con dominio dentro, stesso dominio", "vai su amazon.it ora", "https://www.amazon.it/", false},
+		{"URL poi parole", "https://paypal.com/ accedi", "https://evil.example/", true},
+		{"punto finale e parentesi", "(paypal.com).", "https://evil.example/", true},
+		{"email come testo", "info@paypal.com", "https://evil.example/", true},
+		{"mailto con %40", "paypal.com", "mailto:x%40evil.example", true},
+		{"testo senza domini", "Accedi al tuo account", "https://evil.example/", false},
 		// mailto.
 		{"mailto uguale", "info@amazon.it", "mailto:info@amazon.it", false},
 		{"mailto stesso dominio", "info@amazon.it", "mailto:altro@www.amazon.it", false},
