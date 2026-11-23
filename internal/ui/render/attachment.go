@@ -14,12 +14,12 @@ const attachNameCols = 40
 // (Piano 15, Task 7, D15-06). Il nome e sanificato e troncato a 40 colonne; il chip
 // intero si tronca a c.Width se positivo. La Zone ZoneAttachment porta Index, senza URL.
 func Attachment(name, ctype string, size int64, index int, c Ctx) Out {
-	nm := cleanLabel(name)
+	nm := cleanText(name)
 	if nm == "" {
 		nm = "(senza nome)"
 	}
 	nm = truncCols(nm, attachNameCols)
-	tp := cleanLabel(ctype)
+	tp := cleanText(ctype)
 	if tp == "" {
 		tp = "tipo sconosciuto"
 	}
