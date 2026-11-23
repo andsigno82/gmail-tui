@@ -148,6 +148,49 @@ func TestStopStampaIlPercorsoSuStderr(t *testing.T) {
 	}
 }
 
+// Piano 16, Task 7 (D16-T14): gli eventi cache portano solo Op, Mode, Role,
+// conteggi e durate: nessun altro campo.
+func TestEventiCacheSoloCampiAmmessi(t *testing.T) {
+	var buf bytes.Buffer
+	Install(New(&buf, ""))
+	defer Uninstall()
+
+	CacheLookup(OpSnapBody, ModeHit, "inbox", 1, 1234)
+	CacheLookup(OpSnapList, ModeMiss, "label", 0, 0)
+	SnapshotAge(OpSnapList, 3*time.Second)
+
+	var cache []map[string]any
+	for _, ln := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		var m map[string]any
+		if err := json.Unmarshal([]byte(ln), &m); err != nil {
+			t.Fatal(err)
+		}
+		if m["k"] == "cache" {
+			cache = append(cache, m)
+		}
+	}
+	if len(cache) != 3 {
+		t.Fatalf("attesi 3 eventi cache, ho %d: %s", len(cache), buf.String())
+	}
+	allowed := map[string]bool{"t": true, "k": true, "op": true, "dur_us": true, "n": true, "bytes": true, "role": true, "mode": true}
+	for _, m := range cache {
+		for k := range m {
+			if !allowed[k] {
+				t.Errorf("campo %q non ammesso nell'evento cache: %v", k, m)
+			}
+		}
+	}
+	if m := cache[0]; m["op"] != OpSnapBody || m["mode"] != ModeHit || m["role"] != "inbox" || m["n"] != float64(1) || m["bytes"] != float64(1234) {
+		t.Errorf("hit sbagliato: %v", m)
+	}
+	if m := cache[1]; m["mode"] != ModeMiss || m["role"] != "label" {
+		t.Errorf("miss sbagliato: %v", m)
+	}
+	if m := cache[2]; m["op"] != OpSnapList || m["mode"] != ModeAge || m["dur_us"] != float64(3_000_000) {
+		t.Errorf("eta sbagliata: %v", m)
+	}
+}
+
 func TestErroreNonEntraMaiNellaTraccia(t *testing.T) {
 	var buf bytes.Buffer
 	Install(New(&buf, ""))

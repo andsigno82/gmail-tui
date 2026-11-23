@@ -21,6 +21,7 @@ type fake struct {
 type connResult struct{} // stessi nomi dei messaggi dell'app: la fase si riconosce dal tipo
 type msgsLoaded struct{}
 type customMsg struct{ secret string }
+type snapshotLoaded struct{} // istantanea della lista (Piano 16, Task 9)
 
 func (f fake) Init() tea.Cmd { return nil }
 func (f fake) Update(m tea.Msg) (tea.Model, tea.Cmd) {
@@ -145,6 +146,56 @@ func TestFasiDAvvio(t *testing.T) {
 		ph = append(ph, e.Op)
 	}
 	want := []string{"first_view", "connected", "list_loaded", "first_list_view"}
+	if strings.Join(ph, ",") != strings.Join(want, ",") {
+		t.Errorf("fasi = %v, attese %v", ph, want)
+	}
+}
+
+// Piano 16, Task 7: la prima lista mostrata dall'istantanea emette
+// snapshot_list_view una sola volta, prima della lista fresca.
+func TestFaseSnapshotListView(t *testing.T) {
+	var buf bytes.Buffer
+	trace.Install(trace.New(&buf, ""))
+	defer trace.Uninstall()
+
+	m := Wrap(fake{})
+	_ = m.View()
+	m, _ = m.Update(snapshotLoaded{})
+	_ = m.View()
+	m, _ = m.Update(snapshotLoaded{}) // le successive non ripetono la fase
+	_ = m.View()
+	m, _ = m.Update(msgsLoaded{})
+	_ = m.View()
+
+	var ph []string
+	for _, e := range evs(t, &buf, "phase") {
+		ph = append(ph, e.Op)
+	}
+	want := []string{"first_view", "snapshot_list_view", "list_loaded", "first_list_view"}
+	if strings.Join(ph, ",") != strings.Join(want, ",") {
+		t.Errorf("fasi = %v, attese %v", ph, want)
+	}
+}
+
+// Piano 16, Task 7: se la lista fresca arriva prima dell'istantanea, la fase
+// snapshot_list_view non si emette.
+func TestFaseSnapshotNonEmessaSeLaFreschaArrivaPrima(t *testing.T) {
+	var buf bytes.Buffer
+	trace.Install(trace.New(&buf, ""))
+	defer trace.Uninstall()
+
+	m := Wrap(fake{})
+	_ = m.View()
+	m, _ = m.Update(msgsLoaded{})
+	_ = m.View()
+	m, _ = m.Update(snapshotLoaded{})
+	_ = m.View()
+
+	var ph []string
+	for _, e := range evs(t, &buf, "phase") {
+		ph = append(ph, e.Op)
+	}
+	want := []string{"first_view", "list_loaded", "first_list_view"}
 	if strings.Join(ph, ",") != strings.Join(want, ",") {
 		t.Errorf("fasi = %v, attese %v", ph, want)
 	}

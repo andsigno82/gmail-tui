@@ -69,6 +69,12 @@ func TestWrapMisuraEConta(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = convs
+	sn := s.(mail.Snapshotter)
+	sn.CachedConversations("EtichettaPrivata")
+	sn.CachedMessage(msg.NewID("INBOX", 1))
+	if n := len(cacheEvents(t, &buf)); n != 2 {
+		t.Errorf("eventi cache = %d, attesi 2", n)
+	}
 
 	ev := events(t, &buf)
 	if len(ev) != 6 {
