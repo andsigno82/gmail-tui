@@ -436,10 +436,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** clic su chip → `AttachmentRequested` con l'indice giusto; tipo non in allowlist → toast, nessuna scrittura (store mock che conta le chiamate); tipo in allowlist → file in dir 0700, nome generato (nessun nome dal messaggio nel path), apertura chiamata con il path (variabile sostituita nel test); `:save` invariato; `,`, label e selettore: overlay visibile, `esc` chiude, mouse ignorato con modale aperto; statusline: non regressione dei messaggi di stato.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(app): finestre, statusline e allegati cliccabili (Piano 15, Task 16)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(app): finestre, statusline e allegati cliccabili (Piano 15, Task 16)`.
 
 ## Task 17: demo, Mock e isolamento MCP
 

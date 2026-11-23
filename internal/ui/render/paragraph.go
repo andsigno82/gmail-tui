@@ -2,6 +2,7 @@ package render
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -348,14 +349,21 @@ func scanZones(lines []string) [][]Zone {
 	for i, l := range lines {
 		col, start := 0, -1
 		var cur Zone
+		var shown strings.Builder // testo della porzione aperta (Piano 15, Task 16)
 		rest := l
 		for {
 			k := strings.Index(rest, open)
 			if k < 0 {
 				col += lipgloss.Width(rest)
+				if start >= 0 {
+					shown.WriteString(plainSGR(rest))
+				}
 				break
 			}
 			col += lipgloss.Width(rest[:k])
+			if start >= 0 {
+				shown.WriteString(plainSGR(rest[:k]))
+			}
 			rest = rest[k+len(open):]
 			end, stLen := strings.Index(rest, "\x1b\\"), 2
 			if end < 0 {
@@ -367,9 +375,11 @@ func scanZones(lines []string) [][]Zone {
 			rest = rest[end+stLen:]
 			if start >= 0 && col > start {
 				cur.X0, cur.X1 = start, col
+				setShown(&cur, shown.String())
 				zones[i] = append(zones[i], cur)
 			}
 			start = -1
+			shown.Reset()
 			if uri != "" {
 				cur = Zone{Kind: ZoneLink, URL: uri}
 				for _, p := range strings.Split(params, ":") {
@@ -383,8 +393,23 @@ func scanZones(lines []string) [][]Zone {
 		}
 		if start >= 0 && col > start {
 			cur.X0, cur.X1 = start, col
+			setShown(&cur, shown.String())
 			zones[i] = append(zones[i], cur)
 		}
 	}
 	return zones
+}
+
+// sgrRE riconosce le sequenze CSI di stile (SGR) dei testi gia stilizzati.
+var sgrRE = regexp.MustCompile("\x1b\\[[0-9;:]*m")
+
+// plainSGR toglie le sequenze di stile da s (Piano 15, Task 16).
+func plainSGR(s string) string { return sgrRE.ReplaceAllString(s, "") }
+
+// setShown imposta Zone.Shown (testo mostrato senza il marcatore del warn) solo
+// per le zone con Warn: serve alla conferma dell'app (Piano 15, Task 16).
+func setShown(z *Zone, text string) {
+	if z.Warn {
+		z.Shown = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), strings.TrimSpace(warnMarker)))
+	}
 }

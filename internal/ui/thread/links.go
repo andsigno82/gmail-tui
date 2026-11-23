@@ -30,7 +30,16 @@ type LinkOpenedMsg struct {
 // nulla: l'app decide (Piano 15, Task 16), per esempio con lo stesso browser di
 // sistema dei link e un toast con l'host.
 type ButtonClickMsg struct {
-	URL string
+	URL   string
+	Warn  bool   // testo con dominio diverso dal reale: l'app chiede conferma (Piano 15, Task 16)
+	Shown string // testo mostrato del bottone, per la conferma
+}
+
+// LinkWarnMsg: clic su un link con Warn (Piano 15, Task 16). Il thread NON lo apre:
+// l'app chiede conferma nella barra ("il link porta a <host>, non a <mostrato>").
+type LinkWarnMsg struct {
+	URL   string
+	Shown string
 }
 
 // AttachmentClickMsg: clic su un chip allegato (Piano 15, Task 14, D15-06). ID e
@@ -58,6 +67,14 @@ func linkLabel(s string) string {
 	}
 	return u.Host
 }
+
+// OpenURL apre un URL gia sanificato nel browser di sistema (stesso comando senza
+// shell e ambiente filtrato dei link): lo usa l'app per i bottoni e per i link
+// confermati (Piano 15, Task 16). LinkLabel e la destinazione per il toast.
+func OpenURL(u string) error { return openLink(u) }
+
+// LinkLabel e linkLabel esportata (host, o indirizzo per mailto).
+func LinkLabel(s string) string { return linkLabel(s) }
 
 // ZoneAt restituisce la zona cliccabile sotto la cella (x, y) della vista thread,
 // con le coordinate relative all'origine della vista (y include la scheda
@@ -101,12 +118,17 @@ func (m Model) LinkClick(x, y int) (tea.Cmd, bool) {
 	switch z.Kind {
 	case render.ZoneLink:
 		u := z.URL
+		if z.Warn {
+			// Piano 15, Task 16: dominio mostrato diverso dal reale, mai aperto al volo.
+			warn := LinkWarnMsg{URL: u, Shown: z.Shown}
+			return func() tea.Msg { return warn }, true
+		}
 		return func() tea.Msg {
 			return LinkOpenedMsg{Target: linkLabel(u), Err: openLink(u)}
 		}, true
 	case render.ZoneButton:
-		u := z.URL
-		return func() tea.Msg { return ButtonClickMsg{URL: u} }, true
+		click := ButtonClickMsg{URL: z.URL, Warn: z.Warn, Shown: z.Shown}
+		return func() tea.Msg { return click }, true
 	case render.ZoneAttachment:
 		click := AttachmentClickMsg{ID: m.selRef().ID, Index: z.Index}
 		return func() tea.Msg { return click }, true

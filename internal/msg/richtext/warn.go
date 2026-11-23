@@ -34,6 +34,10 @@ func DomainMismatch(text, href string) bool {
 	return registrable(th) != registrable(hh)
 }
 
+// ShownHost e l'host mostrato dal testo di un link (URL o dominio nudo) senza
+// porta ne percorso: serve alla conferma dei link con Warn (Piano 15, Task 16).
+func ShownHost(text string) (string, bool) { return textHost(text) }
+
 // textHost estrae l'host mostrato dal testo di un link, se il testo e' un URL
 // o un dominio nudo.
 func textHost(text string) (string, bool) {

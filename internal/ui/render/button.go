@@ -64,6 +64,9 @@ func Button(b richtext.Block, c Ctx) Out {
 		var zs []Zone
 		if ok {
 			zs = []Zone{{X0: 0, X1: boxW, Kind: ZoneButton, URL: u, ID: id, Warn: b.Warn}}
+			if b.Warn {
+				zs[0].Shown = label // Piano 15, Task 16: per la conferma dell'app
+			}
 		}
 		o.Zones = append(o.Zones, zs)
 	}

@@ -20,8 +20,12 @@ type Row struct {
 // Con nessuna riga mostra empty al posto dell'elenco.
 func Render(st styles.Styles, title, filter string, rows []Row, cursor, maxRows int, empty string) string {
 	var b strings.Builder
-	b.WriteString(st.ThreadHeader.Render(title))
-	b.WriteString("\n")
+	// Piano 15, Task 16: con title vuoto il titolo e della finestra che incornicia il
+	// pannello, non del corpo.
+	if title != "" {
+		b.WriteString(st.ThreadHeader.Render(title))
+		b.WriteString("\n")
+	}
 	b.WriteString(filter)
 	if len(rows) == 0 {
 		b.WriteString("\n" + st.ListDate.Render(empty))

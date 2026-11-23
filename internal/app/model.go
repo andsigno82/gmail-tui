@@ -161,6 +161,7 @@ type Model struct {
 	labelPickOpen bool                   // pannello label su selezione aperto (Piano 10, Task 7)
 	labelPick     labelPicker            // stato del pannello label (Piano 10, Task 7)
 	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
+	linkAsk       *linkAsk               // conferma di un link/bottone con Warn in attesa (Piano 15, Task 16)
 	trashRef      msg.MessageRef         // messaggio in conferma: letto all'apertura, non al sì
 	trashSel      []msg.MessageRef       // conversazioni selezionate in conferma cestino (Piano 10, Task 3); vuoto = trashRef
 	sel           map[msg.MessageID]bool // righe selezionate nella lista, per ID della conversazione (Piano 10, Task 2)
@@ -759,6 +760,30 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.toast.Push(toast.Success, "aperto nel browser: "+ev.Target)
 		return m, cmd
 
+	case thread.ButtonClickMsg:
+		// Piano 15, Task 16: un bottone si apre come un link (browser di sistema, senza
+		// shell); con Warn (dominio del testo diverso dal reale) prima la conferma.
+		if ev.Warn {
+			return m.askLink(ev.URL, ev.Shown), nil
+		}
+		return m, openLinkCmd(ev.URL)
+
+	case thread.LinkWarnMsg:
+		// Piano 15, Task 16: link con Warn cliccato nel corpo: conferma nella barra.
+		return m.askLink(ev.URL, ev.Shown), nil
+
+	case thread.AttachmentClickMsg:
+		// Piano 15, Task 16 (D15-T14): apertura dell'allegato solo se di tipo sicuro.
+		return m.clickAttachment(ev)
+
+	case attachmentOpened:
+		if ev.err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura allegato: %v", ev.err))
+			return m, cmd
+		}
+		cmd := m.toast.Push(toast.Success, "allegato aperto")
+		return m, cmd
+
 	case thread.SaveRequested:
 		// `:save`/`:open` della command line (Piano 4, Task 2): il salvataggio
 		// gira fuori dal loop UI (spinner finché attachmentSaved); il feedback
@@ -1181,6 +1206,19 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.linkAsk != nil {
+			// Conferma di un link con Warn (Piano 15, Task 16): s apre l'URL vero, esc
+			// annulla; gli altri tasti sono ignorati (nessuna azione alla cieca).
+			switch ev.String() {
+			case "s":
+				u := m.linkAsk.url
+				m.linkAsk = nil
+				return m, openLinkCmd(u)
+			case "esc":
+				m.linkAsk = nil
+			}
+			return m, nil
+		}
 		if m.trashOpen {
 			// Conferma cestino (Piano 7, Task 5, D4): s sposta il messaggio
 			// catturato all'apertura, esc annulla — gli altri tasti sono ignorati
@@ -1448,7 +1486,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
 		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
 		// selezionano nulla: la lista non esiste ancora).
-		if m.showHelp || m.labelOpen || m.labelPickOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.menu.open || m.thread.ModalOpen() {
+		if m.showHelp || m.labelOpen || m.labelPickOpen || m.folderOpen || m.trashOpen || m.linkAsk != nil || m.discardOpen || m.confirmSend || m.wizardActive || m.menu.open || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -1749,15 +1787,16 @@ func (m Model) helpOverlay() string {
 // la ricerca è il textinput della query (Task 6), il composer i campi di
 // scrittura (Piano 4, Task 3).
 func (m Model) body() string {
-	if m.menu.open {
-		return m.settingsView()
+	// Piano 15, Task 16 (D15-11): menu `,`, pannello label e selettore `m` sono
+	// finestre sovrapposte, centrate sopra la vista corrente (non la sostituiscono).
+	if win := m.window(); win != "" {
+		return m.overlayWindow(m.viewBody(), win)
 	}
-	if m.labelPickOpen {
-		return m.labelPickView()
-	}
-	if m.folderOpen {
-		return m.foldersView()
-	}
+	return m.viewBody()
+}
+
+// viewBody rende la vista attiva senza finestre sovrapposte.
+func (m Model) viewBody() string {
 	if m.view == viewInbox && m.splitOn() {
 		return m.splitView()
 	}
@@ -1787,14 +1826,14 @@ func (m Model) body() string {
 // stato resta in barra neutra (Piano 7.3): le conferme modali sono le sole
 // barre colorate.
 func (m Model) statusBar() string {
-	if m.labelPickOpen {
-		// Piano 10, Task 7: il pannello dice i suoi tasti nella barra (neutra).
-		return m.renderBar(m.styles.StatusBar, "spazio cambia · digita filtra · invio applica · esc chiude")
-	}
 	if m.labelOpen {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
 		// stesso al posto dello status, che resta custodito sotto.
 		return m.label.View()
+	}
+	if m.linkAsk != nil {
+		// Piano 15, Task 16: conferma di un link con Warn, barra colorata come le altre conferme.
+		return m.renderBar(m.styles.StatusErr, m.linkAsk.text())
 	}
 	if m.trashOpen {
 		// Conferma cestino (Piano 7, Task 5, D4): stile StatusErr come il discard.
@@ -1816,58 +1855,10 @@ func (m Model) statusBar() string {
 		// di allegati (testo in sendConfirmText, compose.go).
 		return m.renderBar(m.styles.StatusErr, sendConfirmText(m.draft))
 	}
-	text := m.status.text
-	if m.folder.Name != "" {
-		// Fuori dalla posta in arrivo la status bar dice in quale cartella si è
-		// (Piano 7, Task 4). Senza altro testo il tag resta da solo (fix review 6:
-		// il nome non è ripetuto come messaggio).
-		tag := "[" + folderName(m.folder) + "]"
-		if text == "" {
-			text = tag
-		} else {
-			text = tag + " " + text
-		}
-	}
-	if n := len(m.sel); n > 0 {
-		// Piano 10, Task 2: con selezione attiva la barra dice quante righe sono marcate.
-		sel := fmt.Sprintf("%d selezionate", n)
-		if text == "" {
-			text = sel
-		} else {
-			text = sel + " " + text
-		}
-	}
-	if m.pending > 0 {
-		text = m.spinner.View() + " " + text
-	}
-	// Piano 7.3, Task 2: la barra è neutra. Esiti e errori stanno nei toast;
-	// qui restano stato persistente (cartella, ricerca, ⟳, connessione, banner).
-	return m.renderBar(m.styles.StatusBar, m.joinHelp(text))
-}
-
-// joinHelp affianca al testo di status l'help breve (sempre visibile, Task 9):
-// a status vuota resta solo l'help (sostituisce il vecchio hint fisso); con
-// la size nota l'help si spinge a destra e si tronca allo spazio disponibile.
-func (m Model) joinHelp(text string) string {
-	hv := m.help
-	if m.width > 0 {
-		// Il padding della barra (0,1) occupa 2 colonne.
-		hv.SetWidth(max(0, m.width-lipgloss.Width(text)-2))
-	}
-	helpBar := hv.ShortHelpView(m.shortHelpFor(m.labelOpen, m.view))
-	if text == "" {
-		return helpBar
-	}
-	if helpBar == "" {
-		return text
-	}
-	gap := 2
-	if m.width > 0 {
-		if spare := m.width - lipgloss.Width(text) - lipgloss.Width(helpBar) - 2; spare > gap {
-			gap = spare
-		}
-	}
-	return text + strings.Repeat(" ", gap) + helpBar
+	// Piano 15, Task 16 (D15-12): barra a segmenti. Esiti e errori stanno nei toast;
+	// qui restano modo, cartella, stato persistente (selezione, spinner, ricerca,
+	// riconnessione, avvisi di setup) e l'help breve. Le conferme sopra restano colorate.
+	return m.segmentBar()
 }
 
 // renderBar applica lo stile dato (a larghezza piena quando la size è nota).

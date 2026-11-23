@@ -192,18 +192,23 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 func (m Model) foldersView() string {
 	p := m.folderPick
 	if len(p.rows) == 0 {
-		return m.styles.ListDate.Render("caricamento cartelle…")
+		return m.windowFor(m.styles.ListDate.Render("caricamento cartelle…"), "cartelle e label", folderMinW)
 	}
-	title := m.styles.ThreadHeader.Render("cartelle e label") +
-		m.styles.ListDate.Render("  invio apre · esc chiude")
 	out, rows := foldertree.Render(p.tree, p.cursor, p.counts, m.styles)
 	lines := strings.Split(out, "\n")
-	if visible := m.height - 2; visible > 0 && len(lines) > visible { // -2: titolo + status bar
+	// Piano 15, Task 16 (D15-11): finestra con ombra; righe visibili = corpo meno ombra,
+	// bordo, titolo e riga dell'hint.
+	if visible := m.height - 6; m.height > 0 && len(lines) > max(visible, 3) {
+		visible = max(visible, 3)
 		off := 0
 		if p.cursor < len(rows) && rows[p.cursor].Line >= visible {
 			off = rows[p.cursor].Line - visible + 1
 		}
 		lines = lines[off : off+visible]
 	}
-	return title + "\n" + strings.Join(lines, "\n")
+	hint := m.styles.ListDate.Render("invio apre · esc chiude")
+	return m.windowFor(strings.Join(lines, "\n")+"\n"+hint, "cartelle e label", folderMinW)
 }
+
+// folderMinW e la larghezza interna minima della finestra del selettore cartelle.
+const folderMinW = 36

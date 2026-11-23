@@ -396,8 +396,10 @@ func TestDemoBanner(t *testing.T) {
 	if got := mm.statusText(); got != demoBannerText {
 		t.Errorf("status dopo il load = %q, voglio il banner intatto", got)
 	}
-	if got := mm.statusBar(); got != mm.styles.StatusBar.Render(mm.joinHelp(demoBannerText)) {
-		t.Errorf("status bar = %q, voglio lo stile StatusBar col help (%q)", got, mm.styles.StatusBar.Render(mm.joinHelp(demoBannerText)))
+	// Piano 15, Task 16: la barra e a segmenti; il banner e il segmento di stato, con
+	// l'help di vista nel segmento aiuto, e la barra e larga quanto il terminale.
+	if bar := plainBar(mm); !strings.Contains(bar, demoBannerText) || !strings.Contains(bar, "q/esc esci") {
+		t.Errorf("status bar = %q, voglio il banner e l'help di vista", bar)
 	}
 	// Un SECONDO load esplicito (ricerca con query vuota) torna ad azzerare:
 	// il flag di avvio si consuma al primo load.
@@ -430,9 +432,8 @@ func TestStartupWarningOverridesBanner(t *testing.T) {
 	if got := mm.statusText(); got != warn {
 		t.Errorf("status dopo il load = %q, voglio il warning intatto", got)
 	}
-	want := mm.styles.StatusBar.Render(mm.joinHelp(warn))
-	if got := mm.statusBar(); got != want {
-		t.Errorf("status bar = %q, voglio lo stile StatusBar con help (%q)", got, want)
+	if bar := plainBar(mm); !strings.Contains(bar, warn) {
+		t.Errorf("status bar = %q, voglio l'avviso nel segmento di stato", bar)
 	}
 }
 

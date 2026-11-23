@@ -133,8 +133,8 @@ func TestChooseFolderListsItsMessages(t *testing.T) {
 	if got := m.inbox.SelectedIndex(); got != 0 {
 		t.Errorf("cursore dopo il cambio cartella = %d, voglio 0", got)
 	}
-	if !strings.Contains(plainBar(m), "[Inviati]") {
-		t.Errorf("status bar = %q, voglio il tag della cartella", plainBar(m))
+	if !strings.Contains(plainBar(m), "Inviati") {
+		t.Errorf("status bar = %q, voglio il segmento della cartella", plainBar(m))
 	}
 }
 
@@ -309,8 +309,8 @@ func TestStatusBarShowsFolderTag(t *testing.T) {
 	m := folderModel(t, rec)
 	m, cmd := pickFolder(t, openPicker(t, m), 2) // Cestino
 	m = applyAll(t, m, cmd)
-	if !strings.Contains(m.statusBar(), "[Cestino]") {
-		t.Errorf("status bar senza il tag della cartella: %q", m.statusBar())
+	if !strings.Contains(plainBar(m), "Cestino") {
+		t.Errorf("status bar senza il segmento della cartella: %q", plainBar(m))
 	}
 }
 

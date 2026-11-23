@@ -344,6 +344,9 @@ func Link(text, href string, c Ctx) Out {
 	for i, l := range lines {
 		o.Lines[i] = osc8Open(target, id) + base.Render(l) + osc8Close
 		o.Zones[i] = []Zone{{X0: 0, X1: lipgloss.Width(l), Kind: ZoneLink, URL: target, ID: id, Warn: warn}}
+		if warn {
+			o.Zones[i][0].Shown = li.display // Piano 15, Task 16: per la conferma dell'app
+		}
 	}
 	return o
 }

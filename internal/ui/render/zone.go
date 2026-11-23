@@ -32,6 +32,7 @@ type Zone struct {
 	Index  int    // solo ZoneAttachment: indice dell'allegato
 	ID     string // id OSC 8 comune a tutte le porzioni dello stesso elemento
 	Warn   bool   // testo con dominio diverso dal reale (D15-07, D15-T6)
+	Shown  string // testo mostrato senza marcatore, solo con Warn (Piano 15, Task 16)
 }
 
 // Out e il risultato di un renderer: righe gia stilizzate e, per ciascuna, le

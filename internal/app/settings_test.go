@@ -350,18 +350,21 @@ func TestSettingsHasLeftPadding(t *testing.T) {
 func TestSettingsCentered(t *testing.T) {
 	m, _ := settingsModel(t)
 	mm, _ := step(m, pressKey(","))
+	// Piano 15, Task 16: la finestra sta sopra la lista; si misura il riquadro (bordo
+	// superiore) e non il margine di spazi, perche ai lati resta la lista.
 	for _, line := range strings.Split(plainText(mm.body()), "\n") {
-		if strings.TrimSpace(line) == "" {
+		l, r := strings.Index(line, "╭"), strings.Index(line, "╮")
+		if l < 0 || r < 0 {
 			continue
 		}
-		left := len(line) - len(strings.TrimLeft(line, " "))
-		right := len(line) - len(strings.TrimRight(line, " "))
-		if left == 0 || left < right-1 || right < left-1 {
-			t.Errorf("riga del menu non centrata (sinistra %d, destra %d): %q", left, right, line)
+		left := len([]rune(line[:l]))
+		right := mm.width - len([]rune(line[:r])) - 1
+		if left == 0 || left < right-3 || right < left-3 { // 2 colonne d'ombra a destra
+			t.Errorf("riquadro del menu non centrato (sinistra %d, destra %d): %q", left, right, line)
 		}
 		return
 	}
-	t.Error("nessuna riga nel corpo del menu")
+	t.Error("nessun bordo del menu nel corpo")
 }
 
 // Piano 7.2, fix review: ctrl+s salva da qualunque voce, anche durante la

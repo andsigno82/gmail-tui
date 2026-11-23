@@ -18,7 +18,6 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/theme"
@@ -261,8 +260,7 @@ func (m Model) stopEditing() Model {
 func (m Model) settingsView() string {
 	st := m.styles
 	var b strings.Builder
-	b.WriteString(st.ThreadHeader.Render("impostazioni"))
-	b.WriteString("\n\n")
+	b.WriteString("\n") // riga vuota sotto il titolo della finestra
 	for r := settingsRow(0); r < rowCount; r++ {
 		label := fmt.Sprintf("%-*s", settingsLabelWidth, settingsLabels[r])
 		if r == m.menu.cur {
@@ -272,11 +270,10 @@ func (m Model) settingsView() string {
 		}
 		b.WriteString(label + m.settingsValueText(r) + "\n")
 	}
-	// Piano 7.2, fix review: riga di aiuto in fondo, modale centrata nel corpo
-	// con un pad di 1 colonna.
+	// Piano 7.2, fix review: riga di aiuto in fondo. Piano 15, Task 16 (D15-11): il
+	// menu e una finestra con ombra (titolo sfumato), sovrapposta da body().
 	b.WriteString("\n" + st.ListDate.Render(settingsHelp))
-	box := st.Border.Padding(0, 1).Render(b.String())
-	return lipgloss.Place(m.width, max(0, m.height-1), lipgloss.Center, lipgloss.Center, box)
+	return m.windowFor(b.String(), "impostazioni", 0)
 }
 
 // settingsHelp è la riga di aiuto del menu `,` (Piano 7.2, fix review).

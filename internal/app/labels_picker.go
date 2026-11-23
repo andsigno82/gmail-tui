@@ -359,7 +359,7 @@ func allMailIDs(ctx context.Context, st mail.MailStore, convs []mail.Conversatio
 // righe. Con filtro senza corrispondenze invita a creare l'etichetta col nome digitato.
 func (m Model) labelPickView() string {
 	if m.labelPick.loading {
-		return m.styles.ListDate.Render("caricamento etichette…")
+		return m.windowFor(m.styles.ListDate.Render("caricamento etichette…"), "etichette", labelPickMinW)
 	}
 	var rows []labelpick.Row
 	for _, i := range m.labelPick.visible() {
@@ -371,5 +371,11 @@ func (m Model) labelPickView() string {
 		empty = fmt.Sprintf("invio crea l'etichetta %q", f)
 	}
 	title := fmt.Sprintf("etichette su %d conversazioni", len(m.labelPick.convs))
-	return labelpick.Render(m.styles, title, m.labelPick.input.View(), rows, m.labelPick.cursor, max(m.height-4, 1), empty)
+	// Piano 15, Task 16 (D15-11): finestra con ombra; il titolo e quello della finestra.
+	body := labelpick.Render(m.styles, "", m.labelPick.input.View(), rows, m.labelPick.cursor, max(m.height-6, 1), empty)
+	return m.windowFor(body, title, labelPickMinW)
 }
+
+// labelPickMinW e la larghezza interna minima della finestra del pannello label: non
+// cambia mentre si filtra le righe (Piano 15, Task 16).
+const labelPickMinW = 44
