@@ -4,6 +4,7 @@
 package styles
 
 import (
+	"fmt"
 	"hash/fnv"
 	"image/color"
 	"math"
@@ -23,6 +24,11 @@ type Styles struct {
 	ListSelected    lipgloss.Style // riga sotto il cursore
 	ListCheck       lipgloss.Style // casella di selezione ☐/☑ a inizio riga (Piano 10, Task 2): contrasto WCAG sullo sfondo del tema
 	ListCheckSel    lipgloss.Style // casella ☐/☑ sulla riga sotto il cursore: sfondo Selection (Piano 10, Task 2)
+	ListTint        lipgloss.Style // riga spuntata (x) non sotto il cursore: testo normale su tinta (richiesta di Andrea, 2026-11-23)
+	ListTintUnread  lipgloss.Style // non letto sulla tinta: grassetto, slot unread
+	ListTintStarred lipgloss.Style // stella sulla tinta: slot starred
+	ListTintDate    lipgloss.Style // data e +N sulla tinta: slot muted
+	ListTintCheck   lipgloss.Style // casella ☑ sulla tinta: slot accent, grassetto
 	SearchInput     lipgloss.Style // prompt/cursore della ricerca
 	StatusErr       lipgloss.Style // barra colorata: conferme modali (invio, scarta, cestino) e errori del wizard
 	StatusBar       lipgloss.Style // status bar: stato normale
@@ -40,11 +46,15 @@ type Styles struct {
 	// Labels è il palette delle etichette utente (Piano 8, Task 9, D8-5): solo
 	// slot con contrasto WCAG >= 4.5:1 sul bg del tema, in entrambe le varianti.
 	Labels []lipgloss.Style
+	// LabelsTint è Labels sulla tinta della riga spuntata, stesso ordine e indice
+	// (richiesta di Andrea, 2026-11-23).
+	LabelsTint []lipgloss.Style
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
 // slot è risolta adattivamente al rendering dal background del terminale.
 func New(t theme.Theme) Styles {
+	tint := mescola(t.Bg, t.Selection, frazioneTinta)
 	return Styles{
 		ListNormal:      lipgloss.NewStyle().Foreground(adaptive(t.Fg)),
 		ListUnread:      lipgloss.NewStyle().Foreground(adaptive(t.Unread)).Bold(true),
@@ -53,6 +63,11 @@ func New(t theme.Theme) Styles {
 		ListSelected:    lipgloss.NewStyle().Foreground(onColor(t.Selection, t.Fg, t.Bg)).Background(adaptive(t.Selection)).Bold(true),
 		ListCheck:       lipgloss.NewStyle().Foreground(onColor(t.Bg, t.Accent, t.Fg)),
 		ListCheckSel:    lipgloss.NewStyle().Foreground(onColor(t.Selection, t.Accent, t.Fg)).Background(adaptive(t.Selection)).Bold(true),
+		ListTint:        lipgloss.NewStyle().Foreground(onColor(tint, t.Fg, t.Bg)).Background(adaptive(tint)),
+		ListTintUnread:  lipgloss.NewStyle().Foreground(onColor(tint, t.Unread, t.Fg)).Background(adaptive(tint)).Bold(true),
+		ListTintStarred: lipgloss.NewStyle().Foreground(onColor(tint, t.Starred, t.Fg)).Background(adaptive(tint)),
+		ListTintDate:    lipgloss.NewStyle().Foreground(onColor(tint, t.Muted, t.Fg)).Background(adaptive(tint)),
+		ListTintCheck:   lipgloss.NewStyle().Foreground(onColor(tint, t.Accent, t.Fg)).Background(adaptive(tint)).Bold(true),
 		SearchInput:     lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
 		StatusErr:       lipgloss.NewStyle().Foreground(onColor(t.Error, t.Fg, t.Bg)).Background(adaptive(t.Error)).Bold(true).Padding(0, 1),
 		StatusBar:       lipgloss.NewStyle().Foreground(onColor(t.Primary, t.Fg, t.Bg)).Background(adaptive(t.Primary)).Padding(0, 1),
@@ -68,6 +83,7 @@ func New(t theme.Theme) Styles {
 		ToastSuccess:    toastStyle(t, t.Success),
 		ToastError:      toastStyle(t, t.Error),
 		Labels:          labelStyles(labelSlots(t)),
+		LabelsTint:      labelStylesTint(labelSlots(t), tint, t.Fg),
 	}
 }
 
@@ -77,9 +93,24 @@ func (s Styles) LabelStyle(name string) lipgloss.Style {
 	if len(s.Labels) == 0 {
 		return s.ListNormal
 	}
+	return s.Labels[labelIndex(name, len(s.Labels))]
+}
+
+// LabelStyleTint è LabelStyle per una riga spuntata (sfondo tinta, richiesta di
+// Andrea, 2026-11-23): stesso indice sul palette LabelsTint. Senza palette ricade
+// su ListTint.
+func (s Styles) LabelStyleTint(name string) lipgloss.Style {
+	if len(s.LabelsTint) == 0 {
+		return s.ListTint
+	}
+	return s.LabelsTint[labelIndex(name, len(s.LabelsTint))]
+}
+
+// labelIndex sceglie l'indice del palette per il nome: hash deterministico, n > 0.
+func labelIndex(name string, n int) int {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(name)) // fnv non fallisce mai su Write
-	return s.Labels[int(h.Sum32()%uint32(len(s.Labels)))]
+	return int(h.Sum32() % uint32(n))
 }
 
 // labelCandidates sono gli slot che il colore delle etichette utente può usare
@@ -117,6 +148,16 @@ func labelStyles(slots []theme.Slot) []lipgloss.Style {
 	return out
 }
 
+// labelStylesTint come labelStyles, ma sulla tinta della riga spuntata: il testo
+// di ogni etichetta usa onColor sulla tinta, così vale il test di contrasto WCAG.
+func labelStylesTint(slots []theme.Slot, bg, fg theme.Slot) []lipgloss.Style {
+	out := make([]lipgloss.Style, len(slots))
+	for i, s := range slots {
+		out[i] = lipgloss.NewStyle().Foreground(onColor(bg, s, fg)).Background(adaptive(bg))
+	}
+	return out
+}
+
 // toastStyle è il riquadro di una notifica (Piano 7.3, Task 1): superficie
 // dello slot bg, bordo arrotondato nello slot edge del tipo. Il testo usa
 // onColor sulla superficie, così vale il test di contrasto WCAG.
@@ -142,6 +183,31 @@ func adaptive(s theme.Slot) color.Color {
 		Dark:  lipgloss.Color(dark),
 		Light: lipgloss.Color(light),
 	}
+}
+
+// frazioneTinta è la quota di selection mescolata nel bg per la riga spuntata con x
+// (richiesta di Andrea, 2026-11-23): 20% verso selection, tenue e rispettosa dei temi.
+const frazioneTinta = 0.20
+
+// mescola mescola linearmente in sRGB lo slot a verso lo slot b di frac (0 dà a, 1
+// dà b), separatamente per la variante dark e light. Nessun colore fisso: la tinta
+// deriva dal tema (richiesta di Andrea, 2026-11-23).
+func mescola(a, b theme.Slot, frac float64) theme.Slot {
+	aD, aL := a.Resolve()
+	bD, bL := b.Resolve()
+	return theme.Slot{Dark: mescolaHex(aD, bD, frac), Light: mescolaHex(aL, bL, frac)}
+}
+
+// mescolaHex mescola due colori esadecimali (#rgb o #rrggbb) canale per canale, con
+// arrotondamento a 8 bit.
+func mescolaHex(a, b string, frac float64) string {
+	ar, ag, ab, _ := lipgloss.Color(a).RGBA() // canali a 16 bit: >>8 riporta a 8 bit
+	br, bg, bb, _ := lipgloss.Color(b).RGBA()
+	canale := func(x, y uint32) uint8 {
+		v := float64(x>>8) + (float64(y>>8)-float64(x>>8))*frac
+		return uint8(math.Round(v))
+	}
+	return fmt.Sprintf("#%02x%02x%02x", canale(ar, br), canale(ag, bg), canale(ab, bb))
 }
 
 // minContrast è la soglia WCAG AA per il testo normale. Piano 7.2, Task 1.

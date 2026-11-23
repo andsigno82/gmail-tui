@@ -429,7 +429,7 @@ func (d delegate) row(width int, conv mail.Conversation, selected, checked bool)
 	senderW := min(senderMax, max(senderMin, width/3))
 	subjectW := max(subjectMin, width-dateW-markerCol-1-senderW-1)
 	shown, more := fitChips(conv.Labels, subjectW/2)
-	plainChips := d.renderChips(shown, more, true)
+	plainChips := chipsPlain(shown, more)
 	chipsW := lipgloss.Width(plainChips)
 	if chipsW > 0 {
 		subjectW = max(subjectMin, subjectW-chipsW-1)
@@ -451,27 +451,48 @@ func (d delegate) row(width int, conv mail.Conversation, selected, checked bool)
 		return d.st.ListCheckSel.Render(checkMark(checked)) + d.st.ListSelected.Render(" "+marker+" "+star+" "+mid+chips+
 			strings.Repeat(" ", gap)+date)
 	}
-	markerSt, bodySt := d.st.ListNormal, d.st.ListNormal
-	if conv.Unread {
-		markerSt, bodySt = d.st.ListUnread, d.st.ListUnread
-	}
-	starSt := d.st.ListNormal
-	if ref.Starred {
-		starSt = d.st.ListStarred
-	}
+	// Riga non sotto il cursore: normale, o tinta se spuntata con x (richiesta di Andrea,
+	// 2026-11-23). Ogni segmento, spazi e separatori compresi, usa stili con lo stesso
+	// sfondo: la tinta copre tutta la larghezza senza buchi dovuti ai reset ANSI.
+	s := d.stiliRiga(conv, checked)
 	chips := ""
 	if chipsW > 0 {
-		chips = " " + d.renderChips(shown, more, false)
+		chips = s.sep.Render(" ") + d.renderChips(shown, more, s)
 	}
-	// Casella attenuata finché la riga non è selezionata, evidente (accento, grassetto)
-	// quando lo è: la colonna resta sempre larga uguale, la lista non si sposta
-	// (richiesta di Andrea, 2026-11-23).
-	checkSt := d.st.ListDate
+	return s.check.Render(checkMark(checked)) + s.sep.Render(" ") + s.marker.Render(marker) + s.star.Render(" "+star+" ") + s.body.Render(mid) +
+		chips + s.sep.Render(strings.Repeat(" ", gap)) + s.date.Render(date)
+}
+
+// righeStili sono gli stili dei segmenti di una riga non sotto il cursore. sep dà
+// spazi e separatori: sulla riga spuntata ha lo sfondo della tinta.
+type righeStili struct {
+	check, sep, marker, star, body, date lipgloss.Style
+	label                                func(name string) lipgloss.Style
+}
+
+// stiliRiga sceglie gli stili di una riga non sotto il cursore: normali, o tinti se la
+// riga è spuntata (richiesta di Andrea, 2026-11-23). La casella ☑ resta in accento e
+// grassetto; testo, stella, date ed etichette mantengono il loro significato.
+func (d delegate) stiliRiga(conv mail.Conversation, checked bool) righeStili {
+	st := d.st
 	if checked {
-		checkSt = d.st.ListCheck.Bold(true)
+		s := righeStili{check: st.ListTintCheck, sep: st.ListTint, marker: st.ListTint, star: st.ListTint, body: st.ListTint, date: st.ListTintDate, label: st.LabelStyleTint}
+		if conv.Unread {
+			s.marker, s.body = st.ListTintUnread, st.ListTintUnread
+		}
+		if conv.Latest.Starred {
+			s.star = st.ListTintStarred
+		}
+		return s
 	}
-	return checkSt.Render(checkMark(checked)) + " " + markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
-		chips + strings.Repeat(" ", gap) + d.st.ListDate.Render(date)
+	s := righeStili{check: st.ListDate, sep: lipgloss.NewStyle(), marker: st.ListNormal, star: st.ListNormal, body: st.ListNormal, date: st.ListDate, label: st.LabelStyle}
+	if conv.Unread {
+		s.marker, s.body = st.ListUnread, st.ListUnread
+	}
+	if conv.Latest.Starred {
+		s.star = st.ListStarred
+	}
+	return s
 }
 
 // checkMark è la casella di selezione della riga (Piano 10, Task 2, D10-S1): ☑ se
@@ -547,26 +568,31 @@ func fitChips(labels []string, budget int) (shown []string, more int) {
 	return nil, 0
 }
 
-// renderChips compone le etichette mostrate separate da spazio, più il "+N".
-// Ogni etichetta prende lo stile di Styles.LabelStyle; plain dà il solo testo
-// (riga selezionata, dove lo stile è quello della selezione, e misura in colonne).
-func (d delegate) renderChips(shown []string, more int, plain bool) string {
+// chipsPlain dà solo il testo delle etichette mostrate e del "+N", separati da spazio:
+// misura le colonne e serve alla riga sotto il cursore, dove lo stile è quello della
+// selezione.
+func chipsPlain(shown []string, more int) string {
 	parts := make([]string, 0, len(shown)+1)
 	for _, name := range shown {
-		if plain {
-			parts = append(parts, chipText(name))
-		} else {
-			parts = append(parts, d.st.LabelStyle(name).Render(chipText(name)))
-		}
+		parts = append(parts, chipText(name))
 	}
 	if more > 0 {
-		if plain {
-			parts = append(parts, fmt.Sprintf("+%d", more))
-		} else {
-			parts = append(parts, d.st.ListDate.Render(fmt.Sprintf("+%d", more)))
-		}
+		parts = append(parts, fmt.Sprintf("+%d", more))
 	}
 	return strings.Join(parts, " ")
+}
+
+// renderChips compone le etichette colorate mostrate separate da spazio, più il "+N".
+// Ogni etichetta prende lo stile di s.label; spazi e "+N" seguono lo stile della riga.
+func (d delegate) renderChips(shown []string, more int, s righeStili) string {
+	parts := make([]string, 0, len(shown)+1)
+	for _, name := range shown {
+		parts = append(parts, s.label(name).Render(chipText(name)))
+	}
+	if more > 0 {
+		parts = append(parts, s.date.Render(fmt.Sprintf("+%d", more)))
+	}
+	return strings.Join(parts, s.sep.Render(" "))
 }
 
 // truncate accorcia s a n rune aggiungendo "…"; n <= 0 rende stringa vuota.
