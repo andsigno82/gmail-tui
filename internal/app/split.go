@@ -192,7 +192,9 @@ func (m Model) previewView(w, h int) string {
 	var body string
 	switch {
 	case !m.prevHas:
-		body = m.styles.ListDate.Render("nessun messaggio")
+		// Nessuna selezione: testo neutro al centro, non un testo che sembri un errore
+		// (Piano 15, Task 16b).
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, m.styles.ListDate.Render("Seleziona un messaggio per leggerlo"))
 	case m.previewReady():
 		body = m.thread.View()
 	default:
@@ -210,7 +212,7 @@ func (m Model) previewView(w, h int) string {
 func (m Model) splitView() string {
 	list, preview := splitWidths(m.width)
 	h := max(0, m.height-1)
-	left := lipgloss.NewStyle().MaxWidth(list).Height(h).MaxHeight(h).Render(m.inbox.View())
+	left := lipgloss.NewStyle().MaxWidth(list).Height(h).MaxHeight(h).Render(m.listBody(list, h))
 	sepStyle := m.styles.Divider
 	if m.previewFocused() {
 		sepStyle = m.styles.DividerFocus

@@ -104,6 +104,7 @@ func TestTestoPiano15SuBg(t *testing.T) {
 			for fname, st := range map[string]lipgloss.Style{
 				"Link": s.Link, "LinkWarn": s.LinkWarn, "LinkDashed": s.LinkDashed,
 				"ButtonHost": s.ButtonHost, "TableCell": s.TableCell, "FolderTree": s.FolderTree,
+				"ErrText": s.ErrText,
 			} {
 				fgA := adattivo(t, fname, st.GetForeground())
 				if r := contrastRatio(fgA.Dark, lipgloss.Color(bgD)); r < minContrast {

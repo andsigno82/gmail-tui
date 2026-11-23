@@ -71,6 +71,7 @@ type Styles struct {
 	OverlayShadow lipgloss.Style   // ombra delle finestre sovrapposte
 	StatusSegment []lipgloss.Style // segmenti della barra di stato (D15-12)
 	StatusSep     lipgloss.Style   // separatore dei segmenti
+	ErrText       lipgloss.Style   // testo d'errore senza sfondo (splash, Piano 15, Task 16b): slot error, contrasto WCAG sul bg
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
@@ -141,6 +142,7 @@ func New(t theme.Theme) Styles {
 		OverlayShadow: lipgloss.NewStyle().Foreground(onColorPrima(ombra, t.Fg, t.Bg)).Background(adaptive(ombra)),
 		StatusSegment: statusSegmentStyles(t, t.Selection, t.Border),
 		StatusSep:     lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		ErrText:       lipgloss.NewStyle().Foreground(onColorPrima(t.Bg, t.Error, t.Warning, t.Fg)),
 	}
 }
 

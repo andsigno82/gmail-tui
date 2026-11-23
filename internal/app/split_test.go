@@ -354,7 +354,7 @@ func TestSplitEmptyListEmptiesPreview(t *testing.T) {
 	if mm.prevHas {
 		t.Error("lista vuota: anteprima ancora agganciata")
 	}
-	if !strings.Contains(mm.previewView(77, 5), "nessun messaggio") {
+	if !strings.Contains(mm.previewView(77, 5), "Seleziona un messaggio") {
 		t.Error("lista vuota: manca il testo dell'anteprima vuota")
 	}
 }
