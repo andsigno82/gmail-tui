@@ -220,10 +220,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** `zone_test.go`: `Stack` concatena righe e zone; `Indent` sposta le `X0/X1` di `pad` e mantiene `len(Zones)==len(Lines)`. RED: test prima dell'implementazione di `Stack`/`Indent`.
 
-- [ ] Test RED in `zone_test.go`.
-- [ ] `render.go` e `zone.go`: tipi, `Stack`, `Indent`, firme con corpo vuoto.
-- [ ] Gate.
-- [ ] Commit `feat(render): contratto dei renderer (Piano 15, Task 3)`.
+- [x] Test RED in `zone_test.go`.
+- [x] `render.go` e `zone.go`: tipi, `Stack`, `Indent`, firme con corpo vuoto.
+- [x] Gate.
+- [x] Commit `feat(render): contratto dei renderer (Piano 15, Task 3)`.
 
 ## Task 4: parser HTML → blocchi e bottoni (`internal/msg/richtext`)
 
