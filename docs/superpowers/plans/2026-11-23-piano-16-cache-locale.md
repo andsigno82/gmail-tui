@@ -349,6 +349,8 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 
 ## Domande per Andrea
 
+**Risposte (2026-11-23):** Q16-1 azioni rifiutate con toast durante l'aggiornamento (R1, come proposto). Q16-4 sì: la barra mostra anche l'età dell'istantanea ("aggiornamento… (dati di 2 ore fa)"). Q16-7 budget di Connect portato a 90 s (anche nel wizard e nel probe di doctor, se condividono la costante). Decise dal coordinatore come proposto nel piano: Q16-2 (200 messaggi Gmail distinti), Q16-3 (la cache esistente si adotta), Q16-5 (has:attachment non scrive in cache), Q16-6 (compattazione a Close).
+
 - **Q16-1 (prima del Task 9): azioni durante l'aggiornamento.** Proposta: rifiutate con toast (R1). Alternativa: messe in coda ed eseguite alla conferma della riga (più comodo, più codice e più casi d'errore). Con le misure attuali la conferma arriva dopo Connect + primo list (fino a ~100 s).
 - **Q16-2 (prima del Task 3): unità dei 200.** Proposta: 200 messaggi Gmail distinti (le copie INBOX/Tutti i messaggi contano una volta, D16-T4). Alternativa: 200 voci di cache (copie contate a parte).
 - **Q16-3 (prima del Task 3): cache esistente senza account.** Proposta: si adotta al primo avvio (i corpi restano; R3 scarta comunque le mailbox con epoca diversa). Alternativa: si svuota una volta.
