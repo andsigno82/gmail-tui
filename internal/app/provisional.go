@@ -101,6 +101,14 @@ func (m *Model) realignOpen() tea.Cmd {
 	if m.prevHas {
 		if row, ok := m.freshRow(m.prevRef); ok {
 			m.prevRef = row
+			if !(m.thread.Loaded() && m.thread.AnchorID() == m.prevReq) {
+				// Piano 16, Task 13: nessun thread costruito per la richiesta vecchia (il timer di
+				// caricamento e ancora in volo): l'ancora del thread futuro e l'ID fresco, e la
+				// richiesta riparte con un token nuovo (un esito vecchio si scarta).
+				m.prevReq = row.ID
+				m.prevTok++
+				cmds = append(cmds, previewTimer(m.prevTok))
+			}
 			if m.previewVisible() && m.previewReady() && !m.threadCached {
 				nm, c := m.previewMarkRead(m.prevTok)
 				*m = nm

@@ -507,3 +507,28 @@ func TestExpandedWithoutBodyGetsFreshBodyAfterReconcile(t *testing.T) {
 		t.Errorf("il messaggio espanso non mostra il corpo fresco\n%s", v)
 	}
 }
+
+// Piano 16, Task 13: la riga in anteprima si riallinea alla lista fresca PRIMA che
+// l'anteprima sia stata caricata (timer di 150 ms ancora in volo) con un ID nuovo: il
+// thread che arriva dopo deve risultare pronto, non restare vuoto per un'ancora vecchia.
+func TestPreviewRealignedBeforeLoadIsReady(t *testing.T) {
+	st, _ := cvFixture(true)
+	m := cvSplitModel(t, st, config.PreviewMarkReadNever)
+	m = applySnapshot(t, m, st)
+	if !m.prevHas || m.prevRef.ID != msg.NewID("INBOX", 7) {
+		t.Fatalf("anteprima non armata sulla riga provvisoria: prevRef=%s", m.prevRef.ID)
+	}
+	m = freshList(t, m, st) // il server dice INBOX:22 per la stessa conversazione
+	if m.prevRef.ID != msg.NewID("INBOX", 22) {
+		t.Fatalf("prevRef = %s, voglio la riga fresca INBOX:22", m.prevRef.ID)
+	}
+	m, cmd := step(m, previewDue{tok: m.prevTok})
+	for _, ms := range fire(cmd) {
+		if _, ok := ms.(previewLoaded); ok {
+			m, _ = step(m, ms)
+		}
+	}
+	if !m.previewReady() {
+		t.Errorf("anteprima non pronta: ancora del thread %s, prevRef %s, prevReq %s", m.thread.AnchorID(), m.prevRef.ID, m.prevReq)
+	}
+}
