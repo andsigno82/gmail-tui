@@ -254,10 +254,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** RED con: `U+202E` nel mezzo di un URL rimosso; `U+200B` in un dominio rimosso; `javascript:` rifiutato; `data:` rifiutato; URL > 2048 rifiutato; `>>` annidato → Depth 2; `1.` → ordinata con Start 1; punteggiatura finale fuori dal link.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(richtext): testo semplice e sanificazione (Piano 15, Task 5)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(richtext): testo semplice e sanificazione (Piano 15, Task 5)`.
 
 ## Task 6: link con controllo di dominio e immagini (`internal/ui/render`)
 

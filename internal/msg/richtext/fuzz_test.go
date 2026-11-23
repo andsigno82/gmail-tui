@@ -32,6 +32,21 @@ func FuzzFromHTML(f *testing.F) {
 	})
 }
 
+// FuzzFromText (Piano 15, Task 5): come FuzzFromHTML, per il corpo solo testo.
+func FuzzFromText(f *testing.F) {
+	for _, s := range []string{
+		"", ">", ">>>> > >", "- ", "1. ", "99999999999999999999. x",
+		"> - a\n>> 1. b\n> c\n\n- d", "https://", "mailto:", "https://e.example/a).,;",
+		"\x00\xff\xc3\x1b[2J\r\n\t", "http://exa" + string(rune(0x202e)) + "mple.com/" + string(rune(0x200b)),
+		strings.Repeat(">", 100) + " x",
+	} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, src string) {
+		checkInvariants(t, FromText(src), 0)
+	})
+}
+
 // checkInvariants: ogni Href passa sanitizeURL, nessun testo contiene
 // controlli (tranne \n), nessun annidamento oltre i limiti.
 func checkInvariants(t *testing.T, blocks []Block, depth int) {
