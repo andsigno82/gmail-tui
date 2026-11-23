@@ -180,10 +180,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** `model_test.go`: il valore zero di `Block` ha `Kind == KindParagraph` senza run (invariante documentata); le costanti dei limiti sono quelle di D15-T4 (test che le fissa). RED: il package non compila prima del file.
 
-- [ ] Scrivere `model_test.go` (RED).
-- [ ] Scrivere `model.go` con tipi, costanti e firme.
-- [ ] Gate.
-- [ ] Commit `feat(richtext): modello a blocchi (Piano 15, Task 1)`.
+- [x] Scrivere `model_test.go` (RED).
+- [x] Scrivere `model.go` con tipi, costanti e firme.
+- [x] Gate.
+- [x] Commit `feat(richtext): modello a blocchi (Piano 15, Task 1)`.
 
 ## Task 2: contratti mail e stili (solo firme)
 
