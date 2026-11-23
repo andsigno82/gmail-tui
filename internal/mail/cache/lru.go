@@ -207,6 +207,15 @@ func lruRemoveUnit(root, seq, units *bolt.Bucket, unit []byte) error {
 	return nil
 }
 
+// lruRemove toglie l'unità dall'indice del namespace, se c'è (non le sue voci).
+func lruRemove(tx *bolt.Tx, ns, unit string) error {
+	root, seq, units, err := lruBuckets(tx, ns, false)
+	if err != nil || units == nil {
+		return err
+	}
+	return lruRemoveUnit(root, seq, units, []byte(unit))
+}
+
 // lruEvict rimuove le unità meno usate finché ce ne sono più di max; per ogni voce
 // delle unità espulse chiama drop.
 func lruEvict(tx *bolt.Tx, ns string, max uint64, drop func(lruEntry) error) error {

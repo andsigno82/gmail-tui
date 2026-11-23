@@ -195,10 +195,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 
 **Test (RED prima):** `TestPutGetListRoundTrip`, `TestListTruncatedToSnapshotRows`, `TestListEpochMismatchIsMiss`, `TestThreadEpochMismatchIsMiss`, `TestPatchSnapshotRefsUpdatesUnreadAndLabels`, `TestRemoveListRowsByThread`, `TestThreadSnapshotsLRU201`, `TestListSnapshotsLRU51`, `TestNoteUIDValidityDropsSnapshots`, `TestEmptyListDeletesSnapshot`.
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(cache): istantanee di lista e thread con regola d'epoca (Piano 16, Task 4)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(cache): istantanee di lista e thread con regola d'epoca (Piano 16, Task 4)`.
 
 ## Task 5: guardia degli ID confermati (R4)
 

@@ -76,8 +76,7 @@ func ensurePrivateDir(dir string) error {
 }
 
 // epochTx registra l'epoca (UIDVALIDITY) vista per mailbox. Se è diversa da quella
-// salvata scarta i corpi della mailbox e le loro voci LRU (e, dal Task 4, le
-// istantanee); riporta se ha scartato. La prima epoca vista non è un cambio.
+// salvata scarta i corpi della mailbox, le loro voci LRU e le istantanee (Task 4); riporta se ha scartato. La prima epoca vista non è un cambio.
 func epochTx(tx *bolt.Tx, mailbox string, uidValidity uint32) (bool, error) {
 	meta, err := tx.CreateBucketIfNotExists([]byte("meta:" + mailbox))
 	if err != nil {
@@ -93,12 +92,16 @@ func epochTx(tx *bolt.Tx, mailbox string, uidValidity uint32) (bool, error) {
 	return changed, meta.Put([]byte("uidvalidity"), uint32Bytes(uidValidity))
 }
 
-// dropMailboxData toglie i corpi della mailbox e le voci LRU che li indicizzano.
+// dropMailboxData toglie i corpi della mailbox, le voci LRU che li indicizzano e le
+// istantanee legate alla mailbox (Piano 16, Task 4, R3).
 func dropMailboxData(tx *bolt.Tx, mailbox string) error {
 	if err := tx.DeleteBucket([]byte("msgs:" + mailbox)); err != nil && !errors.Is(err, bbolterrors.ErrBucketNotFound) {
 		return err
 	}
-	return lruDropBucket(tx, lruBody, "msgs:"+mailbox)
+	if err := lruDropBucket(tx, lruBody, "msgs:"+mailbox); err != nil {
+		return err
+	}
+	return dropSnapshots(tx, mailbox)
 }
 
 // NoteUIDValidity registra l'epoca che il server ha appena dichiarato per mailbox

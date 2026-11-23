@@ -33,7 +33,7 @@ func migrate(db *bolt.DB) error {
 				return err
 			}
 		default:
-			if err := dropBucketsWithPrefix(tx, "msgs:", "lru:"); err != nil {
+			if err := dropBucketsWithPrefix(tx, "msgs:", "lru:", "snap:"); err != nil {
 				return err
 			}
 		}
