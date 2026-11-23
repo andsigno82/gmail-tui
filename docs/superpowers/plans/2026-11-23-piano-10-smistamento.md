@@ -74,7 +74,7 @@ Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
 **Produces:** questo file, committato da solo.
 
 - [x] Scrivere il piano (questo documento).
-- [ ] `git add docs/superpowers/plans/2026-11-23-piano-10-smistamento.md && git commit -m "docs: piano 10 smistamento (selezione, annulla, label)"` con la riga Co-Authored-By.
+- [x] `git add docs/superpowers/plans/2026-11-23-piano-10-smistamento.md && git commit -m "docs: piano 10 smistamento (selezione, annulla, label)"` con la riga Co-Authored-By.
 
 ## Task 2: selezione nella lista
 
@@ -108,7 +108,7 @@ Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
 
 **Test (RED prima), in `internal/mail`:** `TestMockTrashReturnsIDsInTrash`, `TestMockRestoreMovesBackToOrigin`, `TestMockRestoreRefusesIDsOutsideTrash`, `TestMockAllMailIDsRefusesWithoutGmail`, `TestMockModifyLabelsAddRemove`, `TestMockModifyLabelsRemoveOutsideLabelRefused`.
 
-- [ ] RED riportato (errore di compilazione, poi fallimento comportamentale), implementazione, gate, commit `feat(mail): contratto per annulla e label su selezione (Piano 10, Task 4)`.
+- [x] RED riportato (errore di compilazione, poi fallimento comportamentale), implementazione, gate, commit `feat(mail): contratto per annulla e label su selezione (Piano 10, Task 4)`.
 
 ## Task 5: backend IMAP
 
@@ -116,7 +116,7 @@ Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
 
 **Test (RED prima):** su `imapmemserver`: `TestTrashReturnsNewIDs`, `TestRestoreMovesBackFromTrash`, `TestRestoreRefusesNonTrashIDs` (nessuna chiamata al server), `TestModifyLabelsNoGmailAddCopies`, `TestModifyLabelsNoGmailRemoveOutsideFolderRefused`. Su server scriptato (`net.Pipe`, come `gmail_store_test.go`): `TestAllMailIDsScripted`, `TestModifyLabelsGmailStoreScripted`, `TestAllMailIDsNoGmailErrors`.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(imap): trash con ID, restore e label Gmail via STORE (Piano 10, Task 5)`.
+- [x] RED riportato, implementazione, gate, commit `feat(imap): trash con ID, restore e label Gmail via STORE (Piano 10, Task 5)`.
 
 ## Task 6: annulla (archivia, cestino) e precedenza di `u`
 
@@ -124,7 +124,7 @@ Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
 
 **Test (RED prima), con timer iniettato:** `TestUndoArchiveRestoresInbox`, `TestUndoTrashRestoresOrigin`, `TestUndoNotOfferedWithoutGmail`, `TestUndoExpiredIgnored`, `TestUndoPrecedenceLastActionWins`, `TestSendWindowReplacedByLaterArchive` (l'invio in attesa parte comunque allo scadere), `TestUndoIgnoredInComposerAndSearch`.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(app): annulla archivia e cestino con u, precedenza all'ultima azione (Piano 10, Task 6)`.
+- [x] RED riportato, implementazione, gate, commit `feat(app): annulla archivia e cestino con u, precedenza all'ultima azione (Piano 10, Task 6)`.
 
 ## Task 7: pannello label su selezione
 
@@ -132,25 +132,25 @@ Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
 
 **Test (RED prima):** `TestLabelPickerMixedState`, `TestLabelPickerSpaceToggles`, `TestLabelPickerFilterByTyping`, `TestLabelPickerEnterAppliesAddAndRemoveTogether`, `TestLabelPickerNewLabelByName`, `TestLabelPickerNoGmailRemoveOnlyCurrentFolder`.
 
-- [ ] RED riportato, implementazione, gate, commit `feat(app): pannello label su selezione con stato misto (Piano 10, Task 7)`.
+- [x] RED riportato, implementazione, gate, commit `feat(app): pannello label su selezione con stato misto (Piano 10, Task 7)`.
 
 ## Task 8: sicurezza MCP e cache
 
 **Produces:** test che fallisce se `internal/mcpserver` vede `Restore`, `AllMailIDs` o `ModifyLabels`; la suite di sicurezza resta verde. Cache: `ModifyLabels` aggiorna `Ref.Labels` delle copie per GmailID.
 
-- [ ] RED riportato, implementazione, gate, commit `test(mcpserver): metodi di scrittura del Piano 10 fuori dal server (Piano 10, Task 8)`.
+- [x] RED riportato, implementazione, gate, commit `test(mcpserver): metodi di scrittura del Piano 10 fuori dal server (Piano 10, Task 8)`.
 
 ## Task 9: demo, tmux e documentazione
 
 **Produces:** demo con selezione, annulla e label (`internal/mail/demo.go`); prova in tmux con HOME temporanea (selezione, `u`, elenco label); sezione Piano 10 in `docs/smoke-checklist.md` (in Gmail web: archivia → `u` → la conversazione torna in INBOX; cestina → `u` → torna; label con stato misto; rimozione da un'altra cartella); README (tasti), CHANGELOG, piano dei gap, AGENTS.md.
 
-- [ ] Demo verificata in tmux, documentazione aggiornata, commit `docs: Piano 10 (README, CHANGELOG, smoke, piano dei gap)`.
+- [x] Demo verificata in tmux, documentazione aggiornata, commit `docs: Piano 10 (README, CHANGELOG, smoke, piano dei gap)`.
 
 ## Task 10: gate finale
 
-- [ ] `go build ./...`, `go vet ./...`, `go test -race -count=1 ./...`, `golangci-lint` a 0 issues.
-- [ ] Build `CGO_ENABLED=0` per linux, darwin, windows.
-- [ ] `govulncheck ./...` pulito.
+- [x] `go build ./...`, `go vet ./...`, `go test -race -count=1 ./...`, `golangci-lint` a 0 issues.
+- [x] Build `CGO_ENABLED=0` per linux, darwin, windows.
+- [x] `govulncheck ./...` pulito.
 
 ## Rischi e mitigazioni
 

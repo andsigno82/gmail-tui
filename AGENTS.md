@@ -122,6 +122,7 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   discarded by guards in `internal/app`. Preserve both when touching routing.
 - **`g`/`G` belong to bubbles/list** (go to start/end of the list): they are
   not in `internal/app/keys.go`; check it before binding them.
+- **Label utente vs sistema (Piano 10)**: `msg.IsUserLabel` (`internal/msg`) is the only definition of a user label; `labelNames` and the label panel use it. System labels (`\Inbox`, `\Seen`, …) are atoms of STORE X-GM-LABELS, never shown as user labels. `Restore`, `AllMailIDs` and `ModifyLabels` are write methods and stay out of the MCP `Reader` (`TestReaderMethodSetIsReadOnly`).
 - **Trash never uses a generic EXPUNGE**: `Trash` rejects servers with neither
   MOVE nor UIDPLUS, because go-imap beta.9's `Client.Move` fallback expunges
   the whole mailbox.

@@ -179,6 +179,17 @@ Use a wrapper script that appends `$GMAIL_TUI_FROM`, `$GMAIL_TUI_SUBJECT` and `$
 - [ ] Run `gmail-tui doctor` with `GMAIL_APP_PASSWORD` unset and no keychain entry → the password line says missing and suggests "gmail-tui login", the IMAP check is skipped, the other checks do not fail.
 - [ ] With the password only in the keychain → `password: keychain ok` and the `imap:` line is printed.
 
+## Piano 10 — smistamento (real account, run by hand)
+
+Run on a real Gmail account; nothing here is covered by tests.
+
+- [ ] `x` on two rows, then `a`: both leave the Inbox in Gmail web; the selection is empty afterwards.
+- [ ] `a` then `u` within 10 s: the conversation is back in the Inbox in Gmail web, and no "\Inbox" label appears as a user label on it (the Sent messages of the thread do not get \Inbox).
+- [ ] `#` on a selection, then `u`: the messages are back in their folder with their user labels (known limit: labels lost with the trash are not restored, see the plan, D10-T3).
+- [ ] `u` after a new `a`: only the last action is undone; the earlier one stays.
+- [ ] Label panel on a mixed selection (one conversation with Work, one without): Work shows ◪; `tab` on it and `Enter` removes it from the conversation that had it, `Lavoro` created by name is added to both, in Gmail web from another folder.
+- [ ] Label panel on a conversation in a different folder: removing a label from Gmail web's label list is reflected after the refresh.
+
 ## Piano 9 — scrittura (real account, run by hand)
 
 Run on a real Gmail account; nothing here is covered by tests.

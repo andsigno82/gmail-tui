@@ -81,6 +81,8 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 
 ## Piano 10 — Smistamento
 
+**Consegnato** (branch `feat/piano-10`): selezione con `x`/`X`/`esc`, `a`/`#`/`s`/`v`/`l` su tutta la selezione, annulla di archivia e cestino con `u` (10 s), pannello label con stato misto su Gmail. Decisioni in `docs/superpowers/plans/2026-11-23-piano-10-smistamento.md`. Verifica reale su Gmail: `docs/smoke-checklist.md`, sezione Piano 10.
+
 - **Selezione multipla:** marcare più righe e applicare `a`/`#`/`s`/`v`/`l` a tutte. Modello: `:mark` di aerc (con modalità visuale) e il tagging di neomutt. Tasto da scegliere: `x` (Gmail web) o spazio, oggi usato per scorrere nel thread.
 - **Annulla** l'ultima `a`/`#`: Gmail web mostra "Annulla" per qualche secondo. Con UIDPLUS il MOVE restituisce i nuovi UID (`MoveData` in go-imap), quindi l'operazione inversa è un MOVE di ritorno preciso. Nuovo stato "ultima op annullabile" nell'app.
 - **Rimozione label** dalla vista di qualunque cartella: con `X-GM-LABELS` (Piano 8) è una STORE; senza, oggi funziona solo dalla cartella della label stessa.

@@ -52,12 +52,14 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `/` | search — on Gmail accounts the query goes verbatim to Gmail (`older_than:7d`, `in:`, `-label:`, `from:x is:unread label:Work has:attachment`); without Gmail, plain words match text |
 | `r` / `f` / `c` | reply / forward / compose new |
 | `m` then `Enter` in Drafts | resume a draft in the composer (recipients with names, subject, body, attachments) |
-| `a` | archive the conversation in the current folder (Inbox only) |
-| `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); from a thread it returns to the list |
+| `x` | mark/unmark the row under the cursor for a multi-selection (☑); `X` selects all loaded rows (again: none); `Esc` clears the selection |
+| `a` | archive the conversation in the current folder (Inbox only); with a selection, all selected conversations |
+| `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); with a selection, all selected; from a thread it returns to the list |
+| `u` | undo the last archive or trash (toast for 10 s; a new archive or trash replaces the undo; an unsent message is still sent) |
 | `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
-| `s` | star on/off |
-| `v` | mark the conversation in the current folder read/unread |
-| `l` | apply/remove label (refused for the current folder) |
+| `s` | star on/off (with a selection: on for all if any is unstarred, otherwise off for all) |
+| `v` | mark read/unread (with a selection: read for all if any is unread, otherwise unread for all) |
+| `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before |
 | `o` | open the selected message's HTML body in browser (thread view) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
