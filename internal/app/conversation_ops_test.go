@@ -188,9 +188,46 @@ func TestVAggiornaSubitoIlGrassettoDellaConversazione(t *testing.T) {
 	if len(rec.read) != 1 || !sameIDs(rec.read[0], idU1, idU2, idU3, idSent) {
 		t.Errorf("MarkRead ricevuto = %v, voglio tutta la conversazione (INBOX e Inviati)", rec.read)
 	}
+	// Segnalazione di Andrea (2026-11-23): dopo "letta" la riga deve smettere di
+	// essere non letta. Il vecchio test si aspettava il contrario perché il
+	// grassetto era ricalcolato sullo stato letto PRIMA della modifica.
 	first := strings.Split(m.inbox.View(), "\n")[0]
-	if !strings.Contains(first, "●") {
-		t.Errorf("riga = %q: il messaggio in Inviati è non letto, la conversazione deve restare in grassetto", first)
+	if strings.Contains(first, "●") {
+		t.Errorf("riga = %q: tutta la conversazione è stata segnata letta, niente più ●", first)
+	}
+
+	// Secondo v: torna non letta (toggle simmetrico).
+	m, cmd = step(m, pressKey("v"))
+	m = applyAll(t, m, cmd)
+	if first := strings.Split(m.inbox.View(), "\n")[0]; !strings.Contains(first, "●") {
+		t.Errorf("riga = %q: dopo il secondo v la conversazione deve tornare non letta", first)
+	}
+}
+
+// TestVDecideSullaConversazione (segnalazione di Andrea, 2026-11-23): se l'ultimo
+// messaggio è letto ma un altro della conversazione no, la riga è non letta e v
+// deve segnarla LETTA (regola Gmail, come la selezione multipla D10-V1), non non letta.
+func TestVDecideSullaConversazione(t *testing.T) {
+	mock := convOpsFixture(t)
+	for _, mm := range mock.Msgs {
+		if mm.Ref.ID == idU3 {
+			mm.Ref.Unread = false // ultimo letto; INBOX:1 e Inviati restano non letti
+		}
+	}
+	rec := &opRec{MailStore: mock, mock: mock}
+	m := pagedModel(t, rec)
+	if first := strings.Split(m.inbox.View(), "\n")[0]; !strings.Contains(first, "●") {
+		t.Fatalf("premessa: la conversazione con messaggi non letti deve essere non letta: %q", first)
+	}
+	m, cmd := step(m, pressKey("v"))
+	m = applyAll(t, m, cmd)
+	for _, mm := range mock.Msgs {
+		if mm.Ref.ThreadID == 7 && mm.Ref.Unread {
+			t.Errorf("%v ancora non letto: v su una conversazione non letta deve segnarla letta", mm.Ref.ID)
+		}
+	}
+	if first := strings.Split(m.inbox.View(), "\n")[0]; strings.Contains(first, "●") {
+		t.Errorf("riga = %q: dopo v la conversazione deve risultare letta", first)
 	}
 }
 

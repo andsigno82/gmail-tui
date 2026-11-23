@@ -128,7 +128,14 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 		m.pending++
 		return m, tea.Batch(star(m.store, ref.ID, on), m.spinner.Tick)
 	case "v": // lettura: toggle (unread → read, read → unread)
+		// Si decide sulla CONVERSAZIONE, come Gmail e come la selezione multipla
+		// (D10-V1): se un suo messaggio qualsiasi è non letto la riga è non letta e
+		// v la segna letta; guardare solo l'ultimo messaggio la lasciava non letta
+		// per sempre (segnalazione di Andrea, 2026-11-23).
 		read := ref.Unread
+		if c, ok := m.sums[ref.ID]; ok {
+			read = c.Unread
+		}
 		updated := ref
 		updated.Unread = !read
 		m.applyLocalRef(updated)
@@ -363,7 +370,10 @@ func markReadConv(st mail.MailStore, ref msg.MessageRef, read bool) tea.Cmd {
 		}
 		ev := opDone{label: label, err: err, refresh: true, localID: ref.ID, localRead: read}
 		if err == nil && ref.ThreadID != 0 {
-			ev.convSet, ev.convUnread = true, anyUnread(thread)
+			// MarkRead ha portato TUTTI i messaggi della conversazione allo stesso
+			// stato: il grassetto è !read. anyUnread(thread) leggeva i flag di PRIMA
+			// della modifica e lasciava la riga non letta dopo "letta".
+			ev.convSet, ev.convUnread = true, !read
 		}
 		return ev
 	}
