@@ -1,6 +1,7 @@
 package styles
 
 import (
+	"fmt"
 	"image/color"
 	"math"
 	"reflect"
@@ -22,14 +23,24 @@ func loadTheme(t *testing.T, name string) theme.Theme {
 	return th
 }
 
-// styledFields estrae per nome tutti i campi lipgloss.Style di Styles.
+// styledFields estrae per nome tutti i campi lipgloss.Style di Styles; gli
+// elementi delle liste []lipgloss.Style hanno nome "Campo[i]" (Piano 15, Task 9:
+// QuoteBar, BadgeAvatar, StatusSegment sono coperti come gli altri).
 func styledFields(s Styles) map[string]lipgloss.Style {
 	out := make(map[string]lipgloss.Style)
 	v := reflect.ValueOf(s)
 	typ := v.Type()
 	for i := 0; i < v.NumField(); i++ {
-		if st, ok := v.Field(i).Interface().(lipgloss.Style); ok {
-			out[typ.Field(i).Name] = st
+		if !v.Field(i).CanInterface() {
+			continue
+		}
+		switch f := v.Field(i).Interface().(type) {
+		case lipgloss.Style:
+			out[typ.Field(i).Name] = f
+		case []lipgloss.Style:
+			for j, st := range f {
+				out[fmt.Sprintf("%s[%d]", typ.Field(i).Name, j)] = st
+			}
 		}
 	}
 	return out
