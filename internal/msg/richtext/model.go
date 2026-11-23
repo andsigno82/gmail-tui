@@ -1,6 +1,6 @@
 // Package richtext definisce il modello a blocchi del corpo dei messaggi
 // (Piano 15, Task 1, D15-T1): paragrafi, citazioni, elenchi, tabelle, bottoni,
-// immagini. Lo costruiscono FromHTML (Task 4) e FromText (Task 5); i renderer
+// immagini. Lo costruiscono FromHTML (html.go) e FromText (text.go); i renderer
 // di internal/ui/render lo consumano. Il modello non si salva in cache: si
 // ricava da BodyHTML a render time (D15-T2). Nessuna logica in questo file.
 package richtext
@@ -63,7 +63,9 @@ type Block struct {
 	Kind Kind
 	// Runs: KindParagraph, KindPre, KindButton (testo e href del bottone).
 	Runs []Run
-	// Children: KindQuote (contenuto) e KindList (un Block per elemento).
+	// Children: KindQuote (contenuto), KindList (un Block per elemento) e, per un
+	// elemento di elenco (KindParagraph), i blocchi annidati sotto il suo testo
+	// (elenchi, citazioni; Piano 15, Task 4).
 	Children []Block
 	// Ordered e Start: solo KindList (<ol start=N>).
 	Ordered bool
@@ -79,16 +81,4 @@ type Block struct {
 	// Warn: link/bottone il cui testo mostra un dominio diverso dal reale
 	// (D15-07, D15-T6); impostato dal parser.
 	Warn bool
-}
-
-// FromHTML costruisce i blocchi da BodyHTML. truncated è true se l'input
-// superava MaxInputBytes. Stub (Piano 15, Task 1): lo sostituisce il Task 4.
-func FromHTML(html string) (blocks []Block, truncated bool) {
-	return nil, false
-}
-
-// FromText costruisce i blocchi dal corpo solo testo (citazioni ">", elenchi
-// "-"/"1."). Stub (Piano 15, Task 1): lo sostituisce il Task 5.
-func FromText(text string) []Block {
-	return nil
 }

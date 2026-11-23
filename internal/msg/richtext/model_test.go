@@ -53,16 +53,3 @@ func TestLimiti(t *testing.T) {
 		t.Errorf("tabelle = %dx%d, atteso 200x20", MaxTableRows, MaxTableCols)
 	}
 }
-
-// TestFirmeStub (Piano 15, Task 1): FromHTML e FromText sono stub finché i
-// Task 4 e 5 non li sostituiscono; il test documenta il contratto minimo
-// (nessun blocco, nessun troncamento) e va aggiornato da quei task.
-func TestFirmeStub(t *testing.T) {
-	blocks, truncated := FromHTML("<p>ciao</p>")
-	if blocks != nil || truncated {
-		t.Errorf("FromHTML stub = %v, %v; atteso nil, false", blocks, truncated)
-	}
-	if got := FromText("ciao"); got != nil {
-		t.Errorf("FromText stub = %v; atteso nil", got)
-	}
-}
