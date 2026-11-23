@@ -270,10 +270,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** tabella di casi di phishing: `amazon.it` → `https://www.amazon.it/x` (nessun warn); `amazon.it` → `https://amazon.evil.example/` (warn); `paypal.com` → `https://paypal.com.evil.example` (warn); stesso dominio in unicode e in `xn--` (nessun warn); IP (fallback host esatto); suffisso pubblico (`co.uk`) → fallback; testo non dominio (`clicca qui`) → nessun warn; ogni warn ha `⚠` nel testo e `UnderlineCurly`. Immagine: nessuna `Zone`, alt troncato, alt vuoto.
 
-- [ ] Test RED (tabella phishing).
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(render): link con controllo di dominio e immagini (Piano 15, Task 6)`.
+- [x] Test RED (tabella phishing).
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(render): link con controllo di dominio e immagini (Piano 15, Task 6)`.
 
 ## Task 7: bottoni a riquadro e chip allegati (`internal/ui/render`)
 

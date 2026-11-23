@@ -53,12 +53,6 @@ func Dispatch(b richtext.Block, c Ctx) Out {
 // Paragraph rende i Runs di un paragrafo a capo sulla larghezza (Task 6/8).
 func Paragraph(b richtext.Block, c Ctx) Out { return Out{} }
 
-// Link rende un link con controllo di dominio (D15-07, Task 6).
-func Link(text, href string, c Ctx) Out { return Out{} }
-
-// Image rende un'immagine come chip con il testo alternativo (D15-08, Task 6).
-func Image(alt string, c Ctx) Out { return Out{} }
-
 // Button rende un bottone a riquadro con l'host di destinazione (D15-01, Task 7).
 func Button(b richtext.Block, c Ctx) Out { return Out{} }
 
