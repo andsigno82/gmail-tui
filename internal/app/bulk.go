@@ -118,6 +118,37 @@ func (m Model) askBulkTrash() (Model, tea.Cmd) {
 	return m, nil
 }
 
+// bulkLabel applica l'etichetta a TUTTE le conversazioni selezionate con una sola
+// ApplyLabel (Piano 10, review punto 1, D10-L1): il mini-prompt senza Gmail non
+// agisce più solo sulla riga del cursore. Come la singola, rifiuta se una riga sta già
+// nella cartella con quel nome (la COPY duplicherebbe). La selezione si azzera.
+func (m Model) bulkLabel(name string) (Model, tea.Cmd) {
+	rows := m.selectedRefs()
+	for _, r := range rows {
+		if strings.EqualFold(name, boxOf(r)) {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("etichetta %s non applicata: è la cartella corrente", name))
+			return m, cmd
+		}
+	}
+	gen := m.listGen
+	m.setSel(nil)
+	m.pending++
+	return m, tea.Batch(bulkApplyLabel(m.store, rows, name, gen), m.spinner.Tick)
+}
+
+// bulkApplyLabel applica l'etichetta (aggiunta) alle conversazioni delle righe, con
+// un'unica ApplyLabel sugli ID risolti e guardati (bulkIDs).
+func bulkApplyLabel(st mail.MailStore, rows []msg.MessageRef, label string, gen int) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		ids, err := bulkIDs(ctx, st, rows)
+		if err == nil {
+			err = st.ApplyLabel(ctx, ids, label, true)
+		}
+		return opDone{label: fmt.Sprintf("etichetta %s applicata a %d", label, len(rows)), err: err, refresh: true, gen: gen, checkGen: true}
+	}
+}
+
 // bulkIDs risolve gli ID su cui agisce un'op sulla selezione: per ogni riga la
 // conversazione nella sua mailbox (conversationIDs), guardata sulla mailbox della
 // riga. Un solo rifiuto di guardia blocca tutta l'op. Senza duplicati.

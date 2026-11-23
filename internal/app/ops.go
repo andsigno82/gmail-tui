@@ -181,6 +181,10 @@ func (m Model) confirmLabel() (Model, tea.Cmd) {
 	if name == "" {
 		return m, nil
 	}
+	if m.view == viewInbox && len(m.sel) > 0 {
+		// Piano 10, review punto 1 (D10-L1): con righe marcate l'etichetta va a tutte.
+		return m.bulkLabel(name)
+	}
 	if strings.EqualFold(name, m.opBox()) {
 		// Piano 7, fix review 4: la COPY nella stessa mailbox duplicherebbe il
 		// messaggio. Piano 7, fix code-review 1: il confronto è con la mailbox

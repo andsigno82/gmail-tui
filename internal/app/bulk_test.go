@@ -206,3 +206,33 @@ func TestBulkOpStaleResultDropped(t *testing.T) {
 		t.Errorf("esito stante ha avviato un refresh sulla lista corrente")
 	}
 }
+
+// Piano 10, review punto 1 (D10-L1): senza Gmail `l` con righe marcate applica la
+// label a TUTTE le conversazioni selezionate con una sola ApplyLabel (non solo alla
+// riga del cursore); poi la selezione si azzera e il toast dice quante sono.
+func TestLabelMiniPromptAppliesToWholeSelection(t *testing.T) {
+	mock := inboxTrioFixture()
+	mock.NoGmail = true
+	rec := &opRec{MailStore: mock, mock: mock}
+	m := pagedModel(t, rec)
+	m, _ = step(m, pressKey("x"))
+	m, _ = step(m, pressKey("j"))
+	m, _ = step(m, pressKey("x"))
+	m, _ = step(m, pressKey("l"))
+	m = typeKeys(m, "Work")
+	m, cmd := step(m, pressKey("enter"))
+	m = applyAll(t, m, cmd)
+
+	if len(rec.labeled) != 1 {
+		t.Fatalf("ApplyLabel = %d chiamate, voglio 1 con tutte le selezionate: %v", len(rec.labeled), rec.labeled)
+	}
+	if !sameIDs(rec.labeled[0], msg.NewID("INBOX", 2), msg.NewID("INBOX", 3)) {
+		t.Errorf("ApplyLabel ids = %v, voglio le due conversazioni selezionate", rec.labeled[0])
+	}
+	if len(m.sel) != 0 {
+		t.Errorf("selezione dopo l'etichetta = %v, voglio vuota", m.sel)
+	}
+	if !toastContains(m, "etichetta Work applicata a 2") {
+		t.Errorf("toast = %v, voglio \"etichetta Work applicata a 2\"", m.toast.Texts())
+	}
+}
