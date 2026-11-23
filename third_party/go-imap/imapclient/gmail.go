@@ -161,7 +161,14 @@ func (c *Client) StoreGmailLabels(numSet imap.NumSet, store *imap.StoreGmailLabe
 	if store.Silent {
 		enc.Atom(".SILENT")
 	}
+	// Piano 10, Task 1 (critico): le label di sistema (\Inbox, \Important,
+	// \Starred) sono atomi NUDI; quotate, Gmail le tratta come label utente con
+	// nome "\Inbox". Le label utente restano quotate.
 	enc.SP().List(len(store.Labels), func(i int) {
+		if strings.HasPrefix(store.Labels[i], `\`) {
+			enc.Atom(store.Labels[i])
+			return
+		}
 		enc.String(store.Labels[i])
 	})
 	enc.end()

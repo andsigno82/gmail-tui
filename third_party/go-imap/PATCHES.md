@@ -17,7 +17,7 @@ La copia resta identica a upstream salvo i file elencati nella tabella delle pat
 | 3 | `search.go` | campo `SearchCriteria.Gmail *SearchCriteriaGmail` (`Raw`, `MsgID`, `ThreadID`, `Labels`) e il tipo; `And()` NON unisce questo campo |
 | 3 | `imapclient/search.go` | encoding di `X-GM-RAW` (quotato, con escape), `X-GM-MSGID`, `X-GM-THRID`, `X-GM-LABELS` in `writeSearchKey`; `CHARSET UTF-8` se il testo Gmail non è ASCII |
 | 4 | `store.go` | tipo `StoreGmailLabels` (`Op`, `Silent`, `Labels`). **Usato dal backend dal Piano 10, Task 5** (`ModifyLabels` in `internal/mail/imap/gmail_labels.go`, con le label codificate in modified UTF-7 prima dell'invio) |
-| 4 | `imapclient/gmail.go` | metodo `Client.StoreGmailLabels`: `STORE set [+|-]X-GM-LABELS[.SILENT] ("l1" "l2")`; `Store` upstream invariato |
+| 4 | `imapclient/gmail.go` | metodo `Client.StoreGmailLabels`: `STORE set [+|-]X-GM-LABELS[.SILENT] ("l1" "l2")`; `Store` upstream invariato. Piano 10, Task 1: le label di sistema (che iniziano con `\`, es. `\Inbox`, `\Important`, `\Starred`) sono scritte come atomi NUDI, non quotati: quotate, Gmail le crea come label utente di nome `\Inbox`. Le label utente restano quotate; le label non ASCII arrivano gia' in modified UTF-7 (ASCII) dal backend |
 
 Test della patch: `imapclient/gmail_test.go` (Task 2), `imapclient/gmail_search_test.go` (Task 3), `imapclient/gmail_store_test.go` (Task 4). Tutti usano un server scriptato su `net.Pipe`, non il memserver, che non conosce X-GM-*.
 
