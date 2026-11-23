@@ -64,3 +64,29 @@ func TestClickSuBottoneWarnPortaWarnEShown(t *testing.T) {
 		t.Errorf("messaggio = %#v, voglio ButtonClickMsg con Warn e Shown", got)
 	}
 }
+
+// Richiesta di Andrea (2026-11-23): un link spezzato su più righe porta il testo
+// mostrato COMPLETO su ogni sua zona, così la conferma cita il dominio intero.
+func TestShownDiUnLinkSpezzatoEInteroSuTutteLeZone(t *testing.T) {
+	const shown = "www.paypal-account-verification-center.com/signin/secure"
+	full := testMsg()
+	full.BodyHTML = `<p>Accedi: <a href="https://evil.example.net/login">` + shown + `</a> ora.</p>`
+	m := newModel(t, full)
+	m.SetSize(30, 40)
+	rows := map[int]bool{}
+	for y := headerLines; y < headerLines+30; y++ {
+		for x := 0; x < 30; x++ {
+			z, ok := m.ZoneAt(x, y)
+			if !ok || !z.Warn {
+				continue
+			}
+			rows[y] = true
+			if z.Shown != shown {
+				t.Errorf("riga %d: Shown = %q, voglio il testo intero %q", y, z.Shown, shown)
+			}
+		}
+	}
+	if len(rows) < 2 {
+		t.Fatalf("il link doveva spezzarsi su più righe: zone su %d righe", len(rows))
+	}
+}
