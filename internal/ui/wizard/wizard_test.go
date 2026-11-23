@@ -330,7 +330,7 @@ func TestPasswordMasked(t *testing.T) {
 // --- verifica connessione REALE (funzione iniettata: nessuna rete nei test) -----
 
 // TestPasswordEnterRunsConnTest: invio alla password avvia la verifica con le
-// credenziali digitate e il ctx con il budget di 30s; lo stato va a testing.
+// credenziali digitate e il ctx con il budget di 90s (Piano 16, Q16-7); lo stato va a testing.
 func TestPasswordEnterRunsConnTest(t *testing.T) {
 	rec := &connRecorder{}
 	m := atPassword(t, Deps{TestConnect: rec.test})
@@ -350,8 +350,9 @@ func TestPasswordEnterRunsConnTest(t *testing.T) {
 	if rec.address != "user@gmail.com" || rec.password != "app-password" {
 		t.Errorf("credenziali passate = (%q, %q), voglio (user@gmail.com, app-password)", rec.address, rec.password)
 	}
-	if rec.deadline <= 0 || rec.deadline > 31*time.Second {
-		t.Errorf("deadline ctx = %v, voglio (0, 31s]", rec.deadline)
+	// Piano 16, Q16-7: budget di Connect a 90 s (il LOGIN reale può superare i 30 s).
+	if rec.deadline < 89*time.Second || rec.deadline > 90*time.Second {
+		t.Errorf("deadline ctx = %v, voglio ~90s (Piano 16, Q16-7)", rec.deadline)
 	}
 }
 
