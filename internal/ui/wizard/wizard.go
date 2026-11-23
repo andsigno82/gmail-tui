@@ -49,9 +49,10 @@ const (
 const appPasswordURL = "https://myaccount.google.com/apppasswords"
 
 // connectTimeout è il budget della verifica di connessione (Piano 4, Task 5:
-// "timeout 30s"). Il wizard avvolge il ctx prima di chiamare TestConnect, così
-// il vincolo vale per QUALSIASI implementazione iniettata.
-const connectTimeout = 30 * time.Second
+// "timeout 30s"; Piano 16, Q16-7: 90 s, perché il LOGIN reale può superare i 30 s).
+// Il wizard avvolge il ctx prima di chiamare TestConnect, così il vincolo vale
+// per QUALSIASI implementazione iniettata.
+const connectTimeout = 90 * time.Second
 
 // hint dei passi (il resto della UI del wizard è testo pieno).
 const (

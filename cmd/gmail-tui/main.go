@@ -157,8 +157,15 @@ func runTUI(args []string, forceWizard bool) int {
 		return runWizardTUI(cfgPath, krStore, th)
 	}
 
-	store, sender, demo := selectStore(cfg, pw, openCache())
-	store, sender = tracestore.Wrap(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
+	// Cache legata all'account (Piano 16, Task 11, D16-T15): solo con password, mai in demo.
+	c := cacheFor(cfg.Address, pw)
+	defer closeCache(c)
+	store, sender, demo := selectStore(cfg, pw, c)
+	if demo {
+		store, sender = tracestore.Wrap(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
+	} else {
+		store, sender = realStore(store), tracestore.WrapSender(sender) // guardia R4 sopra la traccia (Piano 16, Task 11)
+	}
 	m := app.New(store, sender, th)
 	m.SetVersion(version)                               // splash d'avvio (Piano 15, Task 16b)
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
@@ -216,12 +223,20 @@ func runWizardTUI(cfgPath string, krStore keyring.Store, th theme.Theme) int {
 	mk := app.DemoStore()
 	m := app.New(mk, mk, th)
 	m.SetVersion(version) // splash d'avvio dopo il wizard (Piano 15, Task 16b)
+	// La cache si apre con la password verificata dal wizard e si chiude a fine
+	// programma (Piano 16, Task 11).
+	var c *cache.Cache
 	m.SetWizard(wizard.New(wizard.Deps{
 		TestConnect: testConnection,
 		Keyring:     krStore,
 		CfgPath:     cfgPath,
-	}, styles.New(th)), backendFactory)
-	return runProgram(m)
+	}, styles.New(th)), func(address, password string) (mail.MailStore, app.Sender) {
+		c = cacheFor(address, password)
+		return backendsWith(address, password, c)
+	})
+	code := runProgram(m)
+	closeCache(c)
+	return code
 }
 
 // wizardNeeded decide la modalità first-run (Piano 4, Task 5): wizard SOLO se
@@ -338,8 +353,8 @@ func selectStore(cfg config.Config, password string, c *cache.Cache) (store mail
 
 // testConnection è la verifica di connessione REALE del wizard (Piano 4,
 // Task 5): preset Gmail (host fisso), TLS, Connect + ListMessages limit 1.
-// Il wizard applica il budget di 30s al ctx prima di chiamarla (cfr.
-// wizard.connectTimeout): nessun hang possibile oltre il budget.
+// Il wizard applica il budget di 90s al ctx prima di chiamarla (cfr.
+// wizard.connectTimeout, Piano 16, Q16-7): nessun hang possibile oltre il budget.
 func testConnection(ctx context.Context, address, password string) error {
 	st := imap.NewStore(imap.Options{
 		Addr:     imapAddr,
@@ -353,16 +368,17 @@ func testConnection(ctx context.Context, address, password string) error {
 	return err
 }
 
-// backendFactory costruisce store e sender REALI con le credenziali verificate
-// dal wizard (preset Gmail); NESSUNA connessione qui (il dial avviene alla
-// prima operazione — come selectStore). Soddisfa app.BackendFactory, passata
-// al radice via SetWizard (Piano 4, Task 5).
-func backendFactory(address, password string) (mail.MailStore, app.Sender) {
+// backendsWith costruisce store e sender REALI con le credenziali verificate
+// dal wizard (preset Gmail) e la cache dell'account c (nil = senza cache);
+// NESSUNA connessione qui (il dial avviene alla prima operazione — come
+// selectStore). La factory del wizard (Piano 4, Task 5) la chiama con la cache
+// aperta da runWizardTUI (Piano 16, Task 11).
+func backendsWith(address, password string, c *cache.Cache) (mail.MailStore, app.Sender) {
 	store := imap.NewStore(imap.Options{
 		Addr:     imapAddr,
 		Username: address,
 		Password: password,
-		Cache:    openCache(),
+		Cache:    c,
 	})
 	sender := smtp.NewSender(smtp.Options{
 		Host:     smtpHost,
@@ -370,7 +386,13 @@ func backendFactory(address, password string) (mail.MailStore, app.Sender) {
 		Username: address,
 		Password: password,
 	})
-	return tracestore.Wrap(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
+	return realStore(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
+}
+
+// realStore avvolge lo store IMAP reale (Piano 16, Task 11): la traccia sotto,
+// la guardia R4 sopra, così la guardia vede gli ID come li vede l'app.
+func realStore(st mail.MailStore) mail.MailStore {
+	return mail.Guard(tracestore.Wrap(st))
 }
 
 // runFetch: gmail-tui fetch [--limit N] [--query "from:x is:unread"].
@@ -387,10 +409,11 @@ func runFetch(args []string) int {
 	if !ok {
 		return 1
 	}
-	store, ok := newIMAPStore(cfg)
+	store, c, ok := newIMAPStore(cfg)
 	if !ok {
 		return 1
 	}
+	defer closeCache(c)
 	return cmd.Fetch(os.Stdout, store, msg.ParseQuery(*query), *limit)
 }
 
@@ -475,19 +498,21 @@ func appPassword(cfg config.Config) (string, bool) {
 	return pw, true
 }
 
-// newIMAPStore costruisce lo store IMAP con preset Gmail; cache bbolt da
-// UserCacheDir (nil, cioè no cache, se non disponibile).
-func newIMAPStore(cfg config.Config) (mail.MailStore, bool) {
+// newIMAPStore costruisce lo store IMAP con preset Gmail e la cache dell'account
+// (Piano 16, Task 11): il chiamante chiude la cache con closeCache. Lo store della
+// CLI fetch non è avvolto dalla guardia R4: non legge istantanee.
+func newIMAPStore(cfg config.Config) (mail.MailStore, *cache.Cache, bool) {
 	pw, ok := appPassword(cfg)
 	if !ok {
-		return nil, false
+		return nil, nil, false
 	}
+	c := cacheFor(cfg.Address, pw)
 	return imap.NewStore(imap.Options{
 		Addr:     imapAddr,
 		Username: cfg.Address,
 		Password: pw,
-		Cache:    openCache(),
-	}), true
+		Cache:    c,
+	}), c, true
 }
 
 // newSMTPSender costruisce il sender SMTP con preset Gmail (587 STARTTLS).
@@ -512,7 +537,7 @@ func openAddressBook() *contacts.Book {
 		return nil
 	}
 	path := filepath.Join(dir, "gmail-tui", "contacts.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil
 	}
 	b, err := contacts.Open(path)
@@ -522,22 +547,43 @@ func openAddressBook() *contacts.Book {
 	return b
 }
 
-// openCache apre la cache bbolt in UserCacheDir/gmail-tui/cache.db;
-// qualunque problema ⇒ nil (si prosegue senza cache).
-func openCache() *cache.Cache {
+// cacheFor apre la cache dell'account solo con password risolta (Piano 16,
+// Task 11, D16-T15): in demo non si crea nessun file di cache. Nil = senza cache.
+func cacheFor(address, password string) *cache.Cache {
+	if password == "" {
+		return nil
+	}
+	return openCache(address)
+}
+
+// openCache apre la cache bbolt in UserCacheDir/gmail-tui/cache.db e la lega
+// all'account (Piano 16, D16-T9). La cartella 0700 la garantisce cache.Open
+// (anche se esiste già con permessi più larghi). Qualunque problema ⇒ nil.
+func openCache(address string) *cache.Cache {
 	dir, err := os.UserCacheDir()
 	if err != nil {
 		return nil
 	}
-	path := filepath.Join(dir, "gmail-tui", "cache.db")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil
-	}
-	c, err := cache.Open(path)
+	c, err := cache.Open(filepath.Join(dir, "gmail-tui", "cache.db"))
 	if err != nil {
 		return nil
 	}
+	if err := c.BindAccount(address); err != nil {
+		closeCache(c)
+		return nil
+	}
 	return c
+}
+
+// closeCache compatta e chiude la cache (Piano 16, D16-T8); nil è no-op. Un errore
+// va su stderr: il file originale resta valido.
+func closeCache(c *cache.Cache) {
+	if c == nil {
+		return
+	}
+	if err := c.Close(); err != nil {
+		fmt.Fprintf(os.Stderr, "cache: chiusura: %v\n", err)
+	}
 }
 
 // attachList è il flag ripetibile --attach (un file per occorrenza).

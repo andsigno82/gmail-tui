@@ -23,8 +23,9 @@ type CapsProbe func(ctx context.Context) ([]string, error)
 // (SPECIAL-USE, LIST-EXTENDED) usano; Gmail le annuncia tutte.
 var requiredCaps = []string{"MOVE", "UIDPLUS", "SPECIAL-USE", "LIST-EXTENDED"}
 
-// probeTimeout è il budget del probe IMAP (variabile per i test).
-var probeTimeout = 30 * time.Second
+// probeTimeout è il budget del probe IMAP (variabile per i test). 90 s: Piano 16,
+// Q16-7, come connectTimeout della TUI (il LOGIN reale può superare i 30 s).
+var probeTimeout = 90 * time.Second
 
 // Doctor diagnostica la configurazione e stampa un report.
 // exit code: 0 tutto ok (anche con config assente), 1 problemi bloccanti.
