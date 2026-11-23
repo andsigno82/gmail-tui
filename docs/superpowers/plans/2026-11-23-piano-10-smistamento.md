@@ -33,6 +33,17 @@ Scelte tecniche del piano (da confermare solo se contestate):
 | D10-T6 | Annulla archivia = `ModifyLabels(add=["\\Inbox"])` sugli ID di All Mail da `AllMailIDs`. Senza X-GM-EXT-1 `AllMailIDs` fallisce e il toast NON offre `u`. | Spec del piano dei gap. La rimozione di \Inbox equivale ad archiviare su Gmail (documentazione Gmail IMAP): da verificare in smoke reale. |
 | D10-T7 | Annulla e selezione operano sugli ID della conversazione nella cartella (`conversationIDs`), come `a`/`#` singoli. | Coerenza con Gmail web e con `guardBox`. |
 
+Decisioni del coordinatore sui dubbi del piano (Piano 10, Task 4):
+
+| ID | Decisione | Motivazione |
+|---|---|---|
+| D10-C1 | Annulla archivia su Gmail: ripristino di `\Inbox` con STORE +X-GM-LABELS sugli ID di All Mail dei soli messaggi archiviati (`AllMailIDs`, da X-GM-MSGID). Mai expunge. Senza X-GM-EXT-1 l'annulla dell'archivia non è disponibile (errore; la UI non offre `u`). | Non riportare in INBOX i messaggi Inviati del thread. |
+| D10-C2 | Annulla cestino: MOVE di ritorno dal cestino alla cartella d'origine con gli UID di UIDPLUS (`MoveData`). Su Gmail le label utente si riapplicano con STORE +X-GM-LABELS: le passa il chiamante (`Restore` fa solo il MOVE, non conosce le label perse). Mai EXPUNGE generico; il MOVE di ritorno parte solo dalla mailbox con ruolo `trash`. | Il chiamante ha le label dalla riga; evita di far restituire a `Trash` dati non richiesti. |
+| D10-C3 | `ModifyLabels(ids, add, remove)` via STORE ±X-GM-LABELS (`StoreGmailLabels` della patch go-imap; PATCHES.md aggiornato quando è usato, Task 5). Sicuro su ID di Tutti i messaggi (tocca solo le label). `\Inbox` in add/remove è ammesso (archivia/ripristina); gli altri attributi di sistema sono rifiutati e `\Inbox` non va esposto come label utente. | Unica primitiva per il pannello label e per l'annulla. |
+| D10-C4 | I nuovi metodi (`Restore`, `AllMailIDs`, `ModifyLabels`) sono di SCRITTURA: il server MCP (`internal/mcpserver`) non li espone. Il Reader resta invariato; la sua suite di sicurezza è verde. | Sicurezza dati MCP (AGENTS.md). |
+| D10-C5 | Cache: dopo `ModifyLabels` e `Restore` si aggiornano le copie per GmailID (stessa regola dei flag: solo le entry già in cache). | Coerenza con `storeFlags`/`updateCachedLabels`. |
+| D10-C6 | Trash/Restore/ModifyLabels rispettano il gate (ops serializzate) come le altre op; nessun EXPUNGE generico. | AGENTS.md, regola 2. |
+
 ## Global Constraints
 
 - Tasti: `x` marca, `X` tutte, `esc` azzera la selezione (solo viewInbox, senza modali); `u` annulla solo in viewInbox/viewThread e solo se c'è un'azione annullabile; `l` con selezione apre il pannello label.

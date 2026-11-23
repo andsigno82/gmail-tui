@@ -59,7 +59,7 @@ func TestMockListMailboxesDefault(t *testing.T) {
 func TestMockTrashMovesMessage(t *testing.T) {
 	m := newMock()
 	ctx := context.Background()
-	if err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 2)}); err != nil {
+	if _, err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 2)}); err != nil {
 		t.Fatalf("Trash: %v", err)
 	}
 	inbox, _ := m.ListMessages(ctx, msg.Query{}, Page{})
@@ -82,7 +82,7 @@ func TestMockTrashErrors(t *testing.T) {
 
 	noTrash := newMock()
 	noTrash.Mailboxes = []Mailbox{{Name: "INBOX", Role: "inbox"}}
-	if err := noTrash.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1)}); err == nil {
+	if _, err := noTrash.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1)}); err == nil {
 		t.Error("Trash senza cestino: err = nil")
 	}
 	if got, _ := noTrash.ListMessages(ctx, msg.Query{}, Page{}); len(got) != 5 {
@@ -91,19 +91,19 @@ func TestMockTrashErrors(t *testing.T) {
 
 	m := newMock()
 	m.Msgs = append(m.Msgs, &msg.Message{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Trash", 1), Subject: "già"}})
-	if err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1), msg.NewID("[Gmail]/Trash", 1)}); err == nil {
+	if _, err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1), msg.NewID("[Gmail]/Trash", 1)}); err == nil {
 		t.Error("Trash con id nel cestino: err = nil")
 	}
 	if got, _ := m.ListMessages(ctx, msg.Query{}, Page{}); len(got) != 5 {
 		t.Errorf("INBOX dopo rifiuto = %d, voglio 5 (nessuna azione)", len(got))
 	}
-	if err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 99)}); err == nil {
+	if _, err := m.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 99)}); err == nil {
 		t.Error("Trash di id inesistente: err = nil")
 	}
 
 	failing := newMock()
 	failing.Err = errTest
-	if err := failing.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1)}); err == nil {
+	if _, err := failing.Trash(ctx, []msg.MessageID{msg.NewID("INBOX", 1)}); err == nil {
 		t.Error("Trash con Err: err = nil")
 	}
 }

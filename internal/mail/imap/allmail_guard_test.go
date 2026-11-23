@@ -23,7 +23,7 @@ func TestArchiveETrashRifiutanoTuttiIMessaggi(t *testing.T) {
 	if err := store.Archive(t.Context(), []msg.MessageID{id}); err == nil {
 		t.Error("Archive su Tutti i messaggi deve rifiutare")
 	}
-	if err := store.Trash(t.Context(), []msg.MessageID{id}); err == nil {
+	if _, err := store.Trash(t.Context(), []msg.MessageID{id}); err == nil {
 		t.Error("Trash su Tutti i messaggi deve rifiutare")
 	}
 	if got := mailboxSubjects(t, store, "[Gmail]/All Mail"); len(got) != 1 {

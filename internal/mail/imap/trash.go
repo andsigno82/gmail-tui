@@ -25,7 +25,20 @@ import (
 //
 // Un errore a metà (SELECT/MOVE di un gruppo) lascia già spostati i gruppi
 // precedenti: IMAP non offre transazioni, il refresh della UI rilegge lo stato.
-func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) error {
+// Piano 10, Task 5: restituisce gli ID dei messaggi nel cestino (D10-T2), dai UID di
+// destinazione del MOVE (MoveData.DestUIDs, COPYUID). Senza UID dal server la lista
+// è vuota: lo spostamento è avvenuto, ma non c'è l'annulla per quei messaggi.
+func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
+	var out []msg.MessageID
+	if err := s.trashMove(ctx, ids, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// trashMove è il corpo di Trash: scrive in out gli ID nel cestino man mano che ogni
+// gruppo di mailbox viene spostato.
+func (s *Store) trashMove(ctx context.Context, ids []msg.MessageID, out *[]msg.MessageID) error {
 	if err := s.refuseAllMail(ctx, ids, "cestina"); err != nil {
 		return err
 	}
@@ -67,9 +80,11 @@ func (s *Store) Trash(ctx context.Context, ids []msg.MessageID) error {
 		if _, err := c.Select(mailbox, nil).Wait(); err != nil {
 			return fmt.Errorf("imap select %s: %w", mailbox, err)
 		}
-		if _, err := c.Move(imap.UIDSetNum(uids...), trash).Wait(); err != nil {
+		data, err := c.Move(imap.UIDSetNum(uids...), trash).Wait()
+		if err != nil {
 			return fmt.Errorf("imap move %s → %s: %w", mailbox, trash, err)
 		}
+		*out = append(*out, destIDs(trash, data.DestUIDs)...)
 	}
 	return nil
 }
