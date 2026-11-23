@@ -158,6 +158,8 @@ type Model struct {
 	folder        mail.Mailbox           // cartella/label mostrata: zero value = posta in arrivo (Piano 7, Task 4)
 	folderOpen    bool                   // selettore cartelle aperto (`m`): i tasti vanno alla lista (Piano 7, Task 4)
 	folderList    list.Model             // elenco del selettore cartelle (bubbles/list, folders.go)
+	labelPickOpen bool                   // pannello label su selezione aperto (Piano 10, Task 7)
+	labelPick     labelPicker            // stato del pannello label (Piano 10, Task 7)
 	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
 	trashRef      msg.MessageRef         // messaggio in conferma: letto all'apertura, non al sì
 	trashSel      []msg.MessageRef       // conversazioni selezionate in conferma cestino (Piano 10, Task 3); vuoto = trashRef
@@ -547,6 +549,24 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.rememberConvs(ev.convs)
 		cmd := m.inbox.AppendConversations(m.convsOf(ev.refs))
 		return m, cmd
+
+	case labelsListed:
+		// Piano 10, Task 7: le label arrivano da ListMailboxes; il pannello le mostra
+		// con la presenza già calcolata sulle conversazioni bersaglio. Errore: pannello
+		// chiuso con toast, nessuna modifica.
+		m.doneOp()
+		if !m.labelPickOpen {
+			return m, nil
+		}
+		if ev.err != nil {
+			m.labelPickOpen = false
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("etichette: %v", ev.err))
+			return m, cmd
+		}
+		input := m.labelPick.input
+		m.labelPick = newLabelPicker(m.labelPick.convs, labelNames(ev.boxes))
+		m.labelPick.input = input
+		return m, nil
 
 	case opDone:
 		m.doneOp()
@@ -1101,6 +1121,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.labelPickOpen {
+			// Pannello label su selezione (Piano 10, Task 7): tutti i tasti vanno al pannello.
+			return m.labelPickKey(ev)
+		}
 		if m.folderOpen {
 			// Selettore cartelle aperto (Piano 7, Task 4): invio apre la cartella
 			// sotto il cursore, esc chiude, il resto naviga la lista (j/k, frecce,
@@ -1384,7 +1408,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// conferme discard/invio (P4 Task 4) è ignorato come i tasti; in
 		// modalità wizard (P4 Task 5) il setup è keyboard-first (i click non
 		// selezionano nulla: la lista non esiste ancora).
-		if m.showHelp || m.labelOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.menu.open || m.thread.ModalOpen() {
+		if m.showHelp || m.labelOpen || m.labelPickOpen || m.folderOpen || m.trashOpen || m.discardOpen || m.confirmSend || m.wizardActive || m.menu.open || m.thread.ModalOpen() {
 			return m, nil
 		}
 		if m.view == viewInbox {
@@ -1447,6 +1471,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if m.view == viewSearch {
 			var cmd tea.Cmd
 			m.search, cmd = m.search.Update(ev)
+			return m, cmd
+		}
+		// Idem per il filtro del pannello label (blink del cursore).
+		if m.labelPickOpen {
+			var cmd tea.Cmd
+			m.labelPick.input, cmd = m.labelPick.input.Update(ev)
 			return m, cmd
 		}
 		// Idem per il mini-prompt label mentre è aperto (blink del cursore).
@@ -1683,6 +1713,9 @@ func (m Model) body() string {
 	if m.menu.open {
 		return m.settingsView()
 	}
+	if m.labelPickOpen {
+		return m.labelPickView()
+	}
 	if m.folderOpen {
 		return m.foldersView()
 	}
@@ -1713,6 +1746,10 @@ func (m Model) body() string {
 // stato resta in barra neutra (Piano 7.3): le conferme modali sono le sole
 // barre colorate.
 func (m Model) statusBar() string {
+	if m.labelPickOpen {
+		// Piano 10, Task 7: il pannello dice i suoi tasti nella barra (neutra).
+		return m.renderBar(m.styles.StatusBar, "spazio cambia · digita filtra · invio applica · esc chiude")
+	}
 	if m.labelOpen {
 		// Il prompt è stilizzato dall'input (SearchInput/ListDate): rende sé
 		// stesso al posto dello status, che resta custodito sotto.

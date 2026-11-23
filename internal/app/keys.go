@@ -48,6 +48,8 @@ type appKeys struct {
 	Submit     key.Binding // invio — esegui la ricerca
 	Cancel     key.Binding // esc — annulla (ricerca, prompt label, composer)
 	Apply      key.Binding // invio — applica l'etichetta
+	PickToggle key.Binding // spazio — cambia la casella dell'etichetta nel pannello (Piano 10, Task 7)
+	PickMove   key.Binding // ↑/↓ — scorre le etichette del pannello (Piano 10, Task 7)
 	WizardCont key.Binding // invio — continua al passo successivo (wizard)
 	WizardSkip key.Binding // s — salta il setup ed entra in demo (wizard)
 	Help       key.Binding // ? — aiuto completo
@@ -92,6 +94,8 @@ var keys = appKeys{
 	Submit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "cerca")),
 	Cancel:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "annulla")),
 	Apply:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "applica etichetta")),
+	PickToggle: key.NewBinding(key.WithKeys("space"), key.WithHelp("spazio", "cambia")),
+	PickMove:   key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scegli")),
 	WizardCont: key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "continua")),
 	WizardSkip: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "salta (demo)")),
 	Help:       key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "aiuto")),
@@ -128,6 +132,10 @@ func newHelp(st styles.Styles) help.Model {
 // status bar lo rende sempre visibile, accanto all'eventuale testo di status.
 // La lunghezza è trattata dal truncamento di bubbles/help (SetWidth).
 func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
+	if m.labelPickOpen {
+		// Pannello label (Piano 10, Task 7): spazio cambia, invio applica, esc chiude.
+		return []key.Binding{keys.PickToggle, keys.Apply, keys.Cancel}
+	}
 	if m.menu.open {
 		// Menu impostazioni (Piano 7.2, Task 3): in modifica resta solo il ritorno
 		// alla lista; altrimenti navigazione, valore, invio e annulla.
@@ -183,6 +191,9 @@ func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 // fullHelpFor è l'help completo per lo stato dato: gruppi (colonne) per
 // categoria. L'overlay `?` lo rende con bubbles/help (FullHelpView).
 func (m Model) fullHelpFor(labelOpen bool, v view) [][]key.Binding {
+	if m.labelPickOpen {
+		return [][]key.Binding{{keys.PickToggle, keys.PickMove, keys.Apply, keys.Cancel}}
+	}
 	if m.menu.open {
 		return [][]key.Binding{
 			{keys.Move, keys.SetValue},

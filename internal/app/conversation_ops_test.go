@@ -45,6 +45,13 @@ type opRec struct {
 	starred  [][]msg.MessageID
 	read     [][]msg.MessageID
 	labeled  [][]msg.MessageID
+	modified [][]msg.MessageID
+}
+
+// ModifyLabels registra gli ID delle label del pannello (Piano 10, Task 7) e delega.
+func (r *opRec) ModifyLabels(ctx context.Context, ids []msg.MessageID, add, remove []string) error {
+	r.modified = append(r.modified, ids)
+	return r.MailStore.ModifyLabels(ctx, ids, add, remove)
 }
 
 func (r *opRec) ConversationMembers(_ context.Context, box string, thread uint64) ([]msg.MessageID, error) {
@@ -135,17 +142,22 @@ func TestArchiviaAgisceSullaConversazioneIntera(t *testing.T) {
 	}
 }
 
-// Piano 8, Task 9b: `l` applica la label a tutta la conversazione nella cartella.
+// Piano 8, Task 9b, aggiornato dal Piano 10, Task 7: `l` su Gmail applica la label a
+// tutta la conversazione, con il pannello. Creare "lavoro" e invio la applica a tutti
+// i messaggi del thread in Tutti i messaggi (ModifyLabels), Inviati compreso, come
+// Gmail web: il prompt vecchio lavorava solo nella cartella corrente.
 func TestEtichettaAgiscSullaConversazioneIntera(t *testing.T) {
 	rec := &opRec{MailStore: convOpsFixture(t)}
 	rec.mock = rec.MailStore.(*mail.Mock)
 	m := pagedModel(t, rec)
-	m, _ = step(m, pressKey("l"))
-	m.label.SetValue("lavoro")
-	m, cmd := step(m, pressKey("enter"))
+	m, cmd := step(m, pressKey("l"))
+	m = applyAll(t, m, cmd)
+	m = pickTypeText(t, m, "lavoro")
+	m, cmd = step(m, pressKey("enter"))
 	applyAll(t, m, cmd)
-	if len(rec.labeled) != 1 || !sameIDs(rec.labeled[0], idU1, idU2, idU3) {
-		t.Errorf("ApplyLabel ricevuto = %v, voglio i tre messaggi del thread in INBOX", rec.labeled)
+	idSent := msg.NewID("[Gmail]/Sent", 5)
+	if len(rec.modified) != 1 || !sameIDs(rec.modified[0], idU1, idSent, idU2, idU3) {
+		t.Errorf("ModifyLabels ricevuto = %v, voglio i quattro messaggi del thread", rec.modified)
 	}
 }
 
