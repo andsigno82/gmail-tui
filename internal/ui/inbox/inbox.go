@@ -463,7 +463,14 @@ func (d delegate) row(width int, conv mail.Conversation, selected, checked bool)
 	if chipsW > 0 {
 		chips = " " + d.renderChips(shown, more, false)
 	}
-	return d.st.ListCheck.Render(checkMark(checked)) + " " + markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
+	// Casella attenuata finché la riga non è selezionata, evidente (accento, grassetto)
+	// quando lo è: la colonna resta sempre larga uguale, la lista non si sposta
+	// (richiesta di Andrea, 2026-11-23).
+	checkSt := d.st.ListDate
+	if checked {
+		checkSt = d.st.ListCheck.Bold(true)
+	}
+	return checkSt.Render(checkMark(checked)) + " " + markerSt.Render(marker) + starSt.Render(" "+star+" ") + bodySt.Render(mid) +
 		chips + strings.Repeat(" ", gap) + d.st.ListDate.Render(date)
 }
 
