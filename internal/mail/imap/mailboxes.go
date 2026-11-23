@@ -47,16 +47,16 @@ func (s *Store) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
 // listMailboxes è il corpo di ListMailboxes SENZA gate: il gate non è rientrante
 // (cfr. idleGate), quindi chi è già sotto gate (Trash) lo chiama direttamente.
 func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
-	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true}).Collect()
+	data, err := listData(c, nil)
 	if err != nil {
-		return nil, fmt.Errorf("imap list: %w", err)
+		return nil, err
 	}
 	boxes := make([]mail.Mailbox, 0, len(data))
 	for _, d := range data {
 		if hasAttr(d.Attrs, imap.MailboxAttrNoSelect) {
 			continue // contenitore non selezionabile (es. "[Gmail]")
 		}
-		boxes = append(boxes, mail.Mailbox{Name: d.Mailbox, Role: roleOf(d)})
+		boxes = append(boxes, mail.Mailbox{Name: d.Mailbox, Role: roleOf(d), Delimiter: delimOf(d)})
 	}
 	sort.SliceStable(boxes, func(i, j int) bool {
 		ri, rj := roleRank(boxes[i].Role), roleRank(boxes[j].Role)
@@ -66,6 +66,26 @@ func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
 		return boxes[i].Name < boxes[j].Name
 	})
 	return boxes, nil
+}
+
+// listData è il LIST "*" con RETURN (SPECIAL-USE), SENZA gate. status != nil
+// aggiunge RETURN (STATUS ...) (LIST-STATUS, RFC 5819: solo se il server lo
+// annuncia; Piano 15, Task 11). Condiviso da listMailboxes e unreadCounts.
+func listData(c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
+	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true, ReturnStatus: status}).Collect()
+	if err != nil {
+		return nil, fmt.Errorf("imap list: %w", err)
+	}
+	return data, nil
+}
+
+// delimOf è il delimitatore gerarchico del LIST ("/" per Gmail); vuoto se il
+// server risponde NIL (rune 0). Piano 15, Task 11.
+func delimOf(d *imap.ListData) string {
+	if d.Delim == 0 {
+		return ""
+	}
+	return string(d.Delim)
 }
 
 // roleOf ricava il ruolo di una mailbox LIST: INBOX per nome (IMAP: case

@@ -42,6 +42,13 @@ type testServer struct {
 	// (nessun modo di assegnare \Trash e simili): gli attributi vivono qui.
 	// Piano 7, Task 1.
 	boxes map[string][]imap.MailboxAttr
+
+	// statusLog registra le mailbox su cui il server ha ricevuto un comando
+	// STATUS, e listStatusReqs conta i LIST con RETURN (STATUS): servono ai
+	// test di UnreadCounts per distinguere LIST-STATUS da STATUS singoli
+	// (Piano 15, Task 11). Protetti da mu.
+	statusLog      []string
+	listStatusReqs int
 }
 
 // startTestServer avvia imapmemserver su 127.0.0.1:0 e registra la chiusura
@@ -111,6 +118,9 @@ func (s *specialUseSession) List(w *imapserver.ListWriter, ref string, patterns 
 	}
 	s.ts.mu.Lock()
 	defer s.ts.mu.Unlock()
+	if options.ReturnStatus != nil {
+		s.ts.listStatusReqs++
+	}
 	names := make([]string, 0, len(s.ts.boxes))
 	for name := range s.ts.boxes {
 		names = append(names, name)
@@ -120,15 +130,32 @@ func (s *specialUseSession) List(w *imapserver.ListWriter, ref string, patterns 
 		if !matchAnyPattern(name, ref, patterns) {
 			continue
 		}
-		if err := w.WriteList(&imap.ListData{
+		data := &imap.ListData{
 			Attrs:   s.ts.boxes[name],
 			Delim:   specialUseDelim,
 			Mailbox: name,
-		}); err != nil {
+		}
+		if options.ReturnStatus != nil {
+			// Come un server reale (RFC 5819): se lo STATUS di una mailbox
+			// fallisce (qui: non esiste) la riga LIST esce senza STATUS.
+			if st, err := s.ts.user.Status(name, options.ReturnStatus); err == nil {
+				data.Status = st
+			}
+		}
+		if err := w.WriteList(data); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Status registra la mailbox del comando STATUS e delega al memserver
+// (Piano 15, Task 11).
+func (s *specialUseSession) Status(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
+	s.ts.mu.Lock()
+	s.ts.statusLog = append(s.ts.statusLog, mailbox)
+	s.ts.mu.Unlock()
+	return s.Session.Status(mailbox, options)
 }
 
 // Move inoltra il MOVE alla sessione del memserver (imapserver.SessionMove).

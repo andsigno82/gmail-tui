@@ -57,15 +57,42 @@ func TestListMailboxesRolesOrderAndNoselect(t *testing.T) {
 		t.Fatalf("ListMailboxes: %v", err)
 	}
 	want := []mail.Mailbox{
-		{Name: "INBOX", Role: "inbox"},
-		{Name: "[Gmail]/Starred", Role: "flagged"},
-		{Name: "[Gmail]/Sent Mail", Role: "sent"},
-		{Name: "[Gmail]/Drafts", Role: "drafts"},
-		{Name: "[Gmail]/All Mail", Role: "all"},
-		{Name: "[Gmail]/Spam", Role: "junk"},
-		{Name: "[Gmail]/Trash", Role: "trash"},
-		{Name: "Archive", Role: ""},
-		{Name: "Work", Role: ""},
+		{Name: "INBOX", Role: "inbox", Delimiter: "/"},
+		{Name: "[Gmail]/Starred", Role: "flagged", Delimiter: "/"},
+		{Name: "[Gmail]/Sent Mail", Role: "sent", Delimiter: "/"},
+		{Name: "[Gmail]/Drafts", Role: "drafts", Delimiter: "/"},
+		{Name: "[Gmail]/All Mail", Role: "all", Delimiter: "/"},
+		{Name: "[Gmail]/Spam", Role: "junk", Delimiter: "/"},
+		{Name: "[Gmail]/Trash", Role: "trash", Delimiter: "/"},
+		{Name: "Archive", Role: "", Delimiter: "/"},
+		{Name: "Work", Role: "", Delimiter: "/"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("ListMailboxes = %+v, voglio %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ListMailboxes[%d] = %+v, voglio %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// TestListMailboxesDelimiter: il delimitatore del LIST arriva in Mailbox.Delimiter
+// (Piano 15, Task 11), anche per una label annidata.
+func TestListMailboxesDelimiter(t *testing.T) {
+	ts := startTestServerCaps(t, gmailCaps)
+	ts.createMailbox("Work")
+	ts.createMailbox("Work/Sub")
+	store := connectStore(t, ts)
+
+	got, err := store.ListMailboxes(t.Context())
+	if err != nil {
+		t.Fatalf("ListMailboxes: %v", err)
+	}
+	want := []mail.Mailbox{
+		{Name: "INBOX", Role: "inbox", Delimiter: "/"},
+		{Name: "Work", Role: "", Delimiter: "/"},
+		{Name: "Work/Sub", Role: "", Delimiter: "/"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("ListMailboxes = %+v, voglio %+v", got, want)
