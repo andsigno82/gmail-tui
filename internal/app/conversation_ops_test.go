@@ -65,7 +65,7 @@ func (r *opRec) Archive(ctx context.Context, ids []msg.MessageID) error {
 	return r.MailStore.Archive(ctx, ids)
 }
 
-func (r *opRec) Trash(ctx context.Context, ids []msg.MessageID) error {
+func (r *opRec) Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
 	r.trashed = append(r.trashed, append([]msg.MessageID(nil), ids...))
 	return r.MailStore.Trash(ctx, ids)
 }

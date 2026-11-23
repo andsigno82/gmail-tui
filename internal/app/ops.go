@@ -282,7 +282,7 @@ func trashCmd(st mail.MailStore, ref msg.MessageRef) tea.Cmd {
 			err = guardBox(ids, boxOf(ref))
 		}
 		if err == nil {
-			err = st.Trash(ctx, ids)
+			_, err = st.Trash(ctx, ids)
 		}
 		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: ids}
 	}

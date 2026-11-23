@@ -161,7 +161,7 @@ func bulkTrash(st mail.MailStore, rows []msg.MessageRef, gen int) tea.Cmd {
 		ctx := context.Background()
 		ids, err := bulkIDs(ctx, st, rows)
 		if err == nil {
-			err = st.Trash(ctx, ids)
+			_, err = st.Trash(ctx, ids)
 		}
 		return opDone{label: fmt.Sprintf("spostate %d nel cestino", len(rows)), err: err, refresh: true, deep: true, gone: ids, gen: gen, checkGen: true}
 	}
