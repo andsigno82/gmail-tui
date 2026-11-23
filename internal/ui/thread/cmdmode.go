@@ -373,6 +373,12 @@ func feedbackCmd(text string, isErr bool) tea.Cmd {
 // stato (ref, scroll, modali aperti). Chiamata dalla radice al cambio tema.
 func (m *Model) SetStyles(st styles.Styles) {
 	m.st = st
+	// Piano 15, Task 14: il tema cambia la chiave della cache (i corpi gia resi con
+	// gli stili vecchi non si riusano) e la generazione (rendering in volo stantii).
+	m.theme = themeKey(st)
+	m.gen = nextGen()
+	m.cache.resetPending()
+	m.renderQ = nil
 	m.refresh() // header, corpo (o titoli) e allegati con i nuovi stili
 	m.cmdInput.SetStyles(commandInputStyles(st))
 	if m.pickerOpen {

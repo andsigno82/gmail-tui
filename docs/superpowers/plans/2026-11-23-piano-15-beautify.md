@@ -394,10 +394,17 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** messaggio HTML fixture → zone corrette per link, bottone, allegato; `LinkAt` su bottone e chip; test esistenti di `links_test.go` verdi (salvo `headerLines`); cache: stessa chiave non ricalcola (contatore), larghezza diversa ricalcola, la 17ª voce espelle la più vecchia; `RenderedMsg` con `Gen` vecchio scartato; HTML oltre limite (`huge.html`) mostra `[messaggio troncato]` senza bloccare.
 
-- [ ] Test RED (fixture e cache).
-- [ ] Implementazione.
-- [ ] Gate (incluso `TestContrastoStiliConSfondo`).
-- [ ] Commit `feat(thread): corpo a blocchi, scheda e chip (Piano 15, Task 14)`.
+- [x] Test RED (fixture e cache).
+- [x] Implementazione.
+- [x] Gate (incluso `TestContrastoStiliConSfondo`).
+- [x] Commit `feat(thread): corpo a blocchi, scheda e chip (Piano 15, Task 14)`.
+
+**Realizzato (note per i Task 15-17):**
+
+- Lavori preparatori in `internal/ui/render`: `Paragraph` in `paragraph.go` sul motore unico dei Runs (usato anche da Quote, List, Table; link via `prepLink`, `Zone.Warn` letto dal prefisso `gmw` dell'id OSC 8); `\n` nei Runs = a capo voluto; sanificazione unica `cleanText`/`safeHref`.
+- Messaggi per l'app (documentati in `internal/ui/thread/links.go`): `ButtonClickMsg{URL}` e `AttachmentClickMsg{ID, Index}` (Index = posizione in `Message.Attachments` del messaggio selezionato). Il thread non apre nulla: l'apertura e del Task 16. `LinkClick` apre solo `ZoneLink` (LinkOpenedMsg); `ZoneAt(x, y)` e nuovo, `LinkAt` resta (solo zone con URL).
+- `headerLines` = 7 (scheda di 6 righe + 1 vuota). I test dell'app con clic al Y del primo titolo usano 7.
+- Rendering asincrono: i corpi con sorgente > 32 KiB si rendono in `tea.Cmd`; la radice (`internal/app/model.go`, `Update`) inoltra `thread.RenderedMsg` e accoda `thread.RenderCmd()`. `linkTarget` e il vecchio motore di a capo (`findLinks`, `wrapLine`, `cleanBody`) sono rimossi: l'URL arriva gia sanificato dalle zone di `render`.
 
 ## Task 15: cartelle e contatori in app (`internal/app`)
 

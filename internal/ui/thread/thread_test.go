@@ -93,15 +93,19 @@ func TestHeaderKeyValues(t *testing.T) {
 
 // --- quote dimming ----------------------------------------------------------
 
-// TestQuoteDimming: le righe che iniziano con ">" sono rese con lo stile
-// Quoted (line-per-line, prima del viewport); le righe normali no.
+// TestQuoteDimming: le righe che iniziano con ">" sono una citazione con la barra
+// laterale colorata e il testo nello stile Quoted (Piano 15, Task 14, D15-03); le
+// righe normali no.
 func TestQuoteDimming(t *testing.T) {
 	st := testStyles(t)
 	m := newModel(t, testMsg())
 	m.SetSize(80, 24)
 	v := m.View()
 
-	if !strings.Contains(v, st.Quoted.Render("> il 20 novembre andiamo")) {
+	if !strings.Contains(v, st.QuoteBar[0].Render("▎")) {
+		t.Error("la citazione non ha la barra laterale colorata")
+	}
+	if !strings.Contains(v, st.Quoted.Render("il 20 novembre andiamo")) {
 		t.Error("la riga citata non è nello stile Quoted")
 	}
 	if strings.Contains(v, st.Quoted.Render("Ciao,")) {
@@ -121,7 +125,7 @@ func TestViewportScrollJK(t *testing.T) {
 	mm.Attachments = nil
 	mm.BodyText = strings.TrimSuffix(strings.Repeat("riga corpo\n", 40), "\n")
 	m := newModel(t, mm)
-	m.SetSize(80, 24) // header 5 righe → viewport 19; maxY = 40-19 = 21
+	m.SetSize(80, 24) // scheda 7 righe → viewport 17; maxY = 40-17 = 23
 
 	if m.YOffset() != 0 {
 		t.Fatalf("YOffset iniziale = %d, voglio 0", m.YOffset())
@@ -137,8 +141,8 @@ func TestViewportScrollJK(t *testing.T) {
 	for range 40 {
 		m, _ = m.Update(pressKey("j"))
 	}
-	if m.YOffset() != 21 {
-		t.Errorf("YOffset al limite = %d, voglio 21 (clamp al fondo)", m.YOffset())
+	if m.YOffset() != 23 {
+		t.Errorf("YOffset al limite = %d, voglio 23 (clamp al fondo)", m.YOffset())
 	}
 }
 
@@ -185,19 +189,19 @@ func TestSetSizeFillsHeight(t *testing.T) {
 
 // --- allegati ---------------------------------------------------------------
 
-// TestAttachmentsListedHumanized: gli allegati sono elencati in coda come
-// "📎 nome (dimensione)" con dimensione umana (B/KiB/MiB).
-func TestAttachmentsListedHumanized(t *testing.T) {
+// TestAttachmentsListedAsChips: gli allegati sono elencati in coda come
+// "▣ nome · tipo · dimensione" (Piano 15, Task 14, D15-06).
+func TestAttachmentsListedAsChips(t *testing.T) {
 	m := newModel(t, testMsg())
 	m.SetSize(80, 24)
 	v := m.View()
-	for _, want := range []string{"📎 report.pdf (1.5 KiB)", "📎 dati.csv (512 B)"} {
+	for _, want := range []string{"▣ report.pdf · application/pdf · 1,5 KB", "▣ dati.csv · text/csv · 512 B"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("vista senza la riga allegato %q", want)
 		}
 	}
 	// dopo il corpo (il viewport sta in mezzo), non prima dell'header
-	if strings.Index(v, "A lunedì") > strings.Index(v, "📎 report.pdf") {
+	if strings.Index(v, "A lunedì") > strings.Index(v, "▣ report.pdf") {
 		t.Error("gli allegati devono stare in coda, dopo il corpo")
 	}
 }
@@ -207,31 +211,8 @@ func TestNoAttachmentsNoSection(t *testing.T) {
 	mm.Attachments = nil
 	m := newModel(t, mm)
 	m.SetSize(80, 24)
-	if strings.Contains(m.View(), "📎") {
-		t.Error("senza allegati non deve esserci la sezione 📎")
-	}
-}
-
-// TestHumanSize: dimensioni umane binarie, con il ".0" tagliato.
-func TestHumanSize(t *testing.T) {
-	cases := []struct {
-		n    int64
-		want string
-	}{
-		{0, "0 B"},
-		{512, "512 B"},
-		{1023, "1023 B"},
-		{1024, "1 KiB"},
-		{1536, "1.5 KiB"},
-		{2048, "2 KiB"},
-		{1024 * 1024, "1 MiB"},
-		{3*1024*1024 + 512*1024, "3.5 MiB"},
-		{1024 * 1024 * 1024, "1 GiB"},
-	}
-	for _, c := range cases {
-		if got := humanSize(c.n); got != c.want {
-			t.Errorf("humanSize(%d) = %q, voglio %q", c.n, got, c.want)
-		}
+	if strings.Contains(m.View(), "▣") {
+		t.Error("senza allegati non deve esserci la sezione dei chip")
 	}
 }
 

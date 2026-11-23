@@ -1,32 +1,39 @@
-// Package thread contiene la vista lettura messaggio della TUI: header
-// stilizzato (Da/A/Oggetto/Data), corpo in bubbles/viewport v2 con le righe
-// citate attenuate, allegati elencati in coda. L'app radice delega tasti e
-// mouse a questo modello quando la vista attiva è il thread.
+// Package thread contiene la vista lettura messaggio della TUI: scheda
+// d'intestazione con badge delle iniziali (Da/A/Oggetto/Data), corpo a blocchi
+// (internal/msg/richtext + internal/ui/render) in bubbles/viewport v2, allegati
+// come chip in coda (Piano 15, Task 14). L'app radice delega tasti e mouse a
+// questo modello quando la vista attiva è il thread.
 package thread
 
 import (
 	"fmt"
+	"hash/fnv"
+	"net/mail"
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/childenv"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/render"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
-// Layout: 4 righe header (Da/A/Oggetto/Data) + 1 riga vuota di separazione;
-// dopo il corpo, 1 riga vuota + una riga per allegato (solo se ce ne sono).
-const headerLines = 5
+// Layout (Piano 15, Task 14, D15-05): scheda d'intestazione di 6 righe (bordo
+// superiore, Da/A/Oggetto/Data, bordo inferiore) + 1 riga vuota di separazione;
+// dopo il corpo, 1 riga vuota + una riga per chip allegato (solo se ce ne sono).
+// Prima del Task 14 erano 5 righe: LinkAt e ClickRow partono da questa costante.
+const headerLines = 7
 
 // mesiIT sono i nomi dei mesi abbreviati per la data assoluta dell'header.
 var mesiIT = [...]string{"gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"}
@@ -55,17 +62,27 @@ type OpenedMsg struct {
 // line `:` aperta (cmdmode.go) una riga extra sotto il corpo ospita l'input;
 // col filepicker di :save il picker sostituisce corpo e allegati.
 type Model struct {
-	id       msg.MessageID // riga aperta: identità per anteprima e stantii (Piano 8, Task 10)
-	conv     []entry       // messaggi in ordine cronologico; uno solo = vista singola
-	sel      int           // messaggio selezionato: azioni, r/f, o, :save (default l'ultimo)
-	starts   []int         // riga del titolo di ogni messaggio nel contenuto (solo conversazione)
-	linkRows [][]linkSpan  // link per riga del contenuto (indice = riga nel viewport, Richiesta di Andrea, 2026-11-23)
+	id       msg.MessageID   // riga aperta: identità per anteprima e stantii (Piano 8, Task 10)
+	conv     []entry         // messaggi in ordine cronologico; uno solo = vista singola
+	sel      int             // messaggio selezionato: azioni, r/f, o, :save (default l'ultimo)
+	starts   []int           // riga del titolo di ogni messaggio nel contenuto (solo conversazione)
+	linkRows [][]render.Zone // zone cliccabili per riga del contenuto (indice = riga nel viewport, Piano 15, Task 14)
 	vp       viewport.Model
-	header   string   // blocco header pre-renderizzato (4 righe) del messaggio selezionato
-	attLines []string // righe allegati pre-renderizzate del messaggio selezionato
+	header   string          // scheda header pre-renderizzata (headerLines-1 righe) del messaggio selezionato
+	attLines []string        // righe dei chip allegati pre-renderizzate del messaggio selezionato
+	attZones [][]render.Zone // zone dei chip, una riga per chip
 	st       styles.Styles
 	width    int
 	height   int
+
+	// Rendering del corpo (Piano 15, Task 14, D15-T2/T5): cache in memoria
+	// condivisa tra le copie del Model (puntatore), impronta del tema per la
+	// chiave, generazione per scartare i risultati stantii e coda delle Cmd di
+	// rendering in background (svuotata da RenderCmd).
+	cache   *renderCache
+	theme   string
+	gen     int
+	renderQ []tea.Cmd
 
 	// Modalità comando `:` (Piano 4, Task 2): stato e logica in cmdmode.go.
 	cmdOpen    bool            // command line aperta: i tasti vanno all'input
@@ -107,7 +124,7 @@ func NewConversation(anchor msg.MessageRef, full []*msg.Message, st styles.Style
 
 // newBase prepara viewport (con il rebind dello scroll) e command line.
 func newBase(id msg.MessageID, st styles.Styles) Model {
-	m := Model{id: id, st: st}
+	m := Model{id: id, st: st, cache: newRenderCache(), theme: themeKey(st), gen: nextGen()}
 	m.vp = viewport.New()
 	m.vp.SoftWrap = false // il corpo va a capo in bodyRows, per tenere i link su piu righe (Richiesta di Andrea, 2026-11-23)
 	// Rebind scroll (Piano 4, Task 3, decisione controller): il keymap default
@@ -130,6 +147,12 @@ func newBase(id msg.MessageID, st styles.Styles) Model {
 // mouse (MouseWheelEnabled di default, delta 3).
 func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 	mm := m
+	// Risultato di un rendering in background (Piano 15, Task 14, D15-T5): vale
+	// anche con la command line o il picker aperti, e se stantio e scartato.
+	if r, ok := ev.(RenderedMsg); ok {
+		mm.applyRendered(r)
+		return mm, nil
+	}
 	if m.pickerOpen {
 		cmd := mm.updatePicker(ev)
 		return mm, cmd
@@ -215,6 +238,13 @@ func (m Model) View() string {
 // allegati e — se aperta — command line. Ricevitore puntatore: i modelli
 // bubbles (viewport/filepicker) mutano lo stato con i loro Set*.
 func (m *Model) SetSize(width, height int) {
+	if width != m.width {
+		// Nuova larghezza = nuova generazione: i rendering in volo per la larghezza
+		// precedente saranno scartati e quelli ancora necessari si rilanciano.
+		m.gen = nextGen()
+		m.cache.resetPending()
+		m.renderQ = nil // le Cmd accodate per la larghezza precedente sono gia stantie
+	}
 	m.width, m.height = width, height
 	m.refresh() // i titoli e il corpo a capo dipendono dalla larghezza
 	m.resize()
@@ -304,35 +334,128 @@ func (m Model) UnreadIDs() []msg.MessageID {
 // YOffset è la posizione di scorrimento del corpo (seam per i test).
 func (m Model) YOffset() int { return m.vp.YOffset() }
 
-// renderHeader compone le coppie chiave/valore: etichette in ThreadHeaderKey,
-// valori in ThreadHeader (il padding dello stile fa da spazio).
-func (m Model) renderHeader() string {
-	kv := func(k, v string) string {
-		return m.st.ThreadHeaderKey.Render(k+":") + m.st.ThreadHeader.Render(v)
+// badgeW e la larghezza in colonne del badge delle iniziali; headerOverhead le
+// colonne della scheda fuori dal testo: due bordi, due spazi interni, il badge e
+// uno spazio tra badge e testo.
+const (
+	badgeW         = 4
+	headerOverhead = 2 + 2 + badgeW + 1
+)
+
+// initials ricava le iniziali del mittente (D15-05): prima e ultima parola del
+// nome (o della parte locale dell'indirizzo, spezzata su . _ -); una sola parola
+// = una sola lettera. Sempre maiuscole; "?" se non c'e nulla di leggibile.
+func initials(from string) string {
+	name := from
+	if a, err := mail.ParseAddress(from); err == nil {
+		name = a.Name
+		if name == "" {
+			name, _, _ = strings.Cut(a.Address, "@")
+		}
 	}
+	words := strings.FieldsFunc(name, func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	first := func(w string) string {
+		for _, r := range w {
+			return string(unicode.ToUpper(r))
+		}
+		return ""
+	}
+	switch len(words) {
+	case 0:
+		return "?"
+	case 1:
+		return first(words[0])
+	}
+	return first(words[0]) + first(words[len(words)-1])
+}
+
+// badge rende il badge delle iniziali (badgeW colonne) con un colore del tema
+// scelto in modo stabile dall'indirizzo, come le label (D15-05).
+func (m Model) badge(from string) string {
+	text := " " + initials(from)
+	text += strings.Repeat(" ", max(0, badgeW-lipgloss.Width(text)))
+	if len(m.st.BadgeAvatar) == 0 {
+		return text
+	}
+	key := strings.ToLower(from)
+	if a, err := mail.ParseAddress(from); err == nil {
+		key = strings.ToLower(a.Address)
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(key))
+	return m.st.BadgeAvatar[int(h.Sum32()%uint32(len(m.st.BadgeAvatar)))].Render(text)
+}
+
+// renderHeader compone la scheda d'intestazione (Piano 15, Task 14, D15-05):
+// bordo arrotondato, badge delle iniziali a sinistra e le coppie chiave/valore
+// (etichette in ThreadHeaderKey, valori in ThreadHeader: il padding dello stile fa
+// da spazio). Larga come la vista; prima del primo SetSize larga quanto il testo.
+// I valori troppo lunghi si troncano con "…". Il bordo e in ThreadHeaderKey (slot
+// muted): nessun colore fisso.
+func (m Model) renderHeader() string {
 	to := ""
 	if sel := m.selMsg(); sel != nil {
 		to = strings.Join(sel.To, ", ")
 	}
 	ref := m.selRef()
-	lines := []string{
-		kv("Da", ref.From),
-		kv("A", to),
-		kv("Oggetto", ref.Subject),
-		kv("Data", FormatDate(ref.Date)),
+	pairs := [][2]string{{"Da", ref.From}, {"A", to}, {"Oggetto", ref.Subject}, {"Data", FormatDate(ref.Date)}}
+
+	textW := 0 // larghezza del testo disponibile; 0 = quella naturale
+	if m.width > 0 {
+		textW = max(1, m.width-headerOverhead)
 	}
+	kvs := make([]string, len(pairs))
+	natural := 0
+	for i, p := range pairs {
+		v := cleanHeader(p[1])
+		if textW > 0 {
+			// chiave + ":" a sinistra, due colonne di padding del valore.
+			v = truncWidth(v, max(1, textW-lipgloss.Width(p[0]+":")-2))
+		}
+		kvs[i] = m.st.ThreadHeaderKey.Render(p[0]+":") + m.st.ThreadHeader.Render(v)
+		natural = max(natural, lipgloss.Width(kvs[i]))
+	}
+	if textW == 0 {
+		textW = natural
+	}
+
+	border := func(s string) string { return m.st.ThreadHeaderKey.Render(s) }
+	bar := strings.Repeat("─", textW+headerOverhead-2)
+	lines := []string{border("╭" + bar + "╮")}
+	for i, kv := range kvs {
+		cell := strings.Repeat(" ", badgeW)
+		if i == 0 {
+			cell = m.badge(ref.From)
+		}
+		pad := strings.Repeat(" ", max(0, textW-lipgloss.Width(kv)))
+		lines = append(lines, border("│")+" "+cell+" "+kv+pad+" "+border("│"))
+	}
+	lines = append(lines, border("╰"+bar+"╯"))
 	return strings.Join(lines, "\n")
 }
 
-// renderAttachments prepara le righe degli allegati (solo elenco: save/open
-// arrivano in Piano 4) con dimensione umana.
-func (m Model) renderAttachments(full *msg.Message) []string {
-	lines := make([]string, 0, len(full.Attachments))
-	for _, a := range full.Attachments {
-		lines = append(lines, m.st.ListDate.Render(
-			fmt.Sprintf("📎 %s (%s)", a.Filename, humanSize(a.Size))))
+// cleanHeader toglie dai valori della scheda i caratteri di controllo (a capo
+// compresi): un Subject o un From non fidato non deve rompere le righe della
+// scheda ne iniettare sequenze nel terminale.
+func cleanHeader(s string) string {
+	return strings.Join(strings.Fields(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, s)), " ")
+}
+
+// renderAttachments prepara i chip degli allegati (Piano 15, Task 14, D15-06):
+// un render.Attachment per allegato, con Index = posizione in full.Attachments.
+// Le zone alimentano ZoneAt/LinkClick (AttachmentClickMsg).
+func (m Model) renderAttachments(full *msg.Message) render.Out {
+	c := render.Ctx{Width: m.width, St: m.st}
+	outs := make([]render.Out, 0, len(full.Attachments))
+	for i, a := range full.Attachments {
+		outs = append(outs, render.Attachment(a.Filename, a.ContentType, a.Size, i, c))
 	}
-	return lines
+	return render.Stack(outs...)
 }
 
 // openInBrowser produce la Cmd per `o`: solo se il messaggio ha un corpo HTML
@@ -403,23 +526,4 @@ func FormatDate(d time.Time) string {
 	}
 	return fmt.Sprintf("%d %s %d %02d:%02d",
 		d.Day(), mesiIT[d.Month()-1], d.Year(), d.Hour(), d.Minute())
-}
-
-// humanSize formatta una dimensione in unità binarie umane (B/KiB/MiB/GiB),
-// con una sola decimale quando serve e il ".0" tagliato.
-func humanSize(n int64) string {
-	one := func(v float64, unit string) string {
-		s := strconv.FormatFloat(v, 'f', 1, 64)
-		return strings.TrimSuffix(s, ".0") + " " + unit
-	}
-	switch {
-	case n < 1024:
-		return fmt.Sprintf("%d B", n)
-	case n < 1024*1024:
-		return one(float64(n)/1024, "KiB")
-	case n < 1024*1024*1024:
-		return one(float64(n)/(1024*1024), "MiB")
-	default:
-		return one(float64(n)/(1024*1024*1024), "GiB")
-	}
 }

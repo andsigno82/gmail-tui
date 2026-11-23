@@ -194,7 +194,7 @@ func TestEscClosesCommandWithoutBackMsg(t *testing.T) {
 	if mm.ModalOpen() {
 		t.Error("dopo esc ModalOpen deve essere false")
 	}
-	if !strings.Contains(mm.View(), "📎 report.pdf") {
+	if !strings.Contains(mm.View(), "▣ report.pdf") {
 		t.Error("dopo esc la vista thread normale deve tornare (allegati in coda)")
 	}
 }
@@ -394,7 +394,7 @@ func TestPickerEscCancels(t *testing.T) {
 	if mm.ModalOpen() {
 		t.Error("dopo esc dal picker ModalOpen deve essere false")
 	}
-	if !strings.Contains(mm.View(), "📎 report.pdf") {
+	if !strings.Contains(mm.View(), "▣ report.pdf") {
 		t.Error("dopo esc la vista thread normale deve tornare")
 	}
 }
@@ -600,10 +600,10 @@ func TestSetStylesRerenders(t *testing.T) {
 	if !strings.Contains(v, st2.ThreadHeaderKey.Render("Da:")) {
 		t.Error("header non ri-renderizzato con i nuovi stili")
 	}
-	if !strings.Contains(v, st2.Quoted.Render("> riga citata")) {
+	if !strings.Contains(v, st2.QuoteBar[0].Render("▎")) {
 		t.Error("corpo citato non ri-renderizzato con i nuovi stili")
 	}
-	if !strings.Contains(v, st2.ListDate.Render("📎 report.pdf (1.5 KiB)")) {
+	if !strings.Contains(v, st2.ChipAttach.Render("▣ report.pdf · application/pdf · 1,5 KB")) {
 		t.Error("righe allegato non ri-renderizzate con i nuovi stili")
 	}
 	if m.Ref().ID != testRef().ID {

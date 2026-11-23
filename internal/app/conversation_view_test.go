@@ -97,8 +97,8 @@ func TestAnteprimaConversazioneSegnaLettiTuttiDopoDueSecondi(t *testing.T) {
 
 // Piano 8, Task 10 (test mancante): il clic sul titolo di un messaggio compresso
 // nell'anteprima a due colonne lo espande, come nella vista a schermo intero.
-// La prima riga del thread è il titolo di anna (letta, compressa) a Y=5 (header
-// di 4 righe più la riga vuota); la colonna dell'anteprima inizia dopo la lista.
+// La prima riga del thread è il titolo di anna (letta, compressa) a Y=7 (scheda
+// di 6 righe più la riga vuota, Piano 15, Task 14); la colonna dell'anteprima inizia dopo la lista.
 func TestClickSuTitoloNellAnteprimaEspande(t *testing.T) {
 	store := convViewFixture(t)
 	m := pagedModel(t, store)
@@ -111,7 +111,7 @@ func TestClickSuTitoloNellAnteprimaEspande(t *testing.T) {
 	if hasBodyLine(m.thread.View(), "corpo di anna@x.dev n1") {
 		t.Fatalf("prima del clic il primo messaggio deve essere compresso:\n%s", m.thread.View())
 	}
-	m = deliverAll(t, m, func() tea.Cmd { _, c := step(m, tea.MouseClickMsg{X: 100, Y: 5, Button: tea.MouseLeft}); return c }())
+	m = deliverAll(t, m, func() tea.Cmd { _, c := step(m, tea.MouseClickMsg{X: 100, Y: 7, Button: tea.MouseLeft}); return c }())
 	if !hasBodyLine(m.thread.View(), "corpo di anna@x.dev n1") {
 		t.Errorf("il clic sul titolo nell'anteprima deve espandere il messaggio:\n%s", m.thread.View())
 	}
@@ -208,7 +208,7 @@ func TestCorpoStantioNonSiInstallaNelThreadRiaperto(t *testing.T) {
 	stale := store.Msgs[0] // INBOX:1, compressa nel thread riaperto
 	m, _ = step(m, bodyLoaded{gen: oldGen, anchor: row.ID, id: stale.Ref.ID, m: stale})
 
-	m2, click := step(m, tea.MouseClickMsg{X: 100, Y: 5, Button: tea.MouseLeft})
+	m2, click := step(m, tea.MouseClickMsg{X: 100, Y: 7, Button: tea.MouseLeft})
 	if !strings.Contains(m2.thread.View(), "corpo in caricamento") {
 		t.Fatalf("il corpo stantio è stato installato nel thread riaperto:\n%s", m2.thread.View())
 	}

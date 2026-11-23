@@ -16,77 +16,10 @@ import (
 // (browser di sistema) e sono wrappati in OSC 8 per il cmd+clic nativo.
 
 // ansiLinkRE toglie SGR (colori) e OSC 8 (link), cosi l'indice di colonna e quello del testo visibile.
-var ansiLinkRE = regexp.MustCompile(`\x1b\]8;[^\x1b\x07]*(?:\x1b\\|\x07)|\x1b\[[0-9;]*m`)
+var ansiLinkRE = regexp.MustCompile(`\x1b\]8;[^\x1b\x07]*(?:\x1b\\|\x07)|\x1b\[[0-9;:]*m`)
 var osc8OpenRE = regexp.MustCompile("\x1b\\]8;([^;\x1b\x07]*);([^\x1b\x07]*)\x1b\\\\")
 
 func stripANSI(s string) string { return ansiLinkRE.ReplaceAllString(s, "") }
-
-func urlsOf(ranges []linkRange) []string {
-	var out []string
-	for _, r := range ranges {
-		out = append(out, r.url)
-	}
-	return out
-}
-
-// TestRiconoscimentoURLEPunteggiatura: URL in testo libero, senza la
-// punteggiatura finale tipica (.,;:)]> e virgolette).
-func TestRiconoscimentoURLEPunteggiatura(t *testing.T) {
-	cases := []struct {
-		name, in string
-		want     []string
-	}{
-		{"url in mezzo al testo", "vedi https://example.com/a?b=1 qui", []string{"https://example.com/a?b=1"}},
-		{"punto finale", "fine: https://example.com.", []string{"https://example.com"}},
-		{"virgola e due punti", "https://example.com/x, oppure http://example.org/y:", []string{"https://example.com/x", "http://example.org/y"}},
-		{"parentesi tonde esterne", "(https://example.com/x)", []string{"https://example.com/x"}},
-		{"parentesi interna bilanciata", "https://it.wikipedia.org/wiki/Foo_(bar).", []string{"https://it.wikipedia.org/wiki/Foo_(bar)"}},
-		{"angolari", "<https://example.com>", []string{"https://example.com"}},
-		{"virgolette dritte", "\"http://example.org/p\"", []string{"http://example.org/p"}},
-		{"punto e virgola finale", "https://example.com/a?x=1;", []string{"https://example.com/a?x=1"}},
-		{"mailto", "scrivi a mailto:anna@example.com, grazie", []string{"mailto:anna@example.com"}},
-		{"schemi non ammessi", "javascript:alert(1) file:///etc/passwd ftp://example.com", nil},
-		{"schema senza host", "https:// e http://", nil},
-		{"nessun schema", "nessun link qui, www.example.com", nil},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got := urlsOf(findLinks(c.in))
-			if strings.Join(got, "|") != strings.Join(c.want, "|") {
-				t.Errorf("findLinks(%q) = %q, voglio %q", c.in, got, c.want)
-			}
-		})
-	}
-}
-
-// TestSchemiERifiutiURL: solo http, https, mailto; URL non valido o troppo
-// lungo resta testo semplice; i caratteri di controllo e gli spazi sono tolti.
-func TestSchemiERifiutiURL(t *testing.T) {
-	cases := []struct {
-		name, raw, want string
-		ok              bool
-	}{
-		{"https", "https://example.com/x", "https://example.com/x", true},
-		{"schema maiuscolo", "HTTPS://example.com/x", "HTTPS://example.com/x", true},
-		{"mailto", "mailto:anna@example.com", "mailto:anna@example.com", true},
-		{"javascript", "javascript:alert(1)", "", false},
-		{"data", "data:text/html,x", "", false},
-		{"file", "file:///etc/passwd", "", false},
-		{"ftp", "ftp://example.com", "", false},
-		{"https senza host", "https://", "", false},
-		{"mailto senza indirizzo", "mailto:", "", false},
-		{"troppo lungo", "https://example.com/" + strings.Repeat("a", 2100), "", false},
-		{"ESC e BEL tolti", "https://a.com/\x1b]8;;evil\x07 x", "https://a.com/]8;;evilx", true},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			got, ok := linkTarget(c.raw)
-			if ok != c.ok || got != c.want {
-				t.Errorf("linkTarget(%q) = (%q, %v), voglio (%q, %v)", c.raw, got, ok, c.want, c.ok)
-			}
-		})
-	}
-}
 
 // testBodyModel: vista singola con il corpo dato, dimensionata a w x h.
 func testBodyModel(t *testing.T, body string, w, h int) Model {
@@ -157,8 +90,8 @@ func TestClickMappaURLConScorrimento(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		b.WriteString("coda\n")
 	}
-	// Altezza 14: il messaggio ha due allegati (8 righe fuori dal viewport), restano 6.
-	m := testBodyModel(t, b.String(), 60, 14)
+	// Altezza 16: scheda 7 righe + due allegati (3) fuori dal viewport, restano 6.
+	m := testBodyModel(t, b.String(), 60, 16)
 	m.vp.SetYOffset(35)
 	row := 40 // riga del link nel contenuto
 	y := headerLines + row - m.vp.YOffset()
@@ -185,7 +118,7 @@ func TestClickMappaURLConScorrimento(t *testing.T) {
 // TestSanificazioneOSC8: un corpo con sequenze ESC/BEL non può chiudere l'OSC 8
 // né iniettarne altre: nella riga resta una sola coppia di sequenze per il link.
 func TestSanificazioneOSC8(t *testing.T) {
-	m := testBodyModel(t, "guarda https://a.com/\x1b]8;;https://evil.example\x07 fine", 80, 10)
+	m := testBodyModel(t, "guarda https://a.com/\x1b]8;;https://evil.example\x07 fine", 80, 20)
 	view := m.vp.View()
 	if n := strings.Count(view, "\x1b]8;"); n != 2 {
 		t.Errorf("sequenze OSC 8 = %d, voglio 2 (apertura e chiusura)", n)
@@ -203,7 +136,7 @@ func TestSanificazioneOSC8(t *testing.T) {
 // TestClickFuoriDaiLinkNonCambiaNulla: un clic su testo semplice non è un link
 // e non tocca la vista (scorrimento invariato, nessuna Cmd).
 func TestClickFuoriDaiLinkNonCambiaNulla(t *testing.T) {
-	m := testBodyModel(t, "testo semplice\nsecondo rigo https://example.com/x", 80, 10)
+	m := testBodyModel(t, "testo semplice\nsecondo rigo https://example.com/x", 80, 20)
 	if _, ok := m.LinkAt(2, headerLines); ok {
 		t.Fatal("testo semplice classificato come link")
 	}
@@ -224,7 +157,7 @@ func TestClickSuLinkChiamaApertura(t *testing.T) {
 	openLink = func(u string) error { opened = append(opened, u); return nil }
 	t.Cleanup(func() { openLink = orig })
 
-	m := testBodyModel(t, "vai su https://example.com/target ora", 80, 10)
+	m := testBodyModel(t, "vai su https://example.com/target ora", 80, 20)
 	x := strings.Index("vai su https://example.com/target ora", "https")
 	mm, _ := m.Update(tea.MouseClickMsg{X: x, Y: headerLines, Button: tea.MouseLeft})
 	_ = mm
@@ -250,7 +183,7 @@ func TestErroreApertura(t *testing.T) {
 	orig := openLink
 	openLink = func(string) error { return errTest }
 	t.Cleanup(func() { openLink = orig })
-	m := testBodyModel(t, "vai su https://example.com/t", 80, 10)
+	m := testBodyModel(t, "vai su https://example.com/t", 80, 20)
 	cmd, ok := m.LinkClick(len("vai su "), headerLines)
 	if !ok {
 		t.Fatal("link non riconosciuto")

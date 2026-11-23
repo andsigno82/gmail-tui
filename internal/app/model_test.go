@@ -380,7 +380,7 @@ func TestSelectedMsgFetchesThenBuildsThread(t *testing.T) {
 	if !strings.Contains(body, "riga corpo") {
 		t.Errorf("body thread = %q, voglio il corpo nella viewport", body)
 	}
-	if !strings.Contains(body, "📎 f.pdf (1.5 KiB)") {
+	if !strings.Contains(body, "▣ f.pdf · application/pdf · 1,5 KB") {
 		t.Errorf("body thread = %q, voglio l'allegato in coda", body)
 	}
 }

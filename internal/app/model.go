@@ -271,10 +271,23 @@ func (m Model) beginSession() tea.Cmd {
 }
 
 // Update gestisce i messaggi e tiene l'anteprima della vista a due colonne
-// allineata al cursore (syncPreview, dopo ogni messaggio).
+// allineata al cursore (syncPreview, dopo ogni messaggio). Piano 15, Task 14
+// (D15-T5): il risultato di un rendering in background (thread.RenderedMsg) va
+// al thread, e le Cmd di rendering che il thread ha accodato (corpi grandi) si
+// aggiungono alla Cmd di ritorno.
 func (m Model) Update(ev tea.Msg) (tea.Model, tea.Cmd) {
-	next, cmd := m.update(ev)
+	var cmd tea.Cmd
+	var next tea.Model
+	if r, ok := ev.(thread.RenderedMsg); ok {
+		m.thread, _ = m.thread.Update(r)
+		next = m
+	} else {
+		next, cmd = m.update(ev)
+	}
 	nm, sync := next.(Model).syncPreview()
+	if rc := nm.thread.RenderCmd(); rc != nil {
+		cmd = tea.Batch(cmd, rc)
+	}
 	if sync == nil {
 		return nm, cmd
 	}

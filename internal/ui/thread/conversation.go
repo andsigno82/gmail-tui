@@ -14,6 +14,7 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/ui/render"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
@@ -111,62 +112,63 @@ func (m Model) bodyHeight() int {
 // allineati a `starts` senza che il viewport ri-vada a capo).
 func (m *Model) refresh() {
 	m.header = m.renderHeader()
-	m.attLines = nil
+	m.attLines, m.attZones = nil, nil
 	sel := m.selMsg()
 	if sel != nil {
-		m.attLines = m.renderAttachments(sel)
+		att := m.renderAttachments(sel)
+		m.attLines, m.attZones = att.Lines, att.Zones
 	}
 	if m.multi() {
-		lines, links, starts := m.renderConversation()
-		m.starts = starts
-		m.setContent(lines, links)
+		m.setContent(m.renderConversation())
 		return
 	}
 	m.starts = nil
-	var lines []string
-	var links [][]linkSpan
+	var body render.Out
 	if sel != nil {
-		seq := 0
-		lines, links = m.bodyRows(sel.BodyText, &seq)
+		body = m.bodyOut(sel)
 	}
-	m.setContent(lines, links)
+	m.setContent(body, nil)
 }
 
-// setContent installa le righe nel viewport, che non va a capo da solo (il corpo
-// e gia a capo in bodyRows, cosi i link restano sulla stessa riga logica), e le
-// porzioni dei link per riga per il clic (Richiesta di Andrea, 2026-11-23).
-func (m *Model) setContent(lines []string, links [][]linkSpan) {
-	m.linkRows = links
-	m.vp.SetContent(strings.Join(lines, "\n"))
+// setContent installa il contenuto nel viewport, che non va a capo da solo (il
+// corpo e gia a capo dai renderer, cosi le zone restano sulla riga giusta), e le
+// zone cliccabili per riga per il clic (Piano 15, Task 14). starts e la riga di
+// inizio di ogni titolo della conversazione (nil nella vista singola).
+func (m *Model) setContent(o render.Out, starts []int) {
+	m.starts = starts
+	m.linkRows = o.Zones
+	m.vp.SetContent(strings.Join(o.Lines, "\n"))
 }
 
 // renderConversation compone il contenuto della conversazione e la riga di
 // inizio di ogni titolo (indice nel contenuto, non sullo schermo). Un messaggio
-// espanso senza corpo mostra un avviso al posto del testo.
-func (m Model) renderConversation() ([]string, [][]linkSpan, []int) {
-	var lines []string
-	var links [][]linkSpan
+// espanso senza corpo mostra un avviso al posto del testo. I corpi sono a blocchi
+// (bodyOut): ricevitore puntatore perche possono accodare un rendering in
+// background.
+func (m *Model) renderConversation() (render.Out, []int) {
+	var parts []render.Out
 	starts := make([]int, len(m.conv))
-	seq := 0 // numerazione dei link di tutta la conversazione (id OSC 8 unici)
+	n := 0 // righe finora
+	add := func(o render.Out) {
+		parts = append(parts, o)
+		n += len(o.Lines)
+	}
+	line := func(s string) render.Out { return render.Out{Lines: []string{s}, Zones: [][]render.Zone{nil}} }
 	for i, e := range m.conv {
-		starts[i] = len(lines)
-		lines = append(lines, m.renderTitle(i))
-		links = append(links, nil)
+		starts[i] = n
+		add(line(m.renderTitle(i)))
 		if !e.expanded {
 			continue
 		}
 		if e.full == nil {
-			lines = append(lines, m.st.ListDate.Render("corpo in caricamento…"), "")
-			links = append(links, nil, nil)
+			add(line(m.st.ListDate.Render("corpo in caricamento…")))
+			add(line(""))
 			continue
 		}
-		bl, bs := m.bodyRows(e.full.BodyText, &seq)
-		lines = append(lines, bl...)
-		links = append(links, bs...)
-		lines = append(lines, "")
-		links = append(links, nil)
+		add(m.bodyOut(e.full))
+		add(line(""))
 	}
-	return lines, links, starts
+	return render.Stack(parts...), starts
 }
 
 // renderTitle è la riga di un messaggio della conversazione: marcatore ▸/▾,

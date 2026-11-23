@@ -40,7 +40,7 @@ func TestSplitClickSuLinkApreSenzaFocus(t *testing.T) {
 	list, _ := splitWidths(140)
 	origin := list + splitSepWidth + splitPreviewPad
 
-	mm, cmd := step(m, tea.MouseClickMsg{X: origin, Y: 5, Button: tea.MouseLeft})
+	mm, cmd := step(m, tea.MouseClickMsg{X: origin, Y: 7, Button: tea.MouseLeft})
 	if mm.focusPreview {
 		t.Error("clic su link: il focus si e spostato sull'anteprima")
 	}
@@ -49,7 +49,7 @@ func TestSplitClickSuLinkApreSenzaFocus(t *testing.T) {
 	}
 	// La Cmd non va eseguita: aprirebbe il browser vero.
 
-	pad, cmdPad := step(m, tea.MouseClickMsg{X: origin - 1, Y: 5, Button: tea.MouseLeft})
+	pad, cmdPad := step(m, tea.MouseClickMsg{X: origin - 1, Y: 7, Button: tea.MouseLeft})
 	if !pad.focusPreview {
 		t.Error("clic sul padding: il focus non e andato sull'anteprima")
 	}
