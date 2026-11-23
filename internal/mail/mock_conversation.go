@@ -107,12 +107,42 @@ func (m *Mock) ThreadMessages(_ context.Context, threadID uint64) ([]msg.Message
 func (m *Mock) threadMessages(threadID uint64) []*msg.Message {
 	var out []*msg.Message
 	for _, mm := range m.Msgs {
-		if mm.Ref.ThreadID == threadID && !m.inExcludedBox(mm.Ref.ID) {
+		if mm.Ref.ThreadID == threadID && !m.inExcludedBox(mm.Ref.ID) && !m.inAllMailDuplicate(mm) {
 			out = append(out, mm)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Ref.Date.Before(out[j].Ref.Date) })
 	return out
+}
+
+// boxRole è il ruolo della mailbox dell'ID ("" se sconosciuta o l'ID è malformato).
+// Chiamare con m.mu presa.
+func (m *Mock) boxRole(id msg.MessageID) string {
+	box, _, err := id.Split()
+	if err != nil {
+		return ""
+	}
+	for _, b := range m.mailboxes() {
+		if b.Name == box {
+			return b.Role
+		}
+	}
+	return ""
+}
+
+// inAllMailDuplicate dice se mm è la copia in Tutti i messaggi di un messaggio che ha
+// un'altra copia fuori da All Mail (stesso GmailID): come Gmail, il messaggio conta una
+// volta (Piano 10, review punto 6). Chiamare con m.mu presa.
+func (m *Mock) inAllMailDuplicate(mm *msg.Message) bool {
+	if mm.Ref.GmailID == 0 || m.boxRole(mm.Ref.ID) != "all" {
+		return false
+	}
+	for _, c := range m.Msgs {
+		if c != mm && c.Ref.GmailID == mm.Ref.GmailID && m.boxRole(c.Ref.ID) != "all" {
+			return true
+		}
+	}
+	return false
 }
 
 // buildConversation costruisce la riga di h. Chiamare con m.mu presa.

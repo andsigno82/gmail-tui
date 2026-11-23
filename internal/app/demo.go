@@ -113,6 +113,7 @@ func DemoStore() *mail.Mock {
 		{Name: "[Gmail]/Drafts", Role: "drafts"}, // Piano 9, Task 13: cartella Bozze
 		{Name: "[Gmail]/Trash", Role: "trash"},
 		{Name: "Work"},
+		{Name: "[Gmail]/Tutti i messaggi", Role: "all"}, // Piano 10, review punto 6: vedi sotto
 	}
 	mk.Msgs = append(mk.Msgs,
 		&msg.Message{
@@ -203,6 +204,21 @@ func DemoStore() *mail.Mock {
 	for i, mm := range mk.Msgs {
 		mm.Ref.ThreadID = threadOf[mm.Ref.ID]
 		mm.Ref.GmailID = demoGmailBase + uint64(i+1)
+	}
+	// Piano 10, review punto 6: come Gmail, "Tutti i messaggi" ha una copia di ogni
+	// messaggio del seed (stesso GmailID e thread), salvo le bozze. Così l'annulla
+	// dell'archivia in demo trova gli ID di All Mail e `u` riporta in INBOX. L'UID è
+	// l'indice nel seed: unico in tutta la cartella.
+	n := len(mk.Msgs)
+	for i := 0; i < n; i++ {
+		src := mk.Msgs[i]
+		if box, _, err := src.Ref.ID.Split(); err != nil || box == "[Gmail]/Drafts" {
+			continue
+		}
+		cp := *src
+		cp.Ref.ID = msg.NewID("[Gmail]/Tutti i messaggi", uint32(i+1))
+		cp.Ref.Labels = append([]string(nil), src.Ref.Labels...)
+		mk.Msgs = append(mk.Msgs, &cp)
 	}
 	return mk
 }

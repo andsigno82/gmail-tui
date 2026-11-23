@@ -289,3 +289,52 @@ func TestDemoBookWritesNoFile(t *testing.T) {
 		t.Errorf("demo ha scritto la rubrica su disco: %v", found)
 	}
 }
+
+// Piano 10, review punto 6: in demo l'annulla dell'archivia funziona. Il seed ha le
+// copie in "Tutti i messaggi" con lo stesso GmailID: l'archivia le usa per ripristinare
+// la INBOX, e `u` riporta la conversazione in Posta in arrivo.
+func TestDemoArchiveUndoRestoresInbox(t *testing.T) {
+	mk := DemoStore()
+	before := inboxGmailIDs(mk)
+	m := pagedModel(t, mk)
+	m, cmd := step(m, pressKey("a"))
+	m = applyAll(t, m, cmd)
+	if len(inboxGmailIDs(mk)) >= len(before) {
+		t.Fatal("archivia in demo: nessun messaggio uscito dalla INBOX")
+	}
+	if !toastHasUndo(m) {
+		t.Fatalf("toast = %v, voglio l'offerta di u in demo", m.toast.Texts())
+	}
+	m, cmd = step(m, pressKey("u"))
+	applyAll(t, m, cmd)
+	if got := inboxGmailIDs(mk); !sameGmailIDs(got, before) {
+		t.Errorf("dopo u la INBOX = %v, voglio %v", got, before)
+	}
+}
+
+// inboxGmailIDs sono gli ID Gmail dei messaggi in posta in arrivo.
+func inboxGmailIDs(mk *mail.Mock) []uint64 {
+	var out []uint64
+	for _, mm := range inboxMsgs(mk) {
+		out = append(out, mm.Ref.GmailID)
+	}
+	return out
+}
+
+// sameGmailIDs confronta due insiemi di ID Gmail senza ordine.
+func sameGmailIDs(a, b []uint64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[uint64]int, len(a))
+	for _, id := range a {
+		seen[id]++
+	}
+	for _, id := range b {
+		if seen[id] == 0 {
+			return false
+		}
+		seen[id]--
+	}
+	return true
+}

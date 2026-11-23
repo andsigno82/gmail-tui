@@ -109,3 +109,33 @@ func TestMockRawSimulatedSubsetAndUnsupportedErrors(t *testing.T) {
 		t.Error("older_than non simulato nel Mock: atteso errore esplicito")
 	}
 }
+
+// Piano 10, review punto 6: la copia in "Tutti i messaggi" di un messaggio che ha
+// un'altra copia (stesso GmailID, fuori da All Mail) non conta nel thread: Gmail mostra
+// il messaggio una volta. Senza altra copia (dopo un archivia) la copia di All Mail sì.
+func TestMockThreadMessagesCountsAllMailCopyOnce(t *testing.T) {
+	base := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	m := &Mock{
+		Mailboxes: []Mailbox{
+			{Name: "INBOX", Role: "inbox"},
+			{Name: "[Gmail]/Tutti i messaggi", Role: "all"},
+		},
+		Msgs: []*msg.Message{
+			{Ref: msg.MessageRef{ID: msg.NewID("INBOX", 1), GmailID: 1, ThreadID: 5, Date: base}},
+			{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Tutti i messaggi", 9), GmailID: 1, ThreadID: 5, Date: base}},
+			{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Tutti i messaggi", 8), GmailID: 2, ThreadID: 5, Date: base.Add(time.Hour)}},
+		},
+	}
+	got, err := m.ThreadMessages(t.Context(), 5)
+	if err != nil {
+		t.Fatalf("ThreadMessages: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("messaggi del thread = %d (%v), voglio 2: la copia di All Mail con altra copia non conta", len(got), got)
+	}
+	for _, r := range got {
+		if r.ID == msg.NewID("[Gmail]/Tutti i messaggi", 9) {
+			t.Errorf("la copia di All Mail di un messaggio con altra copia compare nel thread: %v", got)
+		}
+	}
+}
