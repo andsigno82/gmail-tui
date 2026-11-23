@@ -123,6 +123,10 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 - SDK: `github.com/modelcontextprotocol/go-sdk` (ufficiale, v1.8.0 stabile al 2026-11): nuova dipendenza da approvare.
 - Più utile dopo il Piano 8: la ricerca `X-GM-RAW` e le conversazioni rendono l'esplorazione da parte di un agente molto più efficace.
 
+## Piano 15 — Beautify (rendering, cartelle, finestre, splash)
+
+**Consegnato** (branch `feat/piano-15`, Task 1-18 e 16b): blocchi HTML con bottoni, tabelle, citazioni ed elenchi; link con controllo di dominio (`⚠` e conferma); allegati cliccabili per PDF, immagini e testo; cartelle annidate con contatori dei non letti; finestre con ombra a retino; barra di stato a segmenti; splash all'avvio. Decisioni in `docs/superpowers/plans/2026-11-23-piano-15-beautify.md`. Ancora aperti: Task 19 (misure e revisione indipendente) e lo smoke su Ghostty in `docs/smoke-checklist.md`, sezione Piano 15.
+
 ## Fonti
 
 - [atrium #73 — patch Gmail per go-imap v2](https://github.com/jeiang/atrium/issues/73), [atrium #103 — copia in-tree](https://github.com/jeiang/atrium/issues/103)

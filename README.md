@@ -56,12 +56,13 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `a` | archive the conversation in the current folder (Inbox only); with a selection, all selected conversations |
 | `#` | move the conversation in the current folder to trash — asks for confirmation (`s` confirms, `Esc` cancels); with a selection, all selected; from a thread it returns to the list |
 | `u` | undo the last archive or trash (toast for 10 s; a new archive or trash replaces the undo; an unsent message is still sent) |
-| `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
+| `m` | folders and labels picker, as a tree with nested labels and unread counts (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
 | `s` | star on/off (with a selection: on for all if any is unstarred, otherwise off for all) |
 | `v` | mark read/unread (with a selection: read for all if any is unread, otherwise unread for all) |
 | `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before; with a selection it adds the label to all selected conversations |
 | `o` | open the selected message's HTML body in browser (thread view) |
 | mouse click on a link | open the link in the browser (thread view, or the preview: it does not move the focus); only `http`, `https` and `mailto` links are clickable |
+| `s` / `Esc` | when a link or button whose text shows another domain waits for confirmation in the status bar: `s` opens the real address, `Esc` cancels |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
 | `,` | settings menu: theme, layout, mark-as-read, name, signature |
@@ -72,13 +73,30 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 
 Composer: `Tab`/`Shift+Tab` between fields · `Ctrl+E` show/hide Cc and Bcc (Ccn) · `Ctrl+S` send (confirmation first; the message is saved to Drafts at once, then a 5-second window in which `u` in the inbox or thread brings the composer back on that draft) · `Esc` save the draft to Drafts and close · `Ctrl+D` discard (asks for confirmation) · while typing an address in To/Cc/Ccn, `Ctrl+N`/`Ctrl+P` choose a suggestion and `Enter` inserts it. The status line always shows a context-sensitive help bar; `?` opens the full overlay in the inbox and thread views (it closes with `Esc`/`?`).
 
-Notifications: the outcome of an action ("archived", "sent", errors…) appears as a toast in the top-right corner. Info and success toasts disappear after 3 seconds; error toasts stay until you press a key. Up to 3 toasts stack; when a fourth arrives the oldest non-error toast goes first. The status bar stays neutral and shows only lasting state (folder, active search, reconnecting, setup warnings); it turns colored only for confirmations that wait for an answer (send, discard draft, trash).
+Notifications: the outcome of an action ("archived", "sent", errors…) appears as a toast in the top-right corner. Info and success toasts disappear after 3 seconds; error toasts stay until you press a key. Up to 3 toasts stack; when a fourth arrives the oldest non-error toast goes first. The status bar is split into segments: mode, folder, status (spinner, selection count, messages such as reconnecting or setup warnings) and a short help line, which is cut first when the window is narrow. It turns colored only for confirmations that wait for an answer (send, discard draft, trash, link).
 
 ## Themes
 
 Twelve embedded themes: `default`, `catppuccin-latte`, `catppuccin-frappe`, `catppuccin-macchiato`, `catppuccin-mocha`, `dracula`, `one-dark`, `one-light`, `nord`, `gruvbox-dark`, `gruvbox-light`, `tokyo-night`.
 
 Select with `theme = "…"` in the config, the `--theme` flag, or `:theme <name>` at runtime (immediate preview, persisted to config); `gmail-tui themes` lists them all. Adding a theme is one TOML file — no test changes needed (the table-driven test validates it automatically) — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Rendering
+
+Messages are drawn with their layout, not as plain text. The HTML body is converted to blocks (paragraphs, quotes, lists, tables, buttons, images) and drawn in the colours of the theme; a message without HTML goes through the same path. Nothing is downloaded: images are never fetched and no CSS is run.
+
+- **Buttons**: a link styled as a button is drawn as a bordered box, with its destination host after it (`→ example.com`). A link becomes a button when its `style` attribute has a background and a padding or border radius, or when it has `role="button"` or a `btn`/`button` class, or when it is the only link in a coloured table cell. A click opens it like any other link.
+- **Tables**: drawn as tables when the columns fit the window. When they do not, each row is shown as "Header: value" lines, so no word is broken. Tables above 200 rows or 20 columns are shown as text.
+- **Quotes**: a coloured vertical bar per level; nested quotes cycle through four colours of the theme.
+- **Lists**: bulleted (`-`) or numbered (the `start` attribute is kept); nested lists are indented under their item.
+- **Images**: a placeholder `[img: alt text]`. The image itself is never downloaded.
+- **Links**: underlined with a dashed line in the link colour. A link whose text shows a domain different from the real one (compared by registrable domain, IDN normalised) gets a wavy red underline and a `⚠` before the text. A click on it asks for confirmation in the status bar: `s` opens the real address, `Esc` cancels. Only `http`, `https` and `mailto` are clickable; other schemes stay plain text.
+- **Attachments**: a chip per attachment, `▣ name · type · size`. A click opens the file only for PDF, PNG, JPEG, GIF and plain text, and only when both the content type and the file extension match. Any other type shows the toast "tipo non aperto: usa :save". Opened files go to a private folder (mode 0700, generated name) under the system temporary directory, removed on exit; folders left by sessions older than 24 hours are removed at start.
+- **Limits**: HTML above 512 KiB is cut and the body says so; more than 5,000 elements are cut with a notice; quotes and lists nested deeper than 16 levels are flattened.
+- **Folders**: the `m` picker shows folders as a tree, and labels with `/` in their name nest (`Work/Clients` under `Work`). Unread counts `(N)` are shown for Inbox and labels only (not Drafts, Sent, Spam, Trash or All Mail); they refresh while the picker is open.
+- **Windows**: the settings menu (`,`), the label panel (`l`) and the folder picker (`m`) float over the view with a shadow: a band of `░` in the border colour, two columns to the right and one row down. `Esc` closes them.
+- **Startup**: until the first list arrives, the inbox shows a splash with the `gmail-tui` title, a spinner with the phase ("connessione a imap.gmail.com…", then "caricamento posta…") and the version. There is no artificial delay. If the connection fails, the splash shows the error with secrets masked and "R per riprovare".
+- **Empty states**: an empty folder reads "Nessun messaggio in <folder>"; with no message selected, the two-column preview reads "Seleziona un messaggio per leggerlo".
 
 ## Settings
 
@@ -184,7 +202,7 @@ The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASS
 - **Gmail conversations** need the server to announce `X-GM-EXT-1` (Gmail does). Without it the list shows one row per message and `/` uses the plain matcher. `gmail-tui doctor` reports the capability.
 - **Conversations and folders**: spam and Trash messages stay out of a conversation, except when you open it from those folders. `a`, `#` and `v` on a row act only on the conversation's messages in the current folder; All Mail is never touched by archive or trash.
 - **Conversation paging**: the list pages count conversations, and each page reads at most 500 messages. A page can be shorter than 50, and a very old conversation deep in the list may not appear.
-- **Links in the body**: a URL in the text (and the destination of an HTML link, which the converter shows as the URL) is clickable: a click opens it in the system browser. Terminals with native OSC 8 hyperlinks (iTerm2, Ghostty, Kitty, WezTerm) also get the link, so `cmd+click` works. Only `http`, `https` and `mailto` are opened; a link is underlined in the accent colour. Links are not listed for keyboard selection.
+- **Links in the body**: the text of an HTML link is clickable, and so is a URL written in the text: a click opens it in the system browser. Terminals with native OSC 8 hyperlinks (iTerm2, Ghostty, Kitty, WezTerm) also get the link, so `cmd+click` works. Only `http`, `https` and `mailto` are opened; a link is underlined with a dashed line, and a link whose text shows another domain asks for confirmation first (see [Rendering](#rendering)). Links are not listed for keyboard selection.
 - **Lazy bodies**: opening a conversation downloads the bodies of the expanded messages only; collapsed rows show sender and date.
 - **Cache upgrade**: the message cache moved to schema v3. On the first start after upgrading, cached message entries are discarded and downloaded again.
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.

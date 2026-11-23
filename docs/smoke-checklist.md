@@ -209,3 +209,25 @@ Run on a real Gmail account; nothing here is covered by tests.
 - [ ] Quit within the 5-second window: the message is sent before the program exits.
 - [ ] Address suggestions: type the first letters of a known sender in To, `Ctrl+N`/`Ctrl+P` select, `Enter` inserts `Name <address>, `.
 - [ ] With `address_book_cmd` set (e.g. khard): suggestions include its results; with the command missing or failing, one warning toast and local suggestions still work.
+
+## Piano 15 — rendering, folders, windows, splash (Ghostty) — real account only
+
+Run on Andrea's Ghostty terminal. Do not paste real senders, subjects, addresses or bodies into the repo: note only the kind of message.
+
+- [ ] Links are underlined with a dashed line in the link colour; a `javascript:` or `file:` text is not underlined and does not open.
+- [ ] A link whose text shows another domain has a wavy red underline and the `⚠ ` marker in the text; both are visible (no colour-only signal).
+- [ ] `cmd+click` on a link opens it natively (OSC 8) in Ghostty.
+- [ ] Clicking a `⚠` link shows "il link porta a <real host>, non a <shown host>: apri? s/esc" in the status bar; `Esc` cancels with no browser; `s` opens the real address.
+- [ ] A button of a real newsletter: a bordered box with its label and `→ host` next to it; clicking opens the destination.
+- [ ] A table of a real order confirmation: it fits the window, or falls back to "Header: value" lines when too narrow; no broken words.
+- [ ] Clicking the chip of a PDF attachment opens it in the system viewer; the file sits in a `gmail-tui-att/s-*` folder under the temporary directory, mode 0700, with a generated name.
+- [ ] Clicking a `.zip` attachment shows "tipo non aperto: usa :save" and writes nothing to the temporary folder.
+- [ ] After quitting, the session folder `s-*` is gone from the temporary `gmail-tui-att` folder.
+- [ ] Unread counts in `m` match Gmail web for Inbox and each label; `(N)` appears only when N > 0; Drafts, Sent, Spam, Trash and All Mail show no count.
+- [ ] A nested label (a name with `/`) appears as a branch under its parent in `m`, and selecting it opens that label.
+- [ ] The `,`, `l` and `m` windows show a shadow: a `░` band to the right and below the window, in the border colour, visible in Ghostty.
+- [ ] `Esc` closes each window; while a window is open, list keys do nothing and mouse clicks are ignored.
+- [ ] The status bar shows mode, folder, status and help as separate segments; the help is cut first when the window is narrow.
+- [ ] Startup: the inbox shows the splash (title, spinner phase "connessione a imap.gmail.com…" then "caricamento posta…", version), then the list, with no artificial delay.
+- [ ] Network off at startup: the splash shows the sanitised error and "R per riprovare"; `R` retries.
+- [ ] An empty folder reads "Nessun messaggio in <folder>"; with no message selected, the two-column preview reads "Seleziona un messaggio per leggerlo".

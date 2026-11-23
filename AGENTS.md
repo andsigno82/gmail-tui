@@ -25,12 +25,14 @@ Toolchain: `go 1.26.0` floor (required by `charm.land/*/v2`), `toolchain go1.27.
 cmd/gmail-tui/        main: subcommand dispatch, wiring (config, keyring, store, TUI)
 internal/app/         root bubbletea Model: view routing, status bar, keys, ops, search, watch, compose, wizard, demo
 internal/ui/          view components: inbox, thread (+ ":" cmdmode), composer, wizard, styles
+internal/ui/render/   block renderers (buttons, tables, quotes, lists, links, attachment chips) → lines + render.Zone (Piano 15)
+internal/ui/overlay/  floating windows with shadow; internal/ui/statusline/ segmented status bar; internal/ui/foldertree/ folder tree and unread counts
 internal/mail/        MailStore interface (store.go) + in-memory Mock (mock.go)
 internal/mcpserver/   MCP server over stdio (`gmail-tui mcp`), read-only Reader, untrusted-content markers (Piano 14); never imports go-imap
 internal/mail/imap/   the ONLY IMAP implementation (go-imap v2), IDLE watch, idleGate
 internal/mail/smtp/   MIME builder + STARTTLS sender (go-smtp)
 internal/mail/cache/  bbolt cache, invalidated by uidvalidity
-internal/msg/         normalized types, MIME parsing (enmime), Gmail-style query parser
+internal/msg/         normalized types, MIME parsing (enmime), Gmail-style query parser, richtext (body → blocks, Piano 15)
 internal/cmd/         CLI subcommands: doctor, fetch, login, send
 internal/config/      TOML config at ~/.config/gmail-tui/config.toml
 internal/keyring/     keychain via system CLIs (security / secret-tool), env → keychain resolution
@@ -63,6 +65,10 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
    WCAG 4.5:1 against the bar, otherwise black or white. Those two literals are the
    only ones allowed in that package. `TestContrastoStiliConSfondo` (`styles_test.go`)
    requires every style with a background to reach 4.5:1 on every theme, dark and light.
+   Derivations in use (Piano 15, the only ones): `mescola` (linear sRGB mix of two slots,
+   e.g. chip tints at `frazioneTinta` 0.50), `lipgloss.Blend1D` (quote bar levels, window
+   and splash titles, window borders via `BorderForegroundBlend`), and the shadow `░` in the
+   `border` slot. Gradients go on separators, borders and titles only, never on body text.
 4. **No CGO.** Every target builds with `CGO_ENABLED=0`. This is why the keyring
    shells out to `security`/`secret-tool` instead of using go-keyring.
 5. **Gmail hosts are fixed** (`imap.gmail.com:993`, `smtp.gmail.com:587`
@@ -75,6 +81,9 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
    (`connectFailed` is cleared at dispatch).
 8. **Bcc never appears in headers** (`internal/mail/smtp/mime.go`): it is an
    RCPT-only recipient.
+9. **The MCP server stays plain text.** `internal/mcpserver` never imports
+   `internal/msg/richtext` or `internal/ui/*` (`TestIsolamentoRenderer`), and `Reader`
+   has no `UnreadCounts` (`TestReaderSenzaUnreadCounts`).
 
 ## Testing conventions
 
@@ -129,6 +138,17 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 - **List results are dropped on a stale generation**: every non-silent load
   (folder switch, search, connect) bumps `Model.listGen`; a result whose
   generation, mailbox or query differs from the current one is discarded.
+- **Clickable zones (Piano 15)**: links, buttons and attachment chips are `render.Zone`
+  values that feed `LinkAt`/`LinkClick` in `internal/ui/thread/links.go`. Do not add a
+  second click map. Display and href sanitisation for rendering is `cleanText`/`safeHref`
+  in `internal/ui/render/link.go`; `internal/msg/richtext/sanitize.go` keeps a parse-side
+  copy (`sanitizeText`, `sanitizeURL`): keep the two rule sets aligned.
+- **Warn links need confirmation (Piano 15)**: a link whose visible text shows another
+  domain (`richtext.DomainMismatch`, `Block.Warn`) opens only after `s` in the status bar
+  (`linkAsk`, `internal/app/attachment_open.go`). Any new route that opens a URL from the
+  body must pass the same check.
+- **Rendering is not cached (Piano 15)**: the block model is built from `BodyHTML` at
+  render time and never stored, so changing it needs no `schemaVersion` bump.
 - `BodyHTML` is populated for every HTML part (multipart/alternative too):
   the `o` key depends on it.
 - **Markdown rendering (goldmark)**: `mdRenderer` in `internal/mail/smtp/mime.go` has

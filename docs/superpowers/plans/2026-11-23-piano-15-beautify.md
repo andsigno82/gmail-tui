@@ -487,9 +487,9 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** nessun test di codice; controllo di privacy: nessun indirizzo reale o nome di persona nelle fixture e nei doc (grep).
 
-- [ ] Doc.
-- [ ] Gate.
-- [ ] Commit `docs: Piano 15 (beautify con lipgloss)`.
+- [x] Doc.
+- [x] Gate.
+- [x] Commit `docs: Piano 15 (beautify con lipgloss)`.
 
 ## Task 19: gate finale, misure e revisione
 
