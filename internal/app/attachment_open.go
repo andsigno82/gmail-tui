@@ -84,10 +84,13 @@ func safeAttachmentExt(ctype, name string) (string, bool) {
 }
 
 // Radice dedicata degli allegati aperti (Piano 15, Task 16b, richiesta di Andrea
-// 2026-11-23): <tmp>/gmail-tui-att/ (0700) contiene una cartella per sessione
+// 2026-11-23): una cartella privata dell'utente (0700), NON il /tmp condiviso
+// (revisione indipendente, punto 8): $XDG_RUNTIME_DIR/gmail-tui/open se esiste,
+// altrimenti os.UserCacheDir()/gmail-tui/open. Contiene una cartella per sessione
 // (s-<casuale>, 0700) con i file generati. All'uscita (CleanupAttachments) si
 // rimuove SOLO la cartella della sessione e la radice se vuota; a ogni avvio
-// (SweepAttachments) si tolgono le sessioni s-* piu vecchie di 24 h. Mai nulla fuori
+// (SweepAttachments) si tolgono le sessioni s-* piu vecchie di 24 h, anche nella
+// vecchia radice <tmp>/gmail-tui-att delle versioni precedenti. Mai nulla fuori
 // dalla radice, mai symlink seguiti.
 const (
 	attachRootName   = "gmail-tui-att"
@@ -96,7 +99,27 @@ const (
 )
 
 // attachRoot restituisce la radice; variabile per i test (radice iniettabile).
-var attachRoot = func() string { return filepath.Join(os.TempDir(), attachRootName) }
+var attachRoot = defaultAttachRoot
+
+// defaultAttachRoot sceglie la radice privata: XDG_RUNTIME_DIR (cartella per-utente
+// del sistema; solo se assoluta e esistente), poi os.UserCacheDir(). Se nessuna e
+// disponibile, una cartella per-utente nel tmp (uid nel nome, comunque 0700
+// verificata da ensureAttachRoot).
+func defaultAttachRoot() string {
+	if rt := os.Getenv("XDG_RUNTIME_DIR"); filepath.IsAbs(rt) {
+		if st, err := os.Stat(rt); err == nil && st.IsDir() {
+			return filepath.Join(rt, "gmail-tui", "open")
+		}
+	}
+	if c, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(c, "gmail-tui", "open")
+	}
+	return filepath.Join(os.TempDir(), fmt.Sprintf("gmail-tui-%d", os.Getuid()), "open")
+}
+
+// legacyAttachRoot e la radice usata prima della revisione (tmp condiviso): si
+// ripulisce all'avvio, non si scrive piu.
+func legacyAttachRoot() string { return filepath.Join(os.TempDir(), attachRootName) }
 
 // attachSession e la cartella di sessione corrente (creata alla prima apertura) con
 // la radice a cui appartiene: cambiando radice (test) se ne crea una nuova.
@@ -163,7 +186,13 @@ func CleanupAttachments() {
 // SweepAttachments toglie dalla radice le cartelle di sessione s-* piu vecchie di
 // 24 h (residui di sessioni chiuse male). Il main la chiama all'avvio. Ignora
 // symlink, file e cartelle con altri nomi.
-func SweepAttachments() { sweepAttachments(attachRoot(), time.Now(), attachMaxAge) }
+func SweepAttachments() {
+	now := time.Now()
+	sweepAttachments(attachRoot(), now, attachMaxAge)
+	if legacy := legacyAttachRoot(); legacy != attachRoot() {
+		sweepAttachments(legacy, now, attachMaxAge)
+	}
+}
 
 func sweepAttachments(root string, now time.Time, maxAge time.Duration) {
 	ents, err := os.ReadDir(root)
