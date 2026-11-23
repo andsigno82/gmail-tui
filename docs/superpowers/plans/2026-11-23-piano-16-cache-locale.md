@@ -286,10 +286,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 - `TestConnectFailWithSnapshotKeepsReadOnlyList`.
 - `TestStatusAgeUsesInjectedClock` (solo se l'età è mostrata, Q16-4).
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(app): lista subito dall'istantanea, azioni solo su righe confermate (Piano 16, Task 9)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(app): lista subito dall'istantanea, azioni solo su righe confermate (Piano 16, Task 9)`.
 
 ## Task 10: app, conversazione e anteprima da istantanea
 
@@ -311,10 +311,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 - `TestPendingRefRealignedByGmailID` e `TestPendingRefMissingAfterRefreshRefusesConvActions`.
 - `TestPreviewFromSnapshot` (due colonne).
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(app): conversazione subito dall'istantanea con aggiornamento in background (Piano 16, Task 10)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(app): conversazione subito dall'istantanea con aggiornamento in background (Piano 16, Task 10)`.
 
 ## Task 11: cablaggio, permessi, demo, MCP
 

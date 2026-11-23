@@ -107,6 +107,10 @@ func (m *Model) segmentBar() string {
 		// Piano 10, Task 2: con selezione attiva la barra dice quante righe sono marcate.
 		status = append(status, fmt.Sprintf("%d selezionate", n))
 	}
+	if t := m.provStatus(); t != "" {
+		// Piano 16, Task 9 (D16-T12): lista provvisoria, con l'eta dell'istantanea.
+		status = append(status, t)
+	}
 	if m.status.text != "" {
 		status = append(status, m.status.text)
 	}
