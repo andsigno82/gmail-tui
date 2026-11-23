@@ -85,7 +85,9 @@ type Model struct {
 	undoSeq     int
 	lastUndo    *bulkUndo // ultima azione annullabile di archivia/cestino (Piano 10, Task 6, D10-U2)
 	undoBulkSeq int
-	undoSendOff bool // l'invio in attesa è stato sostituito da archivia/cestino: `u` non lo annulla più (D10-U2)
+	undoSendOff bool      // l'invio in attesa è stato sostituito da archivia/cestino: `u` non lo annulla più (D10-U2)
+	sendToast   int       // ID del toast "invio tra N s" (Piano 10, review punto 1: riscritto quando l'annulla cambia)
+	sendArmedAt time.Time // istante d'armo della finestra dell'invio, per il conto alla rovescia (Piano 10, review punto 1)
 
 	// Rubrica e suggerimenti dei contatti (Piano 9, Task 12-13): book è la rubrica
 	// (memoria di default, file nel main), addrCmd il comando esterno (config),

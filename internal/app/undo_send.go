@@ -128,8 +128,17 @@ func awaitSave(p *pendingSend) bool {
 func (m *Model) armUndo(p *pendingSend) tea.Cmd {
 	m.draftBusy = false
 	m.closeComposer()
-	toastCmd := m.toast.Push(toast.Info, "invio tra 5 s — u annulla")
+	m.sendArmedAt = m.clock()
+	var toastCmd tea.Cmd
+	m.sendToast, toastCmd = m.toast.PushForID(toast.Info, "invio tra 5 s — u annulla", toast.Duration)
 	return tea.Batch(toastCmd, undoTimer(p.seq))
+}
+
+// sendSecondsLeft sono i secondi che mancano allo scadere della finestra dell'invio,
+// arrotondati per eccesso e mai sotto 1 (Piano 10, review punto 1: testo "invio tra N s").
+func (m Model) sendSecondsLeft() int {
+	left := undoWindow - m.clock().Sub(m.sendArmedAt)
+	return max(int((left+time.Second-1)/time.Second), 1)
 }
 
 // restoreUndo è `u` fuori dal composer: il composer torna com'era prima della

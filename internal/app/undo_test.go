@@ -197,3 +197,36 @@ func TestUndoPrecedenceArchiveThenSend(t *testing.T) {
 		t.Error("u ha annullato l'archivia invece dell'invio")
 	}
 }
+
+// Piano 10, review punto 1: un archivia sostituisce l'annulla dell'invio in attesa.
+// Il toast dell'invio non deve più offrire `u` (che ora annulla l'archivia): diventa
+// "invio tra N s" e l'invio parte comunque allo scadere.
+func TestSendToastDropsUndoWhenArchiveReplacesIt(t *testing.T) {
+	mock := undoFixture(t, false)
+	rec := &senderRecorder{}
+	m := undoSenderModel(t, mock, rec)
+	m = confirmDrained(t, sendRequested(t, writing(m)))
+	if !toastContains(m, "invio tra 5 s — u annulla") {
+		t.Fatalf("precondizione: toast = %v, voglio l'invio con u", m.toast.Texts())
+	}
+	m, cmd := step(m, pressKey("a"))
+	m = applyAll(t, m, cmd)
+	for _, s := range m.toast.Texts() {
+		if strings.Contains(s, "invio tra") && strings.Contains(s, "u annulla") {
+			t.Errorf("toast dell'invio = %q: dopo l'archivia `u` non annulla più l'invio", s)
+		}
+	}
+	if !toastContains(m, "invio tra 5 s") {
+		t.Errorf("toast = %v, voglio \"invio tra 5 s\" senza u", m.toast.Texts())
+	}
+}
+
+// toastContains dice se un toast contiene il testo dato.
+func toastContains(m Model, text string) bool {
+	for _, s := range m.toast.Texts() {
+		if strings.Contains(s, text) {
+			return true
+		}
+	}
+	return false
+}

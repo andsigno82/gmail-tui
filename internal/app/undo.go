@@ -164,7 +164,10 @@ func (m *Model) armBulkUndo(u *bulkUndo, label string) tea.Cmd {
 	u.seq = m.undoBulkSeq
 	m.lastUndo = u
 	if m.undo != nil {
+		// Piano 10, review punto 1 (D10-U2): il toast dell'invio non offre più `u`: l'invio parte
+		// comunque allo scadere, il suo conto alla rovescia resta visibile.
 		m.undoSendOff = true
+		m.toast.SetText(m.sendToast, fmt.Sprintf("invio tra %d s", m.sendSecondsLeft()))
 	}
 	toastCmd := m.toast.PushFor(toast.Info, label+" — u annulla", undoBulkWindow)
 	return tea.Batch(toastCmd, bulkUndoTimer(u.seq))

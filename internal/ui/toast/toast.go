@@ -66,6 +66,14 @@ func (m *Model) Push(k Kind, text string) tea.Cmd {
 // PushFor è Push con durata propria (Piano 10, Task 6: l'annulla di archivia e
 // cestino resta in vista per la finestra di annullamento).
 func (m *Model) PushFor(k Kind, text string, d time.Duration) tea.Cmd {
+	_, cmd := m.PushForID(k, text, d)
+	return cmd
+}
+
+// PushForID è PushFor che restituisce anche l'ID del toast, per riscriverne il
+// testo con SetText (Piano 10, review punto 1: il toast dell'invio cambia quando un
+// archivia ne sostituisce l'annulla).
+func (m *Model) PushForID(k Kind, text string, d time.Duration) (int, tea.Cmd) {
 	if len(m.items) >= maxToasts {
 		m.evict()
 	}
@@ -73,9 +81,20 @@ func (m *Model) PushFor(k Kind, text string, d time.Duration) tea.Cmd {
 	id := m.nextID
 	m.items = append(m.items, item{id: id, kind: k, text: text})
 	if k == Error {
-		return nil
+		return id, nil
 	}
-	return tea.Tick(d, func(time.Time) tea.Msg { return ExpiredMsg{ID: id} })
+	return id, tea.Tick(d, func(time.Time) tea.Msg { return ExpiredMsg{ID: id} })
+}
+
+// SetText riscrive il testo del toast id, se è ancora in pila. Il timer non cambia:
+// la scadenza resta quella di quando il toast è nato.
+func (m *Model) SetText(id int, text string) {
+	for i := range m.items {
+		if m.items[i].id == id {
+			m.items[i].text = text
+			return
+		}
+	}
 }
 
 // evict toglie il toast più vecchio che NON è un errore (Piano 7.3, fix review):
