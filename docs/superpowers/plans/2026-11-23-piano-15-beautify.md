@@ -333,10 +333,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** `Lavoro/Clienti` e `Lavoro/Fornitori` → un nodo `Lavoro` non selezionabile con due foglie; delimitatore vuoto → piatta; contatore 0 → nessun `(0)`; cursore sulla foglia giusta; ordine (INBOX, speciali, label alfabetiche) mantenuto.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(foldertree): albero cartelle e label annidate (Piano 15, Task 10)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(foldertree): albero cartelle e label annidate (Piano 15, Task 10)`.
 
 ## Task 11: IMAP, delimitatore e UNSEEN (`internal/mail/imap`)
 
