@@ -175,6 +175,11 @@ func runTUI(args []string, forceWizard bool) int {
 // nessuna opzione di programma serve; WithContext (Task 8) giudicato non
 // necessario.
 func runProgram(m tea.Model) int {
+	// Allegati aperti (Piano 15, Task 16b): all'avvio si tolgono le sessioni di oltre
+	// 24 h fa; all'uscita (anche da errore o SIGINT, che fanno tornare Run) si
+	// rimuove la cartella di questa sessione.
+	app.SweepAttachments()
+	defer app.CleanupAttachments()
 	p := tea.NewProgram(m)
 	final, err := p.Run()
 	if err != nil {

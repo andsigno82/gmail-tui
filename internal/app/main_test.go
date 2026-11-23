@@ -29,7 +29,11 @@ func TestMain(m *testing.M) {
 			os.Exit(1)
 		}
 	}
+	// Piano 15, Task 16b: gli allegati aperti dai test stanno sotto la home di test,
+	// non nel tmp reale della macchina.
+	attachRoot = func() string { return home + "/allegati" }
 	code := m.Run()
+	CleanupAttachments()
 	_ = os.RemoveAll(home)
 	os.Exit(code)
 }
