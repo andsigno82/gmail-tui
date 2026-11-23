@@ -198,6 +198,27 @@ Claude Desktop (`claude_desktop_config.json`):
 
 The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASSWORD` in the environment that starts the client. Do not put it in the `env` block of the client configuration, which is a plain file. The server never returns the password, and it opens no local cache, so it can run next to the TUI.
 
+## Local cache
+
+gmail-tui keeps a local cache in `cache.db`, in the user cache directory (`~/Library/Caches/gmail-tui/` on macOS, `~/.cache/gmail-tui/` on Linux). The folder is created with mode 0700 and the file with mode 0600. The cache is **not encrypted**: message bodies, senders and subjects are stored as plain text, protected only by these permissions. The password is never stored in it.
+
+The cache holds:
+
+- **Message bodies**: the 200 Gmail messages you opened most recently. The least recently used one is dropped first. The limit is a constant, not a setting.
+- **Snapshots**: the first page of conversations of each folder you listed, and the message list of each conversation you opened.
+
+At startup the list appears at once from the snapshot, before Gmail answers. The status bar shows `aggiornamento…` with the age of the data, for example `aggiornamento… (dati di 2 ore fa)`, until the fresh list arrives. A conversation you opened before also appears at once, and the fresh version replaces it when it arrives.
+
+Data from a snapshot is **read-only** until Gmail confirms it. Until the fresh list of the folder has arrived, these actions are refused with the toast `aggiornamento in corso: azione disponibile tra poco`: archive, trash, star, mark read, labels, selection, reply, forward, saving and opening attachments, and loading the next page. Reading, `o`, composing (`c`), search (`/`), the folder picker (`m`), `R` and `u` keep working. When the fresh list arrives, its rows replace the snapshot and the actions work.
+
+If the connection fails while a snapshot is shown, the list stays read-only and the status bar reads `connessione fallita — lista non aggiornata, premi R per riprovare`.
+
+The cache is bound to the account address. The file stores a SHA-256 hash of the address, never the address itself. Starting with another account empties the cache.
+
+Demo mode creates no cache file. The MCP server (`gmail-tui mcp`) does not use the cache.
+
+To delete the cache, quit gmail-tui and remove the `gmail-tui` folder in the user cache directory. The cache is rebuilt on the next start.
+
 ## Notes & limitations (v1)
 
 - **Gmail conversations** need the server to announce `X-GM-EXT-1` (Gmail does). Without it the list shows one row per message and `/` uses the plain matcher. `gmail-tui doctor` reports the capability.
@@ -205,7 +226,7 @@ The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASS
 - **Conversation paging**: the list pages count conversations, and each page reads at most 500 messages. A page can be shorter than 50, and a very old conversation deep in the list may not appear.
 - **Links in the body**: the text of an HTML link is clickable, and so is a URL written in the text: a click opens it in the system browser. Terminals with native OSC 8 hyperlinks (iTerm2, Ghostty, Kitty, WezTerm) also get the link, so `cmd+click` works. Only `http`, `https` and `mailto` are opened; a link is underlined with a dashed line, and a link whose text shows another domain asks for confirmation first (see [Rendering](#rendering)). Links are not listed for keyboard selection.
 - **Lazy bodies**: opening a conversation downloads the bodies of the expanded messages only; collapsed rows show sender and date.
-- **Cache upgrade**: the message cache moved to schema v3. On the first start after upgrading, cached message entries are discarded and downloaded again.
+- **Cache upgrade**: the message cache moved to schema v4 (200-message limit and snapshots). The upgrade keeps the message bodies already downloaded. Entries from before schema v3 are discarded and downloaded again.
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **IDLE push watches INBOX only**: new mail in other folders is not pushed; the refresh after an operation still applies.
 - **Archive only in Inbox**: `a` is refused with an info toast when the selected message is not in INBOX (also for search results from other folders).
