@@ -253,7 +253,8 @@ func TestHelpHiddenInSearchAndLabel(t *testing.T) {
 		t.Errorf("query = %q, voglio \"?\" (testo nell'input)", mm.search.Value())
 	}
 
-	m2 := newTestModel(t)
+	m2, m2mock := newTestModelMock(t)
+	m2mock.NoGmail = true // il prompt label è il flusso senza X-GM-EXT-1 (Piano 10, Task 7)
 	mm2, _ := step(m2, tea.WindowSizeMsg{Width: 80, Height: 24})
 	mm2, _ = step(mm2, msgsLoaded{refs: testRefs(t)}) // `l` senza ref è un no-op (Task 7): serve una riga
 	mm2, cmdL := step(mm2, pressKey("l"))             // apre il prompt (l'input viene focalizzato)

@@ -219,6 +219,14 @@ func listLabelsCmd(st mail.MailStore) tea.Cmd {
 	}
 }
 
+// gmailMode dice se lo store è in modalità Gmail (X-GM-EXT-1, capability GmailExt): il
+// pannello label con aggiunte e rimozioni su tutte le cartelle richiede Gmail (Piano 10,
+// Task 7). Senza Gmail resta il mini-prompt di sempre. Non si decide da ThreadID.
+func gmailMode(st mail.MailStore) bool {
+	g, ok := st.(gmailAware)
+	return ok && g.GmailExt()
+}
+
 // labelTargets sono le conversazioni su cui agisce il pannello: la selezione se c'è,
 // altrimenti la riga operata (come a/#/s/v singoli).
 func (m Model) labelTargets() []mail.Conversation {
@@ -261,6 +269,13 @@ func (m Model) labelPickKey(ev tea.KeyPressMsg) (Model, tea.Cmd) {
 	}
 	switch ev.String() {
 	case "space":
+		// Lo spazio cambia la casella solo con filtro vuoto; altrimenti è testo del filtro
+		// (Piano 10, Task 7: label con spazi, "Da leggere").
+		if m.labelPick.input.Value() == "" {
+			m.labelPick.toggleCursor()
+			return m, nil
+		}
+	case "tab":
 		m.labelPick.toggleCursor()
 		return m, nil
 	case "up":

@@ -16,6 +16,7 @@ func TestSearchEmptyFolderUsesAllMailAndDeclaresIt(t *testing.T) {
 	m := &mail.Mock{
 		Mailboxes: []mail.Mailbox{{Name: "INBOX", Role: "inbox"}, {Name: all, Role: "all"}},
 		Msgs:      []*msg.Message{m1, msgAt(2, "solo inbox", "")},
+		NoGmail:   true, // fixture senza X-GM-EXT-1: la ricerca Gmail (X-GM-RAW) non entra qui
 	}
 	cs := connect(t, m, Options{Version: "test"})
 
@@ -33,6 +34,7 @@ func TestSearchEmptyFolderFallsBackToInbox(t *testing.T) {
 	m := &mail.Mock{
 		Mailboxes: []mail.Mailbox{{Name: "INBOX", Role: "inbox"}},
 		Msgs:      []*msg.Message{msgAt(1, "x", "")},
+		NoGmail:   true,
 	}
 	cs := connect(t, m, Options{Version: "test"})
 

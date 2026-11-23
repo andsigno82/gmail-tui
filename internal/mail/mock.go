@@ -55,6 +55,10 @@ func (m *Mock) init() {
 
 func (m *Mock) fail() error { return m.Err }
 
+// GmailExt dice se il Mock parla X-GM-EXT-1: no con NoGmail (capability dello store,
+// come lo Store IMAP; Piano 10, Task 7).
+func (m *Mock) GmailExt() bool { return !m.NoGmail }
+
 // Connect implementa MailStore.
 func (m *Mock) Connect(context.Context) error {
 	m.mu.Lock()

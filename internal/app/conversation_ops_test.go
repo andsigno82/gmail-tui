@@ -221,3 +221,7 @@ func TestGuardiaRifiutaIdDiAltraMailbox(t *testing.T) {
 }
 
 var _ tea.Msg = nil
+
+// GmailExt inoltra la capability Gmail dello store avvolto (Piano 10, Task 7): il
+// pannello label dipende da GmailExt, che l'embedding di MailStore non propaga.
+func (r *opRec) GmailExt() bool { return r.mock.GmailExt() }

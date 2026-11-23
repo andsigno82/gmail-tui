@@ -48,7 +48,7 @@ type appKeys struct {
 	Submit     key.Binding // invio — esegui la ricerca
 	Cancel     key.Binding // esc — annulla (ricerca, prompt label, composer)
 	Apply      key.Binding // invio — applica l'etichetta
-	PickToggle key.Binding // spazio — cambia la casella dell'etichetta nel pannello (Piano 10, Task 7)
+	PickToggle key.Binding // tab (spazio a filtro vuoto) — cambia la casella dell'etichetta nel pannello (Piano 10, Task 7)
 	PickMove   key.Binding // ↑/↓ — scorre le etichette del pannello (Piano 10, Task 7)
 	WizardCont key.Binding // invio — continua al passo successivo (wizard)
 	WizardSkip key.Binding // s — salta il setup ed entra in demo (wizard)
@@ -94,7 +94,7 @@ var keys = appKeys{
 	Submit:     key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "cerca")),
 	Cancel:     key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "annulla")),
 	Apply:      key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "applica etichetta")),
-	PickToggle: key.NewBinding(key.WithKeys("space"), key.WithHelp("spazio", "cambia")),
+	PickToggle: key.NewBinding(key.WithKeys("space", "tab"), key.WithHelp("tab/spazio", "cambia (spazio solo a filtro vuoto)")),
 	PickMove:   key.NewBinding(key.WithKeys("up", "down"), key.WithHelp("↑/↓", "scegli")),
 	WizardCont: key.NewBinding(key.WithKeys("enter"), key.WithHelp("invio", "continua")),
 	WizardSkip: key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "salta (demo)")),
@@ -133,7 +133,7 @@ func newHelp(st styles.Styles) help.Model {
 // La lunghezza è trattata dal truncamento di bubbles/help (SetWidth).
 func (m Model) shortHelpFor(labelOpen bool, v view) []key.Binding {
 	if m.labelPickOpen {
-		// Pannello label (Piano 10, Task 7): spazio cambia, invio applica, esc chiude.
+		// Pannello label (Piano 10, Task 7): tab (o spazio a filtro vuoto) cambia, invio applica, esc chiude.
 		return []key.Binding{keys.PickToggle, keys.Apply, keys.Cancel}
 	}
 	if m.menu.open {

@@ -361,3 +361,62 @@ func TestLabelWithoutGmailKeepsPrompt(t *testing.T) {
 		t.Error("senza Gmail `l` non apre il prompt label")
 	}
 }
+
+// Piano 10, Task 7 (review punto 1): con filtro non vuoto lo spazio è testo del filtro
+// e non cambia la casella; così si digita una label con spazi ("Da leggere").
+func TestLabelPickerSpaceIsTextWhenFilterSet(t *testing.T) {
+	mock := labelsFixture(t, false)
+	m := pagedModel(t, mock)
+	m, _ = step(m, pressKey("X"))
+	m, cmd := step(m, pressKey("l"))
+	m = applyAll(t, m, cmd)
+	m = typeText(t, m, "Da")
+	m, _ = step(m, keySpace)
+	m = typeText(t, m, "leggere")
+	if got := m.labelPick.filterText(); got != "Da leggere" {
+		t.Fatalf("filtro = %q, voglio %q: lo spazio non è stato digitato", got, "Da leggere")
+	}
+	m, cmd = step(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	settle(t, m, cmd, 3)
+	for _, gid := range []uint64{11, 12} {
+		if !labelOn(mock, gid, "Da leggere") {
+			t.Errorf("gid %d: l'etichetta \"Da leggere\" non è stata applicata", gid)
+		}
+	}
+}
+
+// Piano 10, Task 7 (review punto 1): tab cambia sempre la casella sotto il cursore,
+// anche con il filtro digitato.
+func TestLabelPickerTabTogglesWithFilterSet(t *testing.T) {
+	mock := labelsFixture(t, true)
+	m := pagedModel(t, mock)
+	m, _ = step(m, pressKey("X"))
+	m, cmd := step(m, pressKey("l"))
+	m = applyAll(t, m, cmd)
+	m = typeText(t, m, "Work")
+	m, _ = step(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	m, cmd = step(m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	settle(t, m, cmd, 3)
+	for _, gid := range []uint64{11, 12} {
+		if labelOn(mock, gid, "Work") {
+			t.Errorf("gid %d: Work ancora presente, tab doveva rimuoverla", gid)
+		}
+	}
+}
+
+// Piano 10, Task 7 (review punto 2): la modalità del pannello dipende dalla capability
+// dello store (GmailExt), non da ThreadID: un server senza X-GM-EXT-1 con thread
+// resta sul mini-prompt di sempre.
+func TestLabelWithThreadsButNoGmailKeepsPrompt(t *testing.T) {
+	mock := labelsFixture(t, false)
+	mock.NoGmail = true
+	m := pagedModel(t, mock)
+	m, _ = step(m, pressKey("X"))
+	m, _ = step(m, pressKey("l"))
+	if m.labelPickOpen {
+		t.Error("senza X-GM-EXT-1 `l` apre il pannello: voglio il prompt di sempre")
+	}
+	if !m.labelOpen {
+		t.Error("senza X-GM-EXT-1 `l` non apre il prompt label")
+	}
+}

@@ -135,7 +135,7 @@ func (m Model) runOp(k string) (Model, tea.Cmd) {
 		m.pending++
 		return m, tea.Batch(markReadConv(m.store, ref, read), m.spinner.Tick)
 	case "l": // label: pannello su Gmail (Piano 10, Task 7); senza Gmail il mini-prompt (enter applica, esc annulla)
-		if convs := m.labelTargets(); len(convs) > 0 && convs[0].ThreadID != 0 {
+		if convs := m.labelTargets(); len(convs) > 0 && gmailMode(m.store) {
 			return m.openLabelPick(convs)
 		}
 		m.label.Reset()

@@ -215,7 +215,8 @@ func TestVKeyTogglesUnread(t *testing.T) {
 // status bar, input focalizzato); finché è aperto i tasti-op sono TESTO del
 // prompt (nessuna mutazione) ed esc annulla senza chiamare lo store.
 func TestLabelPromptOpensAndCapturesKeys(t *testing.T) {
-	mock := &mail.Mock{Msgs: mockMsgs(t)}
+	// NoGmail: il mini-prompt è il flusso senza X-GM-EXT-1 (Piano 10, Task 7).
+	mock := &mail.Mock{Msgs: mockMsgs(t), NoGmail: true}
 	m := opsModel(t, mock)
 
 	mm, cmd := step(m, pressKey("l"))
