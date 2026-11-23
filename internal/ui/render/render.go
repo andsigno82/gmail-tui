@@ -53,11 +53,8 @@ func Dispatch(b richtext.Block, c Ctx) Out {
 // Paragraph rende i Runs di un paragrafo a capo sulla larghezza (Task 6/8).
 func Paragraph(b richtext.Block, c Ctx) Out { return Out{} }
 
-// Button rende un bottone a riquadro con l'host di destinazione (D15-01, Task 7).
-func Button(b richtext.Block, c Ctx) Out { return Out{} }
-
-// Attachment rende il chip di un allegato, size in byte (D15-06, Task 7).
-func Attachment(name, ctype string, size int64, index int, c Ctx) Out { return Out{} }
+// Link e Image sono in link.go e image.go (Piano 15, Task 6); Button e
+// Attachment in button.go e attachment.go (Piano 15, Task 7).
 
 // Table, Quote e List hanno il corpo in table.go, quote.go e list.go (Piano 15,
 // Task 8): i segnaposto di questo file sono stati rimossi.

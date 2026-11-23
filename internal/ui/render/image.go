@@ -5,32 +5,13 @@ package render
 // ripulito come il testo dei link.
 
 import (
-	"strings"
-
 	"charm.land/lipgloss/v2"
 )
 
 // maxAltCols e la larghezza massima del testo alternativo in colonne.
 const maxAltCols = 80
 
-// truncCols tronca s a max colonne con "…" finale se non ci sta.
-func truncCols(s string, max int) string {
-	if lipgloss.Width(s) <= max {
-		return s
-	}
-	var b strings.Builder
-	w := 0
-	for _, r := range s {
-		rw := lipgloss.Width(string(r))
-		if w+rw > max-1 {
-			break
-		}
-		b.WriteRune(r)
-		w += rw
-	}
-	b.WriteString("…")
-	return b.String()
-}
+// truncCols è in button.go (versione che gestisce anche larghezza 0).
 
 // Image rende un'immagine come chip "[img: alt]" ("[img]" con alt vuoto). L'alt
 // e troncato a 80 colonne e comunque entro c.Width. Nessuna zona.
