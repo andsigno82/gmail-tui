@@ -246,6 +246,18 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Link cliccabili nel corpo (clic → browser, OSC 8 nativo), solo
   http/https/mailto, URL sanificati contro l'iniezione di sequenze
 
+### Piano 15 — Beautify con lipgloss (orchestrato, Sonnet/Haiku in parallelo)
+- Modello a blocchi dell'HTML (internal/msg/richtext) e renderer lipgloss
+  (internal/ui/render): bottoni a riquadro con host di destinazione, tabelle,
+  citazioni con barra, elenchi, immagini come segnaposto (mai scaricate)
+- Link con controllo anti-phishing unico (idna + publicsuffix, fail-safe,
+  punycode nelle conferme) e conferma prima di aprire un link ⚠
+- Intestazione a scheda, allegati cliccabili (solo PDF/immagini/testo)
+- Albero cartelle con contatori non letti (STATUS/LIST-STATUS), finestre
+  sovrapposte con ombra a retino, barra di stato a segmenti, splash all'avvio
+- Revisione indipendente: 3 medi (phishing) e 5 bassi corretti; fix extra:
+  riconnessione dopo UnreadCounts lento e Watch che rilegge il client
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
