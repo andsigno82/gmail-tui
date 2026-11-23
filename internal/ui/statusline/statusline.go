@@ -15,9 +15,9 @@ type SegKind int
 
 const (
 	SegMode   SegKind = iota // modo corrente (es. NORMALE, RICERCA)
-	SegFolder                 // cartella aperta
-	SegStatus                 // messaggio di stato
-	SegHelp                   // suggerimenti di tasti: primo segmento a essere troncato
+	SegFolder                // cartella aperta
+	SegStatus                // messaggio di stato
+	SegHelp                  // suggerimenti di tasti: primo segmento a essere troncato
 )
 
 // Segment è un pezzo di testo della barra di stato (Piano 15, Task 13).

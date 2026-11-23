@@ -171,11 +171,11 @@ type shown struct {
 	kids []*shown
 }
 
-func (s *shown) String() string        { return s.text }
-func (s *shown) Value() string         { return s.text }
-func (s *shown) Hidden() bool          { return false }
-func (s *shown) SetHidden(bool)        {}
-func (s *shown) SetValue(v any)        { s.text, _ = v.(string) }
+func (s *shown) String() string { return s.text }
+func (s *shown) Value() string  { return s.text }
+func (s *shown) Hidden() bool   { return false }
+func (s *shown) SetHidden(bool) {}
+func (s *shown) SetValue(v any) { s.text, _ = v.(string) }
 
 func (s *shown) Children() tree.Children {
 	out := make(tree.NodeChildren, 0, len(s.kids))
