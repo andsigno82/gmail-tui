@@ -60,6 +60,32 @@ func (s *store) GmailExt() bool {
 	return ok && g.GmailExt()
 }
 
+// Piano 16, Task 2: il wrapper inoltra mail.Snapshotter allo store interno
+// (stesso schema di GmailExt); se l'interno non lo implementa risponde miss.
+// Nessuna emissione di eventi qui (Task 7).
+var _ mail.Snapshotter = (*store)(nil)
+
+func (s *store) CachedConversations(mailbox string) (mail.ConversationsSnapshot, bool) {
+	if sn, ok := s.in.(mail.Snapshotter); ok {
+		return sn.CachedConversations(mailbox)
+	}
+	return mail.ConversationsSnapshot{}, false
+}
+
+func (s *store) CachedThread(threadID uint64) (mail.ThreadSnapshot, bool) {
+	if sn, ok := s.in.(mail.Snapshotter); ok {
+		return sn.CachedThread(threadID)
+	}
+	return mail.ThreadSnapshot{}, false
+}
+
+func (s *store) CachedMessage(id msg.MessageID) (*msg.Message, bool) {
+	if sn, ok := s.in.(mail.Snapshotter); ok {
+		return sn.CachedMessage(id)
+	}
+	return nil, false
+}
+
 // role traduce un nome di cartella nel ruolo da tracciare. Vuoto = INBOX; un nome
 // non noto (ListMailboxes non ancora letto) vale "label".
 func (s *store) role(name string) string {

@@ -148,10 +148,10 @@ Nota: `internal/app/model.go` è il file più conteso: solo Wave 3b lo tocca (Ta
 
 **Test:** `TestMockIsNotSnapshotter` (`internal/mail`: il Mock non implementa l'interfaccia, quindi la demo non ha istantanee); `TestWrapForwardsSnapshotter` e `TestWrapWithoutSnapshotterMisses` (`tracestore`). RED: non compilano prima dei tipi.
 
-- [ ] RED riportato.
-- [ ] Tipi, costanti, stub, inoltro.
-- [ ] Gate (incluso il grep go-imap).
-- [ ] Commit `feat(mail): contratti delle istantanee locali (Piano 16, Task 2)`.
+- [x] RED riportato.
+- [x] Tipi, costanti, stub, inoltro.
+- [x] Gate (incluso il grep go-imap).
+- [x] Commit `feat(mail): contratti delle istantanee locali (Piano 16, Task 2)`.
 
 ## Task 3: cache schema 4 (LRU, migrazione, account, epoca, compattazione)
 
