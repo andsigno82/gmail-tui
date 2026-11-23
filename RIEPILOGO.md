@@ -237,6 +237,15 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   di sistema come atomi, mai quotate); `msg.IsUserLabel` unica definizione
 - Review: nessun problema alto; demo con Tutti i messaggi
 
+### Rifiniture del 2026-11-23
+- Caselle di selezione attenuate, evidenti quando spuntate; tinta di riga
+  per le selezionate (50% verso selection, derivata dal tema)
+- Spinner centrato nell'anteprima e nel thread durante il caricamento
+- Fix: aprire un messaggio non mostra né colpisce più quello precedente
+  (thread condiviso con l'anteprima)
+- Link cliccabili nel corpo (clic → browser, OSC 8 nativo), solo
+  http/https/mailto, URL sanificati contro l'iniezione di sequenze
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
