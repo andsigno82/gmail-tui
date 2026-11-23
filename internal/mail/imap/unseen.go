@@ -41,7 +41,22 @@ func (s *Store) UnreadCounts(ctx context.Context) (map[string]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return unreadCounts(ctx, c)
+	counts, err := unreadCounts(ctx, c)
+	select {
+	case <-c.Closed():
+		// awaitBudget ha chiuso la connessione (budget scaduto dentro un comando):
+		// ci si riconnette PRIMA di rilasciare il gate, cosi le op successive e il
+		// Watch trovano subito un client sano. Se il dial/login fallisce, client nil:
+		// le op danno mail.ErrNotConnected e il Watch riprova col suo backoff.
+		// Connect non prende il gate (reset lo lascia attivo: idling e gia false).
+		if cerr := s.Connect(ctx); cerr != nil {
+			s.mu.Lock()
+			s.client = nil
+			s.mu.Unlock()
+		}
+	default:
+	}
+	return counts, err
 }
 
 // unreadCounts è il corpo di UnreadCounts SENZA gate (cfr. listMailboxes).

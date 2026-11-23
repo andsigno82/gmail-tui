@@ -54,6 +54,8 @@ type testServer struct {
 	// server finto: simulano un server lento (revisione Piano 15, punto 5).
 	// Protetti da mu.
 	statusDelay, listDelay time.Duration
+	// sessions conta le connessioni accettate (NewSession). Protetto da mu.
+	sessions int
 }
 
 // startTestServer avvia imapmemserver su 127.0.0.1:0 e registra la chiusura
@@ -80,6 +82,9 @@ func startTestServerCaps(t *testing.T, caps imap.CapSet) *testServer {
 	ts := &testServer{t: t, user: user, boxes: map[string][]imap.MailboxAttr{"INBOX": nil}}
 	ts.srv = imapserver.New(&imapserver.Options{
 		NewSession: func(*imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			ts.mu.Lock()
+			ts.sessions++
+			ts.mu.Unlock()
 			return &specialUseSession{Session: mem.NewSession(), ts: ts}, nil, nil
 		},
 		// Solo test: LOGIN consentito senza TLS, la connessione è in

@@ -186,8 +186,7 @@ func (s *Store) watchLoop(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 // cambiamenti. Ritorna nil per ripartire, errWatchDone su ctx cancellato o
 // Store chiuso, altro errore per il path di riconnessione.
 func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-chan watchWake, st *watchState) error {
-	c, err := s.connected()
-	if err != nil {
+	if _, err := s.connected(); err != nil { // fallimento rapido, senza attendere il gate
 		return err
 	}
 
@@ -198,6 +197,14 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 		return errWatchDone // Store chiuso (Close): il watch termina
 	}
 	defer s.gate.idleDone() // fine del round, qualunque sia la causa
+
+	// Il client si rilegge DOPO il gate: un'op in volo puo averlo sostituito (dopo uno
+	// stallo UnreadCounts riconnette lo Store, cfr. unseen.go); con il vecchio, chiuso,
+	// il Watch emetterebbe un Disconnected e aprirebbe una seconda connessione.
+	c, err := s.connected()
+	if err != nil {
+		return err
+	}
 
 	// Piano 7, Task 1: un'op su un'altra cartella (ListMessages, ApplyLabel) lascia
 	// quella mailbox selezionata sulla connessione. Senza questa SELECT l'IDLE
