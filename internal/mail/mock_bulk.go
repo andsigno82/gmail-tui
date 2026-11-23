@@ -284,7 +284,7 @@ func applyUserLabels(labels, add, remove []string) []string {
 		}
 	}
 	for _, a := range add {
-		if strings.HasPrefix(a, `\`) || hasString(out, a) {
+		if !msg.IsUserLabel(a) || hasString(out, a) {
 			continue
 		}
 		out = append(out, a)

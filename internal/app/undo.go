@@ -10,7 +10,6 @@ package app
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -107,7 +106,7 @@ func trashRows(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) ([
 		if len(in) == 0 {
 			restorable = false
 		}
-		groups = append(groups, trashGroup{ids: in, dest: boxOf(r), labels: userLabels(r.Labels)})
+		groups = append(groups, trashGroup{ids: in, dest: boxOf(r), labels: msg.UserLabels(r.Labels)})
 	}
 	return gone, trashUndo(groups, restorable), nil
 }
@@ -128,20 +127,6 @@ func trashLabel(n int, undo *bulkUndo, err error) string {
 		return fmt.Sprintf("%d di %d nel cestino", len(undo.groups), n)
 	}
 	return fmt.Sprintf("nel cestino %d", n)
-}
-
-// userLabels toglie dalle label della riga quelle di sistema (\Inbox, \Important…),
-// quelle di Gmail ([Gmail]/…) e INBOX: restano le label utente.
-func userLabels(labels []string) []string {
-	var out []string
-	for _, l := range labels {
-		up := strings.ToUpper(l)
-		if strings.HasPrefix(l, `\`) || strings.HasPrefix(up, "[GMAIL]/") || up == "INBOX" {
-			continue
-		}
-		out = append(out, l)
-	}
-	return out
 }
 
 // undoCmd esegue l'annulla fuori dal loop UI: l'archivia torna in INBOX con \Inbox

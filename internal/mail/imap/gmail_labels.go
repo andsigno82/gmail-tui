@@ -216,8 +216,8 @@ func (s *Store) updateCachedLabelSet(ids []msg.MessageID, add, remove []string) 
 	if s.opts.Cache == nil {
 		return nil
 	}
-	userAdd := userOnly(add)
-	userRemove := userOnly(remove)
+	userAdd := msg.UserLabels(add)
+	userRemove := msg.UserLabels(remove)
 	mutate := func(c *msg.Message) bool {
 		labels := c.Ref.Labels
 		for _, r := range userRemove {
@@ -246,17 +246,6 @@ func (s *Store) updateCachedLabelSet(ids []msg.MessageID, add, remove []string) 
 		}
 	}
 	return nil
-}
-
-// userOnly toglie gli attributi di sistema (con backslash): non sono label utente.
-func userOnly(labels []string) []string {
-	var out []string
-	for _, l := range labels {
-		if !strings.HasPrefix(l, `\`) {
-			out = append(out, l)
-		}
-	}
-	return out
 }
 
 // encodeLabels codifica i nomi label in modified UTF-7 per il wire (X-GM-LABELS); gli

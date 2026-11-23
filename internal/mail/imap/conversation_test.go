@@ -37,10 +37,11 @@ func TestSummarizeThreadAggregates(t *testing.T) {
 	}
 }
 
+// Piano 10, review punto 3: il filtro IMAP delle label è msg.UserLabels (vedi msg/labels_test.go).
 func TestUserLabelsDropsSystemLabels(t *testing.T) {
-	got := userLabels([]string{`\Inbox`, `\Sent`, "Important", "Starred", "Work", "Muy Importante"})
+	got := msg.UserLabels([]string{`\Inbox`, `\Sent`, "Important", "Starred", "Work", "Muy Importante"})
 	if strings.Join(got, ",") != "Work,Muy Importante" {
-		t.Errorf("userLabels = %q, want [Work Muy Importante]", got)
+		t.Errorf("msg.UserLabels = %q, want [Work Muy Importante]", got)
 	}
 }
 

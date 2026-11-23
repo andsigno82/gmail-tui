@@ -14,7 +14,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -303,7 +302,7 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 		if buf != nil {
 			ref.GmailID = buf.GmailMsgID
 			ref.ThreadID = buf.GmailThreadID
-			ref.Labels = userLabels(buf.GmailLabels)
+			ref.Labels = msg.UserLabels(buf.GmailLabels)
 		}
 		refs = append(refs, ref)
 	}
@@ -476,7 +475,7 @@ func setGmailFields(ref *msg.MessageRef, buf *imapclient.FetchMessageBuffer) {
 	}
 	ref.GmailID = buf.GmailMsgID
 	ref.ThreadID = buf.GmailThreadID
-	ref.Labels = userLabels(buf.GmailLabels)
+	ref.Labels = msg.UserLabels(buf.GmailLabels)
 }
 
 // threadKey raggruppa i messaggi: il thread, o il messaggio se non Gmail.
@@ -485,17 +484,4 @@ func threadKey(r msg.MessageRef) string {
 		return fmt.Sprintf("thread:%d", r.ThreadID)
 	}
 	return "msg:" + string(r.ID)
-}
-
-// userLabels filtra le label di sistema (\Inbox, \Sent, Important, Starred,
-// Chats): restano le label utente.
-func userLabels(labels []string) []string {
-	var out []string
-	for _, l := range labels {
-		if strings.HasPrefix(l, "\\") || l == "Important" || l == "Starred" || l == "Chats" {
-			continue
-		}
-		out = append(out, l)
-	}
-	return out
 }

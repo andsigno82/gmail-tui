@@ -82,7 +82,7 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 	// righe di lista: la cache e la deduplica per GmailID ne hanno bisogno.
 	m.Ref.GmailID = gx.msgID
 	m.Ref.ThreadID = gx.threadID
-	m.Ref.Labels = userLabels(gx.labels)
+	m.Ref.Labels = msg.UserLabels(gx.labels)
 	// Riconciliazione dai FLAGS del fetch (msg.Parse non li conosce).
 	m.Ref.Unread = true
 	m.Ref.Starred = false
