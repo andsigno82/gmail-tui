@@ -220,8 +220,7 @@ func (mt *meter) collect(c tea.Cmd) []tea.Msg {
 	}
 	ch := make(chan cmdRes, 256)
 	started := 0
-	var launch func(c tea.Cmd)
-	launch = func(c tea.Cmd) {
+	launch := func(c tea.Cmd) {
 		if c == nil {
 			return
 		}
