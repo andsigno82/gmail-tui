@@ -17,6 +17,8 @@ import (
 	"charm.land/lipgloss/v2"
 	"golang.org/x/net/idna"
 	"golang.org/x/net/publicsuffix"
+
+	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
 
 // maxLinkLen e la lunghezza massima (in byte) di un URL cliccabile: come
@@ -261,6 +263,58 @@ func wrapPlain(s string, width int) []string {
 	return out
 }
 
+// Prefissi dell'id OSC 8: il prefisso di un link sospetto (idPrefixWarn) e
+// l'unico segnale che scanZones legge per impostare Zone.Warn sulle righe rese
+// dal motore dei Runs (Piano 15, Task 14, lavoro A).
+const (
+	idPrefix     = "gmr"
+	idPrefixWarn = "gmw"
+)
+
+// linkInfo e un link pronto per essere reso: target ripulito, testo da mostrare
+// (senza marcatore) e verdetto del controllo di dominio.
+type linkInfo struct {
+	target, display string
+	warn            bool
+}
+
+// prepLink ripulisce href (safeHref) e testo (cleanText) e applica il controllo di
+// dominio (D15-07): e la logica di Link, condivisa col motore dei Runs
+// (paragraph.go). Testo vuoto: si mostra l'URL. ok e false se l'href non e
+// apribile: il chiamante rende testo semplice senza zona.
+func prepLink(text, href string) (linkInfo, bool) {
+	target, u, ok := safeHref(href)
+	if !ok {
+		return linkInfo{}, false
+	}
+	display := cleanText(text)
+	if display == "" {
+		display = cleanText(target)
+	}
+	return linkInfo{target: target, display: display, warn: mismatch(display, u)}, true
+}
+
+// linkID e l'id OSC 8 stabile di un link: dipende da target e testo mostrato
+// (marcatore compreso) e porta il prefisso che distingue i link sospetti.
+func linkID(li linkInfo) string {
+	shown, prefix := li.display, idPrefix
+	if li.warn {
+		shown, prefix = warnMarker+shown, idPrefixWarn
+	}
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(li.target + "\x00" + shown))
+	return fmt.Sprintf("%s%08x", prefix, h.Sum32())
+}
+
+// linkStyle e lo stile di un link: tratteggiato, oppure ondulato in colore errore
+// se sospetto (D15-07).
+func linkStyle(st styles.Styles, warn bool) lipgloss.Style {
+	if warn {
+		return underlineStyle(st.LinkWarn, lipgloss.UnderlineCurly)
+	}
+	return underlineStyle(st.LinkDashed, lipgloss.UnderlineDashed)
+}
+
 // Link rende un link con controllo di dominio (Piano 15, Task 6, D15-07). Testo
 // vuoto: si mostra l'URL. Con href non apribile (schema vietato, troppo lungo,
 // senza host) il testo resta semplice e senza zone. Altrimenti il testo e
@@ -269,27 +323,21 @@ func wrapPlain(s string, width int) []string {
 // ondulata in colore errore. Ogni riga del wrap ha una zona [0,larghezza) con lo
 // stesso id OSC 8, come il thread.
 func Link(text, href string, c Ctx) Out {
-	display := cleanText(text)
-	target, u, ok := safeHref(href)
+	li, ok := prepLink(text, href)
 	if !ok {
+		display := cleanText(text)
 		if display == "" {
 			return Out{}
 		}
 		lines := wrapPlain(display, c.Width)
 		return Out{Lines: lines, Zones: make([][]Zone, len(lines))}
 	}
-	if display == "" {
-		display = cleanText(target)
-	}
-	warn := mismatch(display, u)
-	base := underlineStyle(c.St.LinkDashed, lipgloss.UnderlineDashed)
+	display, warn, target := li.display, li.warn, li.target
 	if warn {
 		display = warnMarker + display
-		base = underlineStyle(c.St.LinkWarn, lipgloss.UnderlineCurly)
 	}
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(target + "\x00" + display))
-	id := fmt.Sprintf("gmr%08x", h.Sum32())
+	base := linkStyle(c.St, warn)
+	id := linkID(li)
 
 	lines := wrapPlain(display, c.Width)
 	o := Out{Lines: make([]string, len(lines)), Zones: make([][]Zone, len(lines))}

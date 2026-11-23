@@ -50,9 +50,7 @@ func Dispatch(b richtext.Block, c Ctx) Out {
 	return Out{}
 }
 
-// Paragraph rende i Runs di un paragrafo a capo sulla larghezza (Task 6/8).
-func Paragraph(b richtext.Block, c Ctx) Out { return Out{} }
-
+// Paragraph e in paragraph.go (Piano 15, Task 14), insieme al motore dei Runs.
 // Link e Image sono in link.go e image.go (Piano 15, Task 6); Button e
 // Attachment in button.go e attachment.go (Piano 15, Task 7).
 
