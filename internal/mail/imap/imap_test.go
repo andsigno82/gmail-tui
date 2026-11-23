@@ -49,6 +49,11 @@ type testServer struct {
 	// (Piano 15, Task 11). Protetti da mu.
 	statusLog      []string
 	listStatusReqs int
+
+	// statusDelay e listDelay rallentano STATUS e LIST (RETURN SPECIAL-USE) del
+	// server finto: simulano un server lento (revisione Piano 15, punto 5).
+	// Protetti da mu.
+	statusDelay, listDelay time.Duration
 }
 
 // startTestServer avvia imapmemserver su 127.0.0.1:0 e registra la chiusura
@@ -117,6 +122,10 @@ func (s *specialUseSession) List(w *imapserver.ListWriter, ref string, patterns 
 		return s.Session.List(w, ref, patterns, options)
 	}
 	s.ts.mu.Lock()
+	delay := s.ts.listDelay
+	s.ts.mu.Unlock()
+	time.Sleep(delay)
+	s.ts.mu.Lock()
 	defer s.ts.mu.Unlock()
 	if options.ReturnStatus != nil {
 		s.ts.listStatusReqs++
@@ -154,7 +163,9 @@ func (s *specialUseSession) List(w *imapserver.ListWriter, ref string, patterns 
 func (s *specialUseSession) Status(mailbox string, options *imap.StatusOptions) (*imap.StatusData, error) {
 	s.ts.mu.Lock()
 	s.ts.statusLog = append(s.ts.statusLog, mailbox)
+	delay := s.ts.statusDelay
 	s.ts.mu.Unlock()
+	time.Sleep(delay)
 	return s.Session.Status(mailbox, options)
 }
 
