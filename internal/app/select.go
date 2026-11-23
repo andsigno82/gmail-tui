@@ -66,3 +66,25 @@ func (m Model) selectAllRows() (Model, tea.Cmd) {
 	m.setSel(next)
 	return m, nil
 }
+
+// pruneSel toglie dalla selezione le righe che non sono più nella lista (Piano 10,
+// Task 2, D10-T1): un refresh o un'op può farle sparire, e il conteggio "N
+// selezionate" non deve restare stantio. Confronto per ID della riga (m.refs).
+func (m *Model) pruneSel() {
+	if len(m.sel) == 0 {
+		return
+	}
+	present := make(map[msg.MessageID]bool, len(m.refs))
+	for _, r := range m.refs {
+		present[r.ID] = true
+	}
+	next := make(map[msg.MessageID]bool, len(m.sel))
+	for id := range m.sel {
+		if present[id] {
+			next[id] = true
+		}
+	}
+	if len(next) != len(m.sel) {
+		m.setSel(next)
+	}
+}

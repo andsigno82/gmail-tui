@@ -106,3 +106,22 @@ func TestStatusBarShowsSelectedCount(t *testing.T) {
 		t.Errorf("barra = %q, voglio 2 selezionate", m.statusBar())
 	}
 }
+
+// Piano 10, Task 2 (selezione, passo 1): un refresh che fa sparire una riga la
+// toglie dalla selezione; il conteggio "N selezionate" non resta stantio.
+func TestSelectionPrunedWhenRowDisappears(t *testing.T) {
+	m := selectFixture(t)
+	m, _ = step(m, pressKey("X"))
+	if len(m.sel) != 2 {
+		t.Fatalf("precondizione: %d righe selezionate, voglio 2", len(m.sel))
+	}
+	keep := m.refs[:1]
+	gone := m.refs[1].ID
+	m, _ = step(m, msgsLoaded{refs: keep, silent: true, gen: m.listGen, mailbox: m.folder.Name, limit: pageSize})
+	if len(m.sel) != 1 || !m.sel[keep[0].ID] {
+		t.Fatalf("dopo il refresh: selezione = %v, voglio solo %s", m.sel, keep[0].ID)
+	}
+	if m.sel[gone] {
+		t.Errorf("la riga sparita %s è ancora selezionata", gone)
+	}
+}

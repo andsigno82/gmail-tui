@@ -389,6 +389,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.loadingMore = false
 		}
 		m.refs = refs
+		m.pruneSel() // Piano 10, Task 2 (D10-T1): righe sparite fuori dalla selezione
 		if !ev.silent {
 			if ev.query != "" {
 				// Badge dei risultati di ricerca: conteggio + query digitata.
