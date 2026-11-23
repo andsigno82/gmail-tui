@@ -127,6 +127,37 @@ func TestSplitPreviewLoadsAfterTimerOnly(t *testing.T) {
 	}
 }
 
+// TestSplitPreviewLoadingSpinnerCentered: durante il caricamento l'anteprima
+// mostra spinner e testo al centro orizzontale e verticale del pannello destro
+// (richiesta di Andrea, 2026-11-23).
+func TestSplitPreviewLoadingSpinnerCentered(t *testing.T) {
+	m := splitModel(t, 120, 30)
+	const w, h = 77, 11
+	lines := strings.Split(m.previewView(w, h), "\n")
+	if len(lines) != h {
+		t.Fatalf("righe = %d, voglio %d", len(lines), h)
+	}
+	row := -1
+	for i, l := range lines {
+		if strings.Contains(l, "Caricamento") {
+			row = i
+		}
+	}
+	if row != h/2 {
+		t.Fatalf("testo di attesa alla riga %d, voglio la riga centrale %d:\n%s", row, h/2, strings.Join(lines, "\n"))
+	}
+	line := lines[row]
+	if !strings.Contains(line, m.spinner.View()) {
+		t.Errorf("manca lo spinner nella riga di attesa: %q", line)
+	}
+	lead := len(line) - len(strings.TrimLeft(line, " "))
+	text := strings.TrimSpace(line)
+	trail := lipgloss.Width(line) - lead - lipgloss.Width(text)
+	if d := lead - trail; d < -2 || d > 2 {
+		t.Errorf("testo non centrato orizzontalmente: %d spazi a sinistra, %d a destra", lead, trail)
+	}
+}
+
 // TestSplitStalePreviewDiscarded: dopo un movimento rapido il risultato del
 // messaggio precedente è scartato, e il timer stantio non fa fetch.
 func TestSplitStalePreviewDiscarded(t *testing.T) {

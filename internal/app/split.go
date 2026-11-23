@@ -196,7 +196,11 @@ func (m Model) previewView(w, h int) string {
 	case m.previewReady():
 		body = m.thread.View()
 	default:
-		body = m.styles.ListDate.Render("Caricamento messaggio…")
+		// Caricamento: spinner e testo al centro orizzontale e verticale del
+		// pannello (richiesta di Andrea, 2026-11-23). Lo spinner gira finché il
+		// fetch è in volo (pending, previewDue arma il tick).
+		wait := m.spinner.View() + " " + m.styles.ListDate.Render("Caricamento messaggio…")
+		return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, wait)
 	}
 	return lipgloss.NewStyle().PaddingLeft(splitPreviewPad).MaxWidth(w).Height(h).MaxHeight(h).Render(body)
 }
