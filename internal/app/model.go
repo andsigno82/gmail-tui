@@ -54,16 +54,29 @@ type Model struct {
 	styles    styles.Styles
 	toast     toast.Model // pila delle notifiche di esito (Piano 7.3, Task 2)
 	spinner   spinner.Model
-	help      help.Model      // barra breve + overlay `?` (Task 9): stili a tema
-	inbox     inbox.Model     // lista messaggi (Task 4): la radice delega tasti/mouse
-	thread    thread.Model    // lettura messaggio (Task 5): costruito al msgLoaded
-	threadGen int             // generazione del thread: scarta i corpi arrivati per un thread superato (Piano 8, Task 13)
-	rowRef    msg.MessageRef  // riga aperta nel thread: base delle azioni sulla conversazione a, #, l (Piano 8, review punto 4)
-	composer  composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
-	search    textinput.Model // query di ricerca (Task 6): la radice delega i tasti
-	label     textinput.Model // mini-prompt label (Task 7): render nella status bar
-	labelOpen bool            // prompt label attivo: i tasti vanno all'input
-	showHelp  bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
+	help      help.Model   // barra breve + overlay `?` (Task 9): stili a tema
+	inbox     inbox.Model  // lista messaggi (Task 4): la radice delega tasti/mouse
+	thread    thread.Model // lettura messaggio (Task 5): costruito al msgLoaded
+	threadGen int          // generazione del thread: scarta i corpi arrivati per un thread superato (Piano 8, Task 13)
+	// Piano 16, Task 9: lista da istantanea. folderGen scarta le istantanee di una cartella
+	// superata, listSource dice se le righe sono provvisorie (istantanea) o fresche, snapAge
+	// e il testo dell'eta mostrato in barra, provErr che l'aggiornamento e fallito.
+	folderGen  int
+	listSource listSource
+	snapAge    string
+	provErr    bool
+	// Thread provvisorio (R1, R2): threadCached = costruito da istantanea e il fresco non e
+	// arrivato; openProv = la riga aperta viene da una lista provvisoria; openGone = la riga
+	// aperta non e nella lista fresca.
+	threadCached bool
+	openProv     bool
+	openGone     bool
+	rowRef       msg.MessageRef  // riga aperta nel thread: base delle azioni sulla conversazione a, #, l (Piano 8, review punto 4)
+	composer     composer.Model  // scrittura messaggio (P4 Task 3): costruito al r/f/c
+	search       textinput.Model // query di ricerca (Task 6): la radice delega i tasti
+	label        textinput.Model // mini-prompt label (Task 7): render nella status bar
+	labelOpen    bool            // prompt label attivo: i tasti vanno all'input
+	showHelp     bool            // overlay help completo aperto (Task 9): i tasti sono ignorati
 
 	// Composer (Piano 4, Task 3-4): identity mittente/firma (SetIdentity,
 	// seam per il wiring dalla config del main), vista di provenienza per il
@@ -272,7 +285,14 @@ func (m Model) beginSession() tea.Cmd {
 	// Builder puro della cmd d'avvio (Init in v2 restituisce solo la cmd):
 	// le mutazioni di stato (pending per il connect, reset connectFailed)
 	// le fanno i call site in Update — lì il modello può essere restituito.
-	return tea.Batch(connectCmd(m.store, m.ctx), m.spinner.Tick)
+	// Piano 16, Task 9 (D16-T11): in parallelo a Connect parte la lettura dell'istantanea
+	// della cartella corrente (nessuna Cmd se lo store non e uno Snapshotter, o se la
+	// lista c'e gia).
+	var snap tea.Cmd
+	if m.listSource == srcNone && m.queryRaw == "" {
+		snap = loadSnapshot(m.store, m.folder.Name, m.folderGen)
+	}
+	return tea.Batch(connectCmd(m.store, m.ctx), m.spinner.Tick, snap)
 }
 
 // Update gestisce i messaggi e tiene l'anteprima della vista a due colonne
@@ -322,16 +342,27 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// Piano 7.3, Task 2: "R per riprovare" è stato persistente (barra
 			// neutra); l'errore è un toast che resta finché un tasto.
 			m.status = statusMsg{text: "connessione fallita — premi R per riprovare"}
+			if m.listSource == srcCached {
+				// Piano 16, Task 9 (D16-T12): la lista da istantanea resta, in sola lettura.
+				m.status = statusMsg{text: "connessione fallita — lista non aggiornata, premi R per riprovare"}
+			}
 			cmd := m.toast.Push(toast.Error, "connessione fallita: "+m.connErr) // sanificato e senza password (Piano 15, Task 16b)
 			return m, cmd
 		}
 		m.connectFailed = false
 		m.connected = true // Piano 15, Task 16b: fase dello splash
 		m.connErr = ""
+		m.provErr = false
 		m.pending++
 		m.listGen++
 		m.setSel(nil) // Piano 10, Task 2 (D10-S3): nuova lista, selezione azzerata
 		return m, tea.Batch(loadRefs(m.store, m.folder.Name, m.listGen), m.spinner.Tick, startWatch(m.store, m.ctx))
+
+	case snapshotLoaded:
+		// Piano 16, Task 9: istantanea della cartella, prima o durante Connect. Nessun
+		// doneOp: la lettura non e un'op in flight (niente spinner dedicato).
+		cmd := m.applySnapshotLoaded(ev)
+		return m, cmd
 
 	case msgsLoaded:
 		m.doneOp()
@@ -361,7 +392,13 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, follow
 		}
 		m.listLoaded = true // Piano 15, Task 16b: la lista (anche vuota o in errore) chiude lo splash
+		// Piano 16, Task 9 (R2): la lista era provvisoria? Un risultato fresco la sostituisce
+		// per intero (niente fusione con la coda dell'istantanea).
+		wasProv := m.listSource == srcCached
 		if ev.err != nil {
+			if wasProv && ev.query == "" {
+				m.provErr = true // la lista resta provvisoria e in sola lettura: la barra lo dice
+			}
 			// La query distingue l'errore di ricerca da quello di list (toast d'errore).
 			text := fmt.Sprintf("lettura messaggi: %v", ev.err)
 			if ev.query != "" {
@@ -393,7 +430,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		var selID msg.MessageID
 		hadSel := false
 		oldIdx := 0
-		if ev.silent {
+		if ev.silent && !wasProv { // il cursore di una lista provvisoria non si riporta per ID (R2)
 			oldIdx = m.inbox.SelectedIndex()
 			if r, ok := m.inbox.SelectedRef(); ok {
 				selID, hadSel = r.ID, true
@@ -408,7 +445,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case ev.limit == 0:
 			m.exhausted = true
-		case ev.silent && len(refs) == ev.limit && len(m.refs) > len(refs):
+		case ev.silent && !wasProv && len(refs) == ev.limit && len(m.refs) > len(refs):
 			refs = appendUnique(refs, m.refs[len(refs):])
 		default:
 			m.exhausted = len(refs) < ev.limit && !ev.limited
@@ -418,6 +455,10 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// lista precedente e non blocca più lo scroll della nuova.
 			m.loadingMore = false
 		}
+		if wasProv {
+			m.sums = nil // i riepiloghi dell'istantanea non si fondono con quelli freschi
+		}
+		m.listSource, m.provErr = srcFresh, false
 		m.refs = refs
 		m.pruneSel() // Piano 10, Task 2 (D10-T1): righe sparite fuori dalla selezione
 		if !ev.silent {
@@ -453,7 +494,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// nulla. La cmd viene comunque propagata per fedeltà all'API.
 		m.rememberConvs(ev.convs)
 		cmd := m.inbox.SetConversations(m.convsOf(refs))
-		if ev.silent && len(refs) > 0 {
+		if ev.silent && !wasProv && len(refs) > 0 {
 			// Ripristino del cursore dopo il refresh di un'op: stesso
 			// messaggio se c'è ancora nell'elenco (anche se si è spostato),
 			// altrimenti lo stesso indice clampato alla nuova lunghezza (il
@@ -717,6 +758,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 
 	case inbox.SelectedMsg:
 		if m.view == viewInbox && m.folder.Role == "drafts" {
+			if m.listSource == srcCached {
+				// Piano 16, Task 9 (R1): la ripresa di una bozza e un'azione su una riga provvisoria.
+				cmd := m.toast.Push(toast.Info, provisionalToast)
+				return m, cmd
+			}
 			// Piano 9, Task 6 (D9-D): in Bozze l'invio riprende la bozza nel composer.
 			m.pending++
 			return m, tea.Batch(fetchForResume(m.store, ev.Ref), m.spinner.Tick)
@@ -724,6 +770,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// Apertura dal thread: si custodisce il ref e si fetcha fuori dal
 		// loop UI (spinner attivo finché msgLoaded non arriva).
 		m.pendingRef = ev.Ref
+		m.openProv, m.openGone = m.listSource == srcCached, false // Piano 16, Task 9 (R2): riga provvisoria
 		m.view = viewThread
 		m.pending++ // fetch in flight
 		m.rowRef = ev.Ref
@@ -800,6 +847,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// gira fuori dal loop UI (spinner finché attachmentSaved); il feedback
 		// — "salvato in …" (toast di successo, Piano 7.3) o l'exec
 		// del browser per :open — arriva al risultato.
+		if reason := m.provisionalReason(); reason != "" {
+			// Piano 16, Task 9 (R1): il salvataggio di un allegato legge dal server per ID.
+			cmd := m.toast.Push(toast.Info, reason)
+			return m, cmd
+		}
 		m.pending++
 		return m, tea.Batch(saveAttachment(m.store, ev), m.spinner.Tick)
 
@@ -1358,6 +1410,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg { return inbox.SelectedMsg{Ref: ref} }
 			}
 		}
+		// Piano 16, Task 9 (R1): punto unico di rifiuto delle azioni su dati provvisori
+		// (m e il modello locale: il toast resta nel Model restituito).
+		if refused, cmd := m.refuseWhileProvisional(ev); refused {
+			return m, cmd
+		}
 		// Il routing usa la keymap centrale (Task 9): stesse chiavi e stesso
 		// ordine del vecchio switch su ev.String() (a/s/v/l → q/esc → …).
 		switch {
@@ -1370,6 +1427,9 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.pending++ // il connect è un'op: spinner finché connResult
 			m.connectFailed = false
 			m.connErr = "" // Piano 15, Task 16b: lo splash torna alla fase "connessione"
+			if m.listSource == srcCached {
+				m.status = statusMsg{} // Piano 16, Task 9: torna "aggiornamento…", non l'errore del tentativo precedente
+			}
 			return m, m.beginSession()
 		case key.Matches(ev, keys.Reply, keys.Forward):
 			// r/f (Piano 4, Task 3): nell'inbox fetch-then-compose (cache-
@@ -1680,6 +1740,11 @@ func loadRefs(st mail.MailStore, box string, gen int) tea.Cmd {
 func (m *Model) loadMoreAtEnd(cmd tea.Cmd) tea.Cmd {
 	if m.queryRaw != "" || m.exhausted || m.loadingMore || !m.inbox.AtEnd() {
 		return cmd
+	}
+	if m.listSource == srcCached {
+		// Piano 16, Task 9 (R1): la pagina successiva (offset) non si chiede su una lista
+		// provvisoria.
+		return tea.Batch(cmd, m.toast.Push(toast.Info, provisionalToast))
 	}
 	m.loadingMore = true
 	m.pending++

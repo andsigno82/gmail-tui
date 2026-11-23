@@ -165,6 +165,11 @@ func (m Model) chooseFolder() (Model, tea.Cmd) {
 // o una pagina in volo della cartella precedente si scartano al loro arrivo.
 func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.folder = box
+	// Piano 16, Task 9 (D16-T11): nuova generazione di cartella; la lista torna senza
+	// origine e parte la lettura dell'istantanea della cartella nuova.
+	m.folderGen++
+	m.listSource, m.snapAge, m.provErr = srcNone, "", false
+	snap := loadSnapshot(m.store, box.Name, m.folderGen)
 	m.query = msg.Query{}
 	m.queryRaw = ""
 	m.exhausted = false
@@ -182,7 +187,7 @@ func (m Model) switchFolder(box mail.Mailbox) (Model, tea.Cmd) {
 	m.pending++
 	m.listGen++   // nuova generazione: le pagine e i refresh della cartella precedente sono stanti (fix review 2)
 	m.setSel(nil) // Piano 10, Task 2 (D10-S3): la selezione non passa alla cartella nuova
-	return m, tea.Batch(clearRows, loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick)
+	return m, tea.Batch(clearRows, loadRefs(m.store, box.Name, m.listGen), m.spinner.Tick, snap)
 }
 
 // foldersView rende il corpo del selettore: titolo con l'hint dei tasti e
