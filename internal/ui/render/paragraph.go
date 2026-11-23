@@ -267,7 +267,42 @@ func outOf(lines [][]irun, base lipgloss.Style, c Ctx) Out {
 
 // wrapRuns rende i tratti a capo su width colonne (Piano 15, Task 8).
 func wrapRuns(runs []irun, width int, base lipgloss.Style, c Ctx) Out {
-	return outOf(wrapWords(tokenize(runs), width), base, c)
+	var lines [][]irun
+	hard := splitHard(runs)
+	if len(hard) == 1 && len(hard[0]) == 0 {
+		return Out{} // nessun testo: nessuna riga
+	}
+	for _, ln := range hard {
+		wrapped := wrapWords(tokenize(ln), width)
+		if len(wrapped) == 0 {
+			wrapped = [][]irun{nil} // riga vuota voluta
+		}
+		lines = append(lines, wrapped...)
+	}
+	return outOf(lines, base, c)
+}
+
+// splitHard divide i tratti ai "\n" (a capo voluti: <br> in HTML, righe del testo
+// semplice, Piano 15, Task 14); gli a capo finali si scartano. Ogni pezzo tiene
+// href e id del tratto da cui viene.
+func splitHard(runs []irun) [][]irun {
+	lines := [][]irun{nil}
+	for _, r := range runs {
+		for i, part := range strings.Split(r.text, "\n") {
+			if i > 0 {
+				lines = append(lines, nil)
+			}
+			if part != "" {
+				p := r
+				p.text = part
+				lines[len(lines)-1] = append(lines[len(lines)-1], p)
+			}
+		}
+	}
+	for len(lines) > 1 && len(lines[len(lines)-1]) == 0 {
+		lines = lines[:len(lines)-1]
+	}
+	return lines
 }
 
 // preRuns rende testo preformattato: a capo del modello conservati, spazi
