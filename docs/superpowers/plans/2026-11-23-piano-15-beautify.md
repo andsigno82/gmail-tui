@@ -349,10 +349,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** con `imapmemserver`: due mailbox con messaggi letti/non letti → conteggi attesi; mailbox vuota → 0; `\Noselect` esclusa; `Delimiter` = `/` per una label annidata; la mailbox selezionata non cambia. RED prima dell'implementazione.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate (+ grep della regola 1 di AGENTS.md).
-- [ ] Commit `feat(imap): delimitatore e UNSEEN per cartella (Piano 15, Task 11)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate (+ grep della regola 1 di AGENTS.md).
+- [x] Commit `feat(imap): delimitatore e UNSEEN per cartella (Piano 15, Task 11)`.
 
 ## Task 12: finestre sovrapposte con ombra (`internal/ui/overlay`)
 
