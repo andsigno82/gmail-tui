@@ -59,11 +59,7 @@ func Link(text, href string, c Ctx) Out { return Out{} }
 // Image rende un'immagine come chip con il testo alternativo (D15-08, Task 6).
 func Image(alt string, c Ctx) Out { return Out{} }
 
-// Button rende un bottone a riquadro con l'host di destinazione (D15-01, Task 7).
-func Button(b richtext.Block, c Ctx) Out { return Out{} }
-
-// Attachment rende il chip di un allegato, size in byte (D15-06, Task 7).
-func Attachment(name, ctype string, size int64, index int, c Ctx) Out { return Out{} }
+// Button e Attachment sono in button.go e attachment.go (Piano 15, Task 7).
 
 // Table rende una tabella, con ricaduta su testo se troppo larga (D15-T8, Task 8).
 func Table(b richtext.Block, c Ctx) Out { return Out{} }

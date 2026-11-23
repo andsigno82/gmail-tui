@@ -286,10 +286,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** riquadro di 3 righe con bordo arrotondato (`╭╮╰╯`); host visibile accanto; larghezza stretta → troncamento con `…`; zona per riga con `X0/X1` corretti (`lipgloss.Width`, non `len`); chip: nome con bidi rimosso, zona con `Index`.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(render): bottoni e chip allegati (Piano 15, Task 7)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(render): bottoni e chip allegati (Piano 15, Task 7)`.
 
 ## Task 8: tabelle, citazioni, elenchi (`internal/ui/render`)
 
