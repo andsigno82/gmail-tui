@@ -375,10 +375,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** segmenti in ordine; contrasto leggibile (Task 9); troncamento dal segmento help; larghezza esatta `width` (`lipgloss.Width`); nessun segmento vuoto renderizzato.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(statusline): barra di stato a segmenti (Piano 15, Task 13)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(statusline): barra di stato a segmenti (Piano 15, Task 13)`.
 
 ## Task 14: thread con i renderer (`internal/ui/thread`)
 
