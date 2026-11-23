@@ -83,6 +83,9 @@ type Model struct {
 	draftKeep   bool   // bozza ripresa senza allegati: il risalvataggio non sostituisce l'originale
 	undo        *pendingSend
 	undoSeq     int
+	lastUndo    *bulkUndo // ultima azione annullabile di archivia/cestino (Piano 10, Task 6, D10-U2)
+	undoBulkSeq int
+	undoSendOff bool // l'invio in attesa è stato sostituito da archivia/cestino: `u` non lo annulla più (D10-U2)
 
 	// Rubrica e suggerimenti dei contatti (Piano 9, Task 12-13): book è la rubrica
 	// (memoria di default, file nel main), addrCmd il comando esterno (config),
@@ -580,7 +583,13 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.
-		toastCmd := m.toast.Push(toast.Success, ev.label)
+		var toastCmd tea.Cmd
+		if ev.undo != nil {
+			// Piano 10, Task 6: archivia/cestino riuscito: il toast offre `u` per la finestra.
+			toastCmd = m.armBulkUndo(ev.undo, ev.label)
+		} else {
+			toastCmd = m.toast.Push(toast.Success, ev.label)
+		}
 		if ev.draftKept {
 			keptCmd := m.toast.Push(toast.Info, "bozza originale conservata in Bozze: allegati non scaricati alla ripresa")
 			toastCmd = tea.Batch(toastCmd, keptCmd)
@@ -919,6 +928,13 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.openResumed(ev.ref, ev.m, ev.paths, ev.dir, false)
 		return m, nil
 
+	case bulkUndoDueMsg:
+		// Piano 10, Task 6 (D10-U1): scaduta la finestra, archivia/cestino non si annulla più.
+		if m.lastUndo != nil && m.lastUndo.seq == ev.seq {
+			m.lastUndo = nil
+		}
+		return m, nil
+
 	case undoDueMsg:
 		// Piano 9, Task 9 (D9-I): scaduta la finestra, l'invio parte (se non annullato).
 		if m.undo == nil || m.undo.seq != ev.seq {
@@ -1150,7 +1166,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			m.thread, cmd = m.thread.Update(ev)
 			return m, cmd
 		}
-		if m.undo != nil && ev.String() == "u" && (m.view == viewInbox || m.view == viewThread) {
+		if m.lastUndo != nil && ev.String() == "u" && (m.view == viewInbox || m.view == viewThread) {
+			// Piano 10, Task 6 (D10-U2): l'ultima azione annullabile è archivia o cestino.
+			cmd := m.restoreBulkUndo()
+			return m, cmd
+		}
+		if m.undo != nil && !m.undoSendOff && ev.String() == "u" && (m.view == viewInbox || m.view == viewThread) {
 			// Piano 9, Task 9 (D9-I) e review E: `u` riporta l'invio in attesa solo da
 			// inbox e thread; in ricerca, prompt o composer è testo o tasto della vista.
 			cmd := m.restoreUndo()

@@ -108,6 +108,7 @@ type opDone struct {
 	// Se la lista è cambiata nel frattempo l'esito è stante: niente gone né refresh.
 	gen      int
 	checkGen bool
+	undo     *bulkUndo // Piano 10, Task 6: ritorno di archivia/cestino riuscito (`u` per 10 s)
 	// localID/localRead: MarkRead riuscito su questo messaggio; lo stato di lettura
 	// della riga in lista si aggiorna senza refresh (Piano 7.2, fix review).
 	localID   msg.MessageID

@@ -276,15 +276,8 @@ func (m Model) confirmTrash() (Model, tea.Cmd) {
 // conversationIDs, guardati sulla mailbox della riga).
 func trashCmd(st mail.MailStore, ref msg.MessageRef) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		ids, err := conversationIDs(ctx, st, ref)
-		if err == nil {
-			err = guardBox(ids, boxOf(ref))
-		}
-		if err == nil {
-			_, err = st.Trash(ctx, ids)
-		}
-		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: ids}
+		gone, undo, err := trashRows(context.Background(), st, []msg.MessageRef{ref})
+		return opDone{label: "spostata nel cestino", err: err, refresh: true, deep: true, gone: gone, undo: undo}
 	}
 }
 
@@ -406,15 +399,8 @@ func star(st mail.MailStore, id msg.MessageID, on bool) tea.Cmd {
 // mailbox della riga (la INBOX, per il controllo di runOp).
 func archive(st mail.MailStore, ref msg.MessageRef) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		ids, err := conversationIDs(ctx, st, ref)
-		if err == nil {
-			err = guardBox(ids, boxOf(ref))
-		}
-		if err == nil {
-			err = st.Archive(ctx, ids)
-		}
-		return opDone{label: "archiviata", err: err, refresh: true, deep: true, gone: ids}
+		ids, undo, err := archiveRows(context.Background(), st, []msg.MessageRef{ref})
+		return opDone{label: "archiviata", err: err, refresh: true, deep: true, gone: ids, undo: undo}
 	}
 }
 

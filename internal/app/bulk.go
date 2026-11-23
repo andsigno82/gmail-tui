@@ -146,24 +146,16 @@ func bulkIDs(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) ([]m
 // "archiviate N", refresh profondo come la singola.
 func bulkArchive(st mail.MailStore, rows []msg.MessageRef, gen int) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		ids, err := bulkIDs(ctx, st, rows)
-		if err == nil {
-			err = st.Archive(ctx, ids)
-		}
-		return opDone{label: fmt.Sprintf("archiviate %d", len(rows)), err: err, refresh: true, deep: true, gone: ids, gen: gen, checkGen: true}
+		ids, undo, err := archiveRows(context.Background(), st, rows)
+		return opDone{label: fmt.Sprintf("archiviate %d", len(rows)), err: err, refresh: true, deep: true, gone: ids, gen: gen, checkGen: true, undo: undo}
 	}
 }
 
 // bulkTrash sposta nel cestino la conversazione di ogni riga (Piano 10, Task 3).
 func bulkTrash(st mail.MailStore, rows []msg.MessageRef, gen int) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		ids, err := bulkIDs(ctx, st, rows)
-		if err == nil {
-			_, err = st.Trash(ctx, ids)
-		}
-		return opDone{label: fmt.Sprintf("spostate %d nel cestino", len(rows)), err: err, refresh: true, deep: true, gone: ids, gen: gen, checkGen: true}
+		gone, undo, err := trashRows(context.Background(), st, rows)
+		return opDone{label: fmt.Sprintf("nel cestino %d", len(rows)), err: err, refresh: true, deep: true, gone: gone, gen: gen, checkGen: true, undo: undo}
 	}
 }
 

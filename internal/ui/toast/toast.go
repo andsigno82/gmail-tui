@@ -60,6 +60,12 @@ func (m *Model) SetStyles(st styles.Styles) { m.st = st }
 // errore (evict). Gli errori non armano timer; gli altri tipi sì, con un ID che
 // rende lo ExpiredMsg riconoscibile anche se il toast è già uscito dalla pila.
 func (m *Model) Push(k Kind, text string) tea.Cmd {
+	return m.PushFor(k, text, Duration)
+}
+
+// PushFor è Push con durata propria (Piano 10, Task 6: l'annulla di archivia e
+// cestino resta in vista per la finestra di annullamento).
+func (m *Model) PushFor(k Kind, text string, d time.Duration) tea.Cmd {
 	if len(m.items) >= maxToasts {
 		m.evict()
 	}
@@ -69,7 +75,7 @@ func (m *Model) Push(k Kind, text string) tea.Cmd {
 	if k == Error {
 		return nil
 	}
-	return tea.Tick(Duration, func(time.Time) tea.Msg { return ExpiredMsg{ID: id} })
+	return tea.Tick(d, func(time.Time) tea.Msg { return ExpiredMsg{ID: id} })
 }
 
 // evict toglie il toast più vecchio che NON è un errore (Piano 7.3, fix review):

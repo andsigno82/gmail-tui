@@ -71,8 +71,14 @@ func TestBulkTrashAllSelected(t *testing.T) {
 	}
 	m, cmd := step(m, pressKey("s"))
 	applyAll(t, m, cmd)
-	if len(rec.trashed) != 1 || !sameIDs(rec.trashed[0], idU1, idU2, idU3, msg.NewID("INBOX", 4)) {
-		t.Errorf("Trash ricevuto = %v, voglio le conversazioni selezionate", rec.trashed)
+	// Piano 10, Task 6 (D10-C2): un Trash per conversazione, così ogni ritorno ha i
+	// suoi ID nel cestino e le sue label; l'unione copre le conversazioni selezionate.
+	var all []msg.MessageID
+	for _, g := range rec.trashed {
+		all = append(all, g...)
+	}
+	if len(rec.trashed) != 2 || !sameIDs(all, idU1, idU2, idU3, msg.NewID("INBOX", 4)) {
+		t.Errorf("Trash ricevuto = %v, voglio le conversazioni selezionate, una per chiamata", rec.trashed)
 	}
 }
 
