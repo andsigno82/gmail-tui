@@ -441,6 +441,27 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 - [x] Gate.
 - [x] Commit `feat(app): finestre, statusline e allegati cliccabili (Piano 15, Task 16)`.
 
+## Task 16b: splash, ombra a retino, Shown dei link spezzati, pulizia allegati (richieste di Andrea, 2026-11-23)
+
+**Files:** `internal/app/splash.go` (+ hook in `model.go`, `split.go`, `windows.go`), `internal/ui/overlay/overlay.go`, `internal/ui/styles/styles.go` (`ErrText`, `OverlayShadow`), `internal/ui/render/paragraph.go`, `internal/app/attachment_open.go`, `cmd/gmail-tui/main.go`.
+
+**Decisioni di Andrea (non riaprirle):**
+
+- Splash all'avvio al posto della lista vuota, finché non arriva il primo `msgsLoaded` non stantio (dopo il wizard, se c'è): titolo `gmail-tui` a blocchi con sfumatura primary->accent sulle lettere (stessa regola D15-13 del titolo delle finestre), spinner con la fase ("connessione a imap.gmail.com…" / "caricamento posta…"), versione attenuata. NESSUN ritardo artificiale. Connessione fallita: errore sanificato (ANSI/controlli tolti, password dell'ambiente mascherata, anche nel toast) e "R per riprovare". Titolo: grande (glifi doppi) da 78 colonne, compatto da 37, testo sotto. Stati vuoti neutri e centrati: "Nessun messaggio in <cartella>" e, nell'anteprima senza selezione, "Seleziona un messaggio per leggerlo". Nuovo stile `ErrText` (solo primo piano, slot error con contrasto sul bg, nel test `TestTestoPiano15SuBg`).
+- Ombra delle finestre (D15-T11 superata): retino `░` nel colore dello slot border al posto dello sfondo scurito; stesse dimensioni (+2 colonne, +1 riga). `OverlayShadow` ha solo il primo piano (niente sfondo: tolto dal test di contrasto con sfondo, rimossi `scurisci` e `frazioneOmbra`).
+- `Zone.Shown` di un link Warn spezzato su più righe è il testo intero su tutte le sue zone (`joinShown` in `render/paragraph.go`; le porzioni con lo stesso id OSC 8 su righe consecutive si concatenano senza separatore: il testo di un link Warn è un solo URL/dominio, D15-T6).
+- Allegati aperti: radice dedicata `<tmp>/gmail-tui-att` (0700, mai un symlink) con una cartella per sessione `s-*` (0700); `CleanupAttachments` all'uscita (defer in `runProgram`) rimuove solo la cartella della sessione e la radice se vuota; `SweepAttachments` all'avvio toglie le sessioni `s-*` di oltre 24 h (mai symlink seguiti né cartelle con altri nomi). Radice iniettabile (`attachRoot`).
+
+**Test:** `splash_test.go` (fasi, scomparsa alla lista, risultato stantio, errore sanificato e password, R, centratura, titolo adattivo e sfumato, stato vuoto, anteprima neutra); `overlay_test.go` aggiornato (retino, colore, niente sfondo, clamp); `warn_click_test.go` (Shown intero su ogni zona); `attachment_cleanup_test.go` (radice, uscita, sweep, symlink).
+
+- [x] Test RED (comportamentali: stub compilabili, fallimento sull'asserzione).
+- [x] Implementazione.
+- [x] Gate (build, vet, `go test -race -count=1 ./...`, golangci-lint 0) dopo ogni commit.
+- [x] Commit `feat(app): splash d'avvio e stati vuoti neutri (Piano 15, Task 16b)`.
+- [x] Commit `feat(overlay): ombra a retino nel colore del bordo (Piano 15, Task 16b)`.
+- [x] Commit `fix(render): Shown di un link spezzato su piu righe e' il testo intero (Piano 15, Task 16b)`.
+- [x] Commit `fix(app): cartella degli allegati aperti rimossa all'uscita (Piano 15, Task 16b)`.
+
 ## Task 17: demo, Mock e isolamento MCP
 
 **Files:** `internal/app/demo.go`, `internal/mail/mock.go`, `internal/mcpserver/*_test.go`.
