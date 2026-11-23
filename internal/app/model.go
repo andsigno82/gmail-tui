@@ -694,6 +694,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.view = viewThread
 		m.pending++ // fetch in flight
 		m.rowRef = ev.Ref
+		// Il thread è condiviso con l'anteprima: se contiene un altro messaggio
+		// (es. quello appena cestinato) si svuota, così finché il nuovo non arriva
+		// non si vede né si agisce sul precedente (segnalazione di Andrea, 2026-11-23).
+		if !m.thread.Loaded() || m.thread.AnchorID() != ev.Ref.ID {
+			m.thread = thread.Model{}
+		}
 		return m, tea.Batch(fetchMsg(m.store, ev.Ref, m.folder), m.spinner.Tick)
 
 	case thread.BackMsg:
@@ -1725,7 +1731,9 @@ func (m Model) body() string {
 	switch m.view {
 	case viewThread:
 		if !m.thread.Loaded() {
-			return "Caricamento messaggio…"
+			// Spinner e testo al centro, come nell'anteprima a due colonne.
+			wait := m.spinner.View() + " " + m.styles.ListDate.Render("Caricamento messaggio…")
+			return lipgloss.Place(m.width, max(0, m.height-1), lipgloss.Center, lipgloss.Center, wait)
 		}
 		return m.thread.View()
 	case viewSearch:
