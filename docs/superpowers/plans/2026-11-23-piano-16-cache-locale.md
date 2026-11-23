@@ -232,10 +232,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 
 **Test (RED prima):** `TestCacheEventsCarryNoPersonalData` (nessuna stringa fuori dall'insieme ammesso), `TestSnapshotPhaseEmittedOnce`, `TestFirstListViewFromSnapshotIsCached`, `TestSummaryCountsCacheHits`.
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(trace): hit e miss della cache e fase dell'istantanea (Piano 16, Task 7)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(trace): hit e miss della cache e fase dell'istantanea (Piano 16, Task 7)`.
 
 ## Task 8: store IMAP (write-through, epoca, patch)
 

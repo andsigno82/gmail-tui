@@ -90,6 +90,33 @@ func TestSummarizeToleraRigheRotteEFileVuoto(t *testing.T) {
 	}
 }
 
+// Piano 16, Task 7: la sezione Cache conta hit e miss per tipo, le scartate per
+// epoca e mostra l'eta mediana dell'istantanea.
+func TestSummarizeSezioneCache(t *testing.T) {
+	in := jsonl(
+		Event{T: 1_000, K: "cache", Op: OpSnapList, Mode: ModeHit, Role: "inbox", N: 50},
+		Event{T: 2_000, K: "cache", Op: OpSnapList, Mode: ModeHit, Role: "inbox", N: 50},
+		Event{T: 3_000, K: "cache", Op: OpSnapList, Mode: ModeHit, Role: "inbox", N: 50},
+		Event{T: 4_000, K: "cache", Op: OpSnapList, Mode: ModeMiss, Role: "label"},
+		Event{T: 5_000, K: "cache", Op: OpSnapList, Mode: ModeEpoch, Role: "inbox"},
+		Event{T: 6_000, K: "cache", Op: OpSnapList, Mode: ModeAge, Dur: 2_000_000},
+		Event{T: 7_000, K: "cache", Op: OpSnapList, Mode: ModeAge, Dur: 4_000_000},
+		Event{T: 8_000, K: "cache", Op: OpSnapList, Mode: ModeAge, Dur: 6_000_000},
+		Event{T: 9_000, K: "cache", Op: OpSnapBody, Mode: ModeHit, N: 1, Bytes: 1000},
+		Event{T: 10_000, K: "cache", Op: OpSnapBody, Mode: ModeHit, N: 1, Bytes: 1000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	for _, want := range []string{"Cache", "snap_list", "snap_body", "75.0%", "100.0%", "4.00 s"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("riepilogo senza %q:\n%s", want, s)
+		}
+	}
+}
+
 func TestSummarizeFrameLentiLimitatiADieci(t *testing.T) {
 	var evs []Event
 	for i := 0; i < 30; i++ {

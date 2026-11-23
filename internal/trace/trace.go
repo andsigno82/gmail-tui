@@ -39,6 +39,11 @@ const EnvVar = "GMAIL_TUI_TRACE"
 //   - phase: Op = fase d'avvio; T e il tempo dall'avvio.
 //   - body:  Op = FromHTML | render | build, Dur, Bytes = byte del sorgente,
 //     N = blocchi, Mode = sync | async.
+//   - cache: Piano 16, Task 7 (D16-T14). Op = snap_list | snap_thread | snap_body
+//     | fetch_body; Mode = hit | miss | epoch (scartata per R3) | age (eta
+//     dell'istantanea mostrata, in Dur); N = righe/ref; Bytes = byte del corpo;
+//     Role = solo il ruolo della cartella. Mai ID, nomi, oggetti o indirizzi.
+//     Si emettono con CacheLookup e SnapshotAge.
 //
 // T e l'istante di FINE dell'evento, in microsecondi dall'avvio della traccia.
 type Event struct {
@@ -182,6 +187,33 @@ func Stop(errw io.Writer) {
 	if t.path != "" {
 		fmt.Fprintf(errw, "traccia dei tempi: %s\n", t.path)
 	}
+}
+
+// Operazioni e modalita della cache (Piano 16, Task 7, D16-T14): campi Op e Mode
+// dell'evento K == "cache".
+const (
+	OpSnapList   = "snap_list"   // istantanea di lista (CachedConversations)
+	OpSnapThread = "snap_thread" // istantanea di thread (CachedThread)
+	OpSnapBody   = "snap_body"   // corpo in cache (CachedMessage)
+	OpFetchBody  = "fetch_body"  // lettura cache-first del corpo (store IMAP, Task 8)
+
+	ModeHit   = "hit"
+	ModeMiss  = "miss"
+	ModeEpoch = "epoch" // scartata per la regola d'epoca (R3)
+	ModeAge   = "age"   // eta dell'istantanea mostrata (Dur)
+)
+
+// CacheLookup emette l'esito di una lettura dalla cache: op e uno degli Op
+// sopra, mode hit | miss | epoch, role solo il ruolo della cartella ("" se non
+// si applica), n righe/ref, bytes byte del corpo. Piano 16, Task 7.
+func CacheLookup(op, mode, role string, n, bytes int) {
+	Emit(Event{K: "cache", Op: op, Mode: mode, Role: role, N: n, Bytes: bytes})
+}
+
+// SnapshotAge emette l'eta dell'istantanea mostrata a video (Mode age, Dur = eta).
+// Piano 16, Task 7.
+func SnapshotAge(op string, age time.Duration) {
+	Emit(Event{K: "cache", Op: op, Mode: ModeAge, Dur: age.Microseconds()})
 }
 
 // Timer misura una durata: con la traccia spenta e il valore zero e non chiama
