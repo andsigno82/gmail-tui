@@ -238,10 +238,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test (RED prima di ogni regola):** una fixture per regola D15-T7; un `a` senza style resta link di paragrafo; `td` con bgcolor e due link NON è bottone; `class="btndark-theme"` (token parziale) NON è bottone; `script`/`style` non producono testo; limiti (troncamento, `truncated`); nessun `src` finisce nel modello.
 
-- [ ] Fixture e test RED.
-- [ ] Implementazione `html.go`, `button.go`.
-- [ ] Gate.
-- [ ] Commit `feat(richtext): parser HTML a blocchi e bottoni (Piano 15, Task 4)`.
+- [x] Fixture e test RED.
+- [x] Implementazione `html.go`, `button.go`.
+- [x] Gate.
+- [x] Commit `feat(richtext): parser HTML a blocchi e bottoni (Piano 15, Task 4)`.
 
 ## Task 5: testo semplice e sanificazione (`internal/msg/richtext`)
 

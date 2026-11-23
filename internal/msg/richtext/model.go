@@ -63,7 +63,9 @@ type Block struct {
 	Kind Kind
 	// Runs: KindParagraph, KindPre, KindButton (testo e href del bottone).
 	Runs []Run
-	// Children: KindQuote (contenuto) e KindList (un Block per elemento).
+	// Children: KindQuote (contenuto), KindList (un Block per elemento) e, per un
+	// elemento di elenco (KindParagraph), i blocchi annidati sotto il suo testo
+	// (elenchi, citazioni; Piano 15, Task 4).
 	Children []Block
 	// Ordered e Start: solo KindList (<ol start=N>).
 	Ordered bool
@@ -79,12 +81,6 @@ type Block struct {
 	// Warn: link/bottone il cui testo mostra un dominio diverso dal reale
 	// (D15-07, D15-T6); impostato dal parser.
 	Warn bool
-}
-
-// FromHTML costruisce i blocchi da BodyHTML. truncated è true se l'input
-// superava MaxInputBytes. Stub (Piano 15, Task 1): lo sostituisce il Task 4.
-func FromHTML(html string) (blocks []Block, truncated bool) {
-	return nil, false
 }
 
 // FromText costruisce i blocchi dal corpo solo testo (citazioni ">", elenchi
