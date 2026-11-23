@@ -85,6 +85,8 @@ func (s *Store) trashMove(ctx context.Context, ids []msg.MessageID, out *[]msg.M
 			return fmt.Errorf("imap move %s → %s: %w", mailbox, trash, err)
 		}
 		*out = append(*out, destIDs(trash, data.DestUIDs)...)
+		// Piano 16, Task 8, D16-T3: riga e messaggi escono dalle istantanee (errori ignorati).
+		s.snapRemove(mailbox, idsIn(ids, mailbox), true)
 	}
 	return nil
 }

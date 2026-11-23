@@ -7,8 +7,8 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg"
 )
 
-// Piano 16, Task 2: lo stub dello store IMAP implementa Snapshotter e
-// restituisce sempre miss, senza rete (Task 8 lo riempie).
+// Piano 16, Task 2 (e Task 8): lo store IMAP implementa Snapshotter; senza cache
+// configurata restituisce sempre miss, senza rete.
 func TestStoreSnapshotStubsMiss(t *testing.T) {
 	var sn mail.Snapshotter = NewStore(Options{Addr: "127.0.0.1:1", Username: "u", Password: "p"})
 	if _, ok := sn.CachedConversations(""); ok {

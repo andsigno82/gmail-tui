@@ -40,13 +40,21 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		if q.Raw != "" {
 			return nil, errGmailNonDisponibile
 		}
-		refs, err := s.ListMessages(ctx, q, pg)
+		refs, uidValidity, err := s.listMessages(ctx, q, pg)
 		if err != nil {
 			return nil, err
 		}
 		out := make([]mail.Conversation, 0, len(refs))
 		for _, r := range refs {
 			out = append(out, singleConversation(r))
+		}
+		// Piano 16, Task 8, D16-T2: anche senza Gmail la prima pagina si salva.
+		if snapshotableList(q, pg) {
+			box := q.Label
+			if box == "" {
+				box = "INBOX"
+			}
+			s.saveList(box, uidValidity, out, false)
 		}
 		return out, nil
 	}
@@ -74,9 +82,12 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+	sel, err := c.Select(mailbox, nil).Wait()
+	if err != nil {
 		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
+	// Piano 16, Task 8, R3: l'epoca si registra PRIMA di costruire le righe.
+	s.noteEpoch(mailbox, sel.UIDValidity)
 	data, err := c.UIDSearch(crit, nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
@@ -128,7 +139,13 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		limitErr = mail.ErrScanLimit
 	}
 
+	// Piano 16, Task 8, D16-T2: la prima pagina fresca di una cartella (sola cartella) si
+	// salva come istantanea, anche con il tetto di scansione; una cartella vuota la toglie.
+	save := snapshotableList(q, pg)
 	if offset >= len(latest) {
+		if save {
+			s.saveList(mailbox, sel.UIDValidity, nil, limitErr != nil)
+		}
 		return nil, limitErr
 	}
 	window := latest[offset:]
@@ -142,7 +159,7 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 			threads = append(threads, r.ThreadID)
 		}
 	}
-	sums, err := threadSummaries(c, allMail, threads)
+	sums, err := s.threadSummaries(c, allMail, threads)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +170,9 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 			continue
 		}
 		out = append(out, summaryConversation(r, sums[r.ThreadID]))
+	}
+	if save {
+		s.saveList(mailbox, sel.UIDValidity, out, limitErr != nil)
 	}
 	return out, limitErr
 }
@@ -178,9 +198,11 @@ func (s *Store) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.Mess
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Select(allMail, nil).Wait(); err != nil {
+	sel, err := c.Select(allMail, nil).Wait()
+	if err != nil {
 		return nil, fmt.Errorf("imap select %s: %w", allMail, err)
 	}
+	s.noteEpoch(allMail, sel.UIDValidity) // Piano 16, Task 8, R3
 	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("imap thread search: %w", err)
@@ -190,6 +212,7 @@ func (s *Store) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.Mess
 		return nil, err
 	}
 	sort.SliceStable(refs, func(i, j int) bool { return refs[i].Date.Before(refs[j].Date) })
+	s.saveThread(threadID, allMail, sel.UIDValidity, refs) // Piano 16, Task 8, D16-T2
 	return refs, nil
 }
 
@@ -311,14 +334,17 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 
 // threadSummaries calcola Count, Participants, Unread e Labels per thread su
 // All Mail, con SEARCH OR di threadPerSearch thread alla volta. Gate detenuto.
-func threadSummaries(c *imapclient.Client, allMail string, threads []uint64) (map[uint64]threadSummary, error) {
+func (s *Store) threadSummaries(c *imapclient.Client, allMail string, threads []uint64) (map[uint64]threadSummary, error) {
 	out := make(map[uint64]threadSummary, len(threads))
 	if len(threads) == 0 {
 		return out, nil
 	}
-	if _, err := c.Select(allMail, nil).Wait(); err != nil {
+	sel, err := c.Select(allMail, nil).Wait()
+	if err != nil {
 		return nil, fmt.Errorf("imap select %s: %w", allMail, err)
 	}
+	s.noteEpoch(allMail, sel.UIDValidity) // Piano 16, Task 8, R3: anche i thread salvati su Tutti i messaggi
+
 	groups := make(map[uint64][]msg.MessageRef)
 	for start := 0; start < len(threads); start += threadPerSearch {
 		end := start + threadPerSearch
@@ -441,9 +467,11 @@ func (s *Store) searchRaw(ctx context.Context, q msg.Query) ([]msg.MessageRef, e
 	if err != nil {
 		return nil, err
 	}
-	if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+	sel, err := c.Select(mailbox, nil).Wait()
+	if err != nil {
 		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
 	}
+	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 8, R3
 	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{Raw: q.Raw}}, nil).Wait()
 	if err != nil {
 		return nil, fmt.Errorf("imap raw search in %s: %w", mailbox, err)

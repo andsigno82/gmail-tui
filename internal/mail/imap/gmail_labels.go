@@ -170,6 +170,8 @@ func (s *Store) modifyGmailLabels(ctx context.Context, ids []msg.MessageID, add,
 		}
 		return nil
 	}()
+	s.snapLabelSet(addOK, add, nil) // Piano 16, Task 8, D16-T3
+	s.snapLabelSet(remOK, nil, remove)
 	if cerr := s.updateCachedLabelSet(addOK, add, nil); cerr != nil && err == nil {
 		err = cerr
 	}
@@ -232,6 +234,7 @@ func (s *Store) modifyFolderLabels(ctx context.Context, ids []msg.MessageID, add
 			return err
 		}
 	}
+	s.snapLabelSet(ids, add, remove) // Piano 16, Task 8, D16-T3
 	return s.updateCachedLabelSet(ids, add, remove)
 }
 

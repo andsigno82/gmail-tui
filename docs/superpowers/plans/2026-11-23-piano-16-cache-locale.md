@@ -257,10 +257,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 - `TestHasAttachmentSearchDoesNotFillCache`.
 - `TestCachedMethodsDoNotTakeGate`: con il gate tenuto da un'op bloccata, `CachedConversations` ritorna subito.
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate (grep go-imap compreso).
-- [ ] Commit `feat(imap): istantanee write-through e regola d'epoca (Piano 16, Task 8)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate (grep go-imap compreso).
+- [x] Commit `feat(imap): istantanee write-through e regola d'epoca (Piano 16, Task 8)`.
 
 ## Task 9: app, lista da istantanea e stato provvisorio (R1, R2)
 

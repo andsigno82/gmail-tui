@@ -24,7 +24,11 @@ func (s *Store) MarkRead(ctx context.Context, ids []msg.MessageID, read bool) er
 		op = imap.StoreFlagsDel
 	}
 	return s.storeFlags(ctx, ids, []imap.Flag{imap.FlagSeen}, op,
-		func(m *msg.Message) { m.Ref.Unread = !read })
+		func(r *msg.MessageRef) bool {
+			changed := r.Unread == read
+			r.Unread = !read
+			return changed
+		})
 }
 
 // Star aggiunge (on=true: UID STORE ADD \Flagged) o rimuove la stella,
@@ -37,7 +41,11 @@ func (s *Store) Star(ctx context.Context, ids []msg.MessageID, on bool) error {
 		op = imap.StoreFlagsDel
 	}
 	return s.storeFlags(ctx, ids, []imap.Flag{imap.FlagFlagged}, op,
-		func(m *msg.Message) { m.Ref.Starred = on })
+		func(r *msg.MessageRef) bool {
+			changed := r.Starred != on
+			r.Starred = on
+			return changed
+		})
 }
 
 // Archive archivia i messaggi. Semantica Gmail via IMAP: per la mailbox di
@@ -99,6 +107,8 @@ func (s *Store) ApplyLabel(ctx context.Context, ids []msg.MessageID, label strin
 				return fmt.Errorf("imap copy %s → %s: %w", mailbox, label, err)
 			}
 		}
+		// Piano 16, Task 8, D16-T3: la label entra anche nelle istantanee (errori ignorati).
+		s.snapPatch(ids, labelSetMutate([]string{label}, nil))
 		if err := s.updateCachedLabels(ids, label, on); err != nil {
 			return err
 		}
@@ -165,6 +175,14 @@ func (s *Store) deleteAndExpunge(ctx context.Context, ids []msg.MessageID, label
 		if err := s.uidExpunge(c, uids); err != nil {
 			return err
 		}
+		// Piano 16, Task 8, D16-T3: composizione cambiata (Archive, ApplyLabel off, bozze):
+		// le righe escono dall'istantanea della mailbox d'origine. Con label gli id stanno
+		// tutti nella mailbox-label (guard dei chiamanti).
+		gone := ids
+		if label == "" {
+			gone = idsIn(ids, mailbox)
+		}
+		s.snapRemove(mailbox, gone, false)
 	}
 	return nil
 }
@@ -175,7 +193,9 @@ func (s *Store) deleteAndExpunge(ctx context.Context, ids []msg.MessageID, label
 // cache (se presente) viene aggiornata (Get → mutate → Set con la
 // uidvalidity corrente) per non servire flag stantii al prossimo fetch
 // cache-first: un miss è uno skip silenzioso.
-func (s *Store) storeFlags(ctx context.Context, ids []msg.MessageID, flags []imap.Flag, op imap.StoreFlagsOp, cacheMutate func(*msg.Message)) error {
+func (s *Store) storeFlags(ctx context.Context, ids []msg.MessageID, flags []imap.Flag, op imap.StoreFlagsOp, refMutate func(*msg.MessageRef) bool) error {
+	// Lo stesso mutate vale per i corpi (Message.Ref) e per le istantanee (Piano 16, Task 8).
+	cacheMutate := func(m *msg.Message) { refMutate(&m.Ref) }
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -195,6 +215,7 @@ func (s *Store) storeFlags(ctx context.Context, ids []msg.MessageID, flags []ima
 		if err := s.uidStore(c, uids, op, flags...); err != nil {
 			return err
 		}
+		s.snapPatch(idsIn(ids, mailbox), refMutate) // Piano 16, Task 8, D16-T3
 		if err := s.updateCachedFlags(mailbox, sel.UIDValidity, uids, cacheMutate); err != nil {
 			return err
 		}
