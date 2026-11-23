@@ -65,11 +65,5 @@ func Button(b richtext.Block, c Ctx) Out { return Out{} }
 // Attachment rende il chip di un allegato, size in byte (D15-06, Task 7).
 func Attachment(name, ctype string, size int64, index int, c Ctx) Out { return Out{} }
 
-// Table rende una tabella, con ricaduta su testo se troppo larga (D15-T8, Task 8).
-func Table(b richtext.Block, c Ctx) Out { return Out{} }
-
-// Quote rende una citazione con barra colorata, annidata via Indent (D15-03, Task 8).
-func Quote(b richtext.Block, c Ctx) Out { return Out{} }
-
-// List rende un elenco ordinato o puntato (D15-04, Task 8).
-func List(b richtext.Block, c Ctx) Out { return Out{} }
+// Table, Quote e List hanno il corpo in table.go, quote.go e list.go (Piano 15,
+// Task 8): i segnaposto di questo file sono stati rimossi.

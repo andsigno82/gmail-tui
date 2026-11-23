@@ -303,10 +303,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** tabella stretta → ricaduta (nessun `│` nel risultato); tabella larga → bordi presenti e larghezza ≤ `c.Width`; tabella con link → zona sulla colonna giusta anche dopo a capo; citazione Depth 3 → tre barre con colori diversi (`QuoteBar` a cicli); elenco ordinato con Start 3 → "3."; zone sempre `len(Zones)==len(Lines)`.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(render): tabelle, citazioni ed elenchi (Piano 15, Task 8)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(render): tabelle, citazioni ed elenchi (Piano 15, Task 8)`.
 
 ## Task 9: stili derivati e contrasto (`internal/ui/styles`)
 
