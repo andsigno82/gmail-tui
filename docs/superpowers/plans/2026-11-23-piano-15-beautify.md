@@ -450,7 +450,7 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 - Splash all'avvio al posto della lista vuota, finché non arriva il primo `msgsLoaded` non stantio (dopo il wizard, se c'è): titolo `gmail-tui` a blocchi con sfumatura primary->accent sulle lettere (stessa regola D15-13 del titolo delle finestre), spinner con la fase ("connessione a imap.gmail.com…" / "caricamento posta…"), versione attenuata. NESSUN ritardo artificiale. Connessione fallita: errore sanificato (ANSI/controlli tolti, password dell'ambiente mascherata, anche nel toast) e "R per riprovare". Titolo: grande (glifi doppi) da 78 colonne, compatto da 37, testo sotto. Stati vuoti neutri e centrati: "Nessun messaggio in <cartella>" e, nell'anteprima senza selezione, "Seleziona un messaggio per leggerlo". Nuovo stile `ErrText` (solo primo piano, slot error con contrasto sul bg, nel test `TestTestoPiano15SuBg`).
 - Ombra delle finestre (D15-T11 superata): retino `░` nel colore dello slot border al posto dello sfondo scurito; stesse dimensioni (+2 colonne, +1 riga). `OverlayShadow` ha solo il primo piano (niente sfondo: tolto dal test di contrasto con sfondo, rimossi `scurisci` e `frazioneOmbra`).
 - `Zone.Shown` di un link Warn spezzato su più righe è il testo intero su tutte le sue zone (`joinShown` in `render/paragraph.go`; le porzioni con lo stesso id OSC 8 su righe consecutive si concatenano senza separatore: il testo di un link Warn è un solo URL/dominio, D15-T6).
-- Allegati aperti: radice dedicata `<tmp>/gmail-tui-att` (0700, mai un symlink) con una cartella per sessione `s-*` (0700); `CleanupAttachments` all'uscita (defer in `runProgram`) rimuove solo la cartella della sessione e la radice se vuota; `SweepAttachments` all'avvio toglie le sessioni `s-*` di oltre 24 h (mai symlink seguiti né cartelle con altri nomi). Radice iniettabile (`attachRoot`).
+- Allegati aperti: radice dedicata privata dell'utente, `$XDG_RUNTIME_DIR/gmail-tui/open` o `os.UserCacheDir()/gmail-tui/open` (0700, mai un symlink; non più il /tmp condiviso, revisione 2026-11-23 punto 8) con una cartella per sessione `s-*` (0700); `CleanupAttachments` all'uscita (defer in `runProgram`) rimuove solo la cartella della sessione e la radice se vuota; `SweepAttachments` all'avvio toglie le sessioni `s-*` di oltre 24 h (anche nella vecchia radice `<tmp>/gmail-tui-att`) (mai symlink seguiti né cartelle con altri nomi). Radice iniettabile (`attachRoot`).
 
 **Test:** `splash_test.go` (fasi, scomparsa alla lista, risultato stantio, errore sanificato e password, R, centratura, titolo adattivo e sfumato, stato vuoto, anteprima neutra); `overlay_test.go` aggiornato (retino, colore, niente sfondo, clamp); `warn_click_test.go` (Shown intero su ogni zona); `attachment_cleanup_test.go` (radice, uscita, sweep, symlink).
 
@@ -507,6 +507,23 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 - [ ] Gate.
 - [ ] Revisione e fix.
 
+### Esito della revisione indipendente (2026-11-23) e correzioni
+
+Rilievi e correzioni, ciascuno con test rosso prima del fix. Branch `feat/p15-fix`.
+
+| # | Rilievo | Correzione |
+|---|---|---|
+| 1 (media) | Due controlli di dominio con regole diverse (punteggiatura finale, `utente@dominio`, IP nudi, `%40` nei mailto) per bottoni (`richtext.DomainMismatch`) e link (`render.mismatch`) | Un solo controllo, `internal/msg/richtext/domain.go` (`DomainMismatch`, `ShownHost`, `HrefHost`); `render.prepLink` lo chiama, le copie di `render` sono rimosse. Test: etichette `paypal.com.`, `(paypal.com)`, `info@paypal.com` verso evil.com danno Warn |
+| 2 (media) | Fail-open: nessun controllo con testo a più parole o con `url.Parse` che fallisce | Si cercano tutti i token URL/dominio nel testo (primo dominio di ogni token, separatori, punto fullwidth); href non analizzabile: regex prudente per l'host, se indecidibile e il testo ha un dominio, Warn. Test per `Vai a paypal.com`, `https://paypal.com/ accedi`, `%zz` e per i casi legittimi (testo senza domini, `www.`/`mail.`, sottodominio, query nel testo URL) |
+| 3 (media) | Host mostrato in Unicode: un'omografia sembra il dominio vero | `richtext.ASCIIHost` (idna.Lookup) per `Block.Host`, `thread.LinkLabel` (toast) e conferma `linkAsk.text`. Test con `аpple.com` (a cirillica) |
+| 4 (bassa) | Tre sanificazioni testuali con insiemi diversi (`sanitizeText`, `render.cleanText`, `thread.cleanHeader`) | Filtro unico `richtext.Unsafe` (Cc + Cf) con `CleanLine`/`CleanHref`; un test fissa l'insieme dei caratteri rimossi |
+| 5 (bassa) | Il budget di 10 s di `UnreadCounts` valeva solo tra una mailbox e l'altra | `awaitBudget`: LIST/STATUS/SEARCH attesi col budget; scaduto, la connessione si chiude (il Watch riconnette) e si restituisce la mappa parziale. Test con server finto lento |
+| 6 (bassa) | Cache di rendering ricreata per ogni thread; con più di 16 corpi grandi espansi il rendering in background si ripeteva all'infinito | `RenderCache` condivisa (creata dall'app, `NewLazyCached`); i corpi richiesti dal refresh corrente non si espellono. Test: convergenza con 20 corpi grandi, riapertura senza nuovo rendering |
+| 7 (bassa) | `thread.truncWidth` duplicava `render.truncCols` | Resta `render.TruncCols` (refactor puro, coperto dai test esistenti) |
+| 8 (bassa) | Allegati aperti in `/tmp` condiviso | Radice privata (XDG_RUNTIME_DIR o UserCacheDir), 0700 verificata, mai symlink; lo sweep ripulisce anche la vecchia radice |
+
+Compromessi del controllo fail-safe: un testo con una parola che sembra un dominio (`file.zip`, `ok.no`: TLD veri) accanto a un href diverso ora dà Warn; è il prezzo del fail-safe, il Warn non blocca il clic.
+
 ## Domande per Andrea
 
 **Risposte (2026-11-23):** Q15-1 solo tipi sicuri (PDF, immagini, testo; il resto → toast "usa :save"), come il default proposto. Q15-2 nessun glifo speciale (nessun campo di config). Q15-3 terminale principale di Andrea: Ghostty (undercurl e colore supportati; il marcatore `⚠` resta comunque). Q15-4 confermato dal coordinatore: contatori su INBOX e label, icone solo testo. Q15-6 confermato: 512 KiB con troncamento dichiarato. Q15-5 resta aperta finché lo spike del Task 12 non dà esito.
@@ -527,7 +544,7 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 | Falsi positivi del controllo di dominio (CDN, tracking) | Confronto per dominio registrabile, non per host; test tabellare; il warn non blocca il clic |
 | Heuristica bottone sbagliata | Regole di D15-T7 testate su fixture; il fallback è un link normale |
 | Sfumature su terminali a 256 colori | `Blend1D` degrada al colore più vicino; nessuna informazione dipende dalla sfumatura |
-| Cache di rendering cresce | 16 voci fisse (D15-T2); test di espulsione |
+| Cache di rendering cresce | 16 voci non in uso (D15-T2), condivisa tra thread; i corpi espansi in uso non si espellono (la cache può superare 16 con molti corpi espansi); test di espulsione e di convergenza |
 | Render lento su email grandi | Limiti D15-T4 e rendering async D15-T5 con scarto stantii |
 | Apertura allegato eseguibile su macOS | Allowlist per tipo, nome generato, cartella 0700, nessuna shell (D15-T14, Q15-1) |
 | Conflitti su `internal/app/model.go` | Wave 3b e 3c sequenziali, un solo agente sul file |

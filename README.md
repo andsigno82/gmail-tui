@@ -62,7 +62,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before; with a selection it adds the label to all selected conversations |
 | `o` | open the selected message's HTML body in browser (thread view) |
 | mouse click on a link | open the link in the browser (thread view, or the preview: it does not move the focus); only `http`, `https` and `mailto` links are clickable |
-| `s` / `Esc` | when a link or button whose text shows another domain waits for confirmation in the status bar: `s` opens the real address, `Esc` cancels |
+| `s` / `Esc` | when a link or button whose text shows another domain waits for confirmation in the status bar: `s` opens the real address, `Esc` cancels; hosts with look-alike letters are shown in punycode (`xn--…`) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
 | `,` | settings menu: theme, layout, mark-as-read, name, signature |

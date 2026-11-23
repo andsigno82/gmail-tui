@@ -217,12 +217,13 @@ Run on Andrea's Ghostty terminal. Do not paste real senders, subjects, addresses
 - [ ] Links are underlined with a dashed line in the link colour; a `javascript:` or `file:` text is not underlined and does not open.
 - [ ] A link whose text shows another domain has a wavy red underline and the `⚠ ` marker in the text; both are visible (no colour-only signal).
 - [ ] `cmd+click` on a link opens it natively (OSC 8) in Ghostty.
+- [ ] A link or button whose text only mentions a domain inside a sentence (`Vai a paypal.com`) pointing elsewhere is also marked `⚠`; a host with look-alike letters is shown in punycode (`xn--...`) in the confirmation and the toast.
 - [ ] Clicking a `⚠` link shows "il link porta a <real host>, non a <shown host>: apri? s/esc" in the status bar; `Esc` cancels with no browser; `s` opens the real address.
 - [ ] A button of a real newsletter: a bordered box with its label and `→ host` next to it; clicking opens the destination.
 - [ ] A table of a real order confirmation: it fits the window, or falls back to "Header: value" lines when too narrow; no broken words.
-- [ ] Clicking the chip of a PDF attachment opens it in the system viewer; the file sits in a `gmail-tui-att/s-*` folder under the temporary directory, mode 0700, with a generated name.
+- [ ] Clicking the chip of a PDF attachment opens it in the system viewer; the file sits in an `s-*` folder under `$XDG_RUNTIME_DIR/gmail-tui/open` (or the user cache directory, `gmail-tui/open`), mode 0700, with a generated name; nothing is written to the shared `/tmp`.
 - [ ] Clicking a `.zip` attachment shows "tipo non aperto: usa :save" and writes nothing to the temporary folder.
-- [ ] After quitting, the session folder `s-*` is gone from the temporary `gmail-tui-att` folder.
+- [ ] After quitting, the session folder `s-*` is gone from the `gmail-tui/open` folder.
 - [ ] Unread counts in `m` match Gmail web for Inbox and each label; `(N)` appears only when N > 0; Drafts, Sent, Spam, Trash and All Mail show no count.
 - [ ] A nested label (a name with `/`) appears as a branch under its parent in `m`, and selecting it opens that label.
 - [ ] The `,`, `l` and `m` windows show a shadow: a `░` band to the right and below the window, in the border colour, visible in Ghostty.
