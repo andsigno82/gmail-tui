@@ -397,7 +397,50 @@ func scanZones(lines []string) [][]Zone {
 			zones[i] = append(zones[i], cur)
 		}
 	}
+	joinShown(zones)
 	return zones
+}
+
+// joinShown dà a ogni zona Warn di un link spezzato su più righe il testo mostrato
+// COMPLETO (richiesta di Andrea, 2026-11-23): le porzioni con lo stesso id OSC 8, in
+// ordine di lettura, si concatenano senza separatore. Un link con Warn ha come
+// testo un solo URL o dominio (D15-T6, niente spazi), quindi un a capo è sempre uno
+// spezzamento duro e non toglie nessuno spazio. Così la conferma anti-phishing cita
+// il dominio intero e non la sola porzione della riga.
+func joinShown(zones [][]Zone) {
+	type group struct {
+		last int // ultima riga del gruppo: solo righe consecutive sono lo stesso link
+		text string
+		zs   []*Zone
+	}
+	open := map[string]*group{}
+	flush := func(g *group) {
+		for _, z := range g.zs {
+			z.Shown = g.text
+		}
+	}
+	for i := range zones {
+		for j := range zones[i] {
+			z := &zones[i][j]
+			if !z.Warn {
+				continue
+			}
+			g := open[z.ID]
+			if g != nil && g.last != i-1 {
+				flush(g) // stesso id ma non contiguo: un altro link identico
+				g = nil
+			}
+			if g == nil {
+				g = &group{}
+				open[z.ID] = g
+			}
+			g.last, g.text = i, g.text+z.Shown
+			g.zs = append(g.zs, z)
+		}
+	}
+	for _, g := range open {
+		flush(g)
+	}
 }
 
 // sgrRE riconosce le sequenze CSI di stile (SGR) dei testi gia stilizzati.

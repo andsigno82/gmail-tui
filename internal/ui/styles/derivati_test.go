@@ -55,7 +55,6 @@ func stiliConSfondoP15(s Styles) map[string]lipgloss.Style {
 	out := map[string]lipgloss.Style{
 		"Button": s.Button, "ButtonFocus": s.ButtonFocus, "ChipAttach": s.ChipAttach,
 		"ChipImage": s.ChipImage, "TableHeader": s.TableHeader, "FolderCount": s.FolderCount,
-		"OverlayShadow": s.OverlayShadow,
 	}
 	for i, st := range s.BadgeAvatar {
 		out[fmt.Sprintf("BadgeAvatar[%d]", i)] = st
@@ -104,6 +103,7 @@ func TestTestoPiano15SuBg(t *testing.T) {
 			for fname, st := range map[string]lipgloss.Style{
 				"Link": s.Link, "LinkWarn": s.LinkWarn, "LinkDashed": s.LinkDashed,
 				"ButtonHost": s.ButtonHost, "TableCell": s.TableCell, "FolderTree": s.FolderTree,
+				"ErrText": s.ErrText,
 			} {
 				fgA := adattivo(t, fname, st.GetForeground())
 				if r := contrastRatio(fgA.Dark, lipgloss.Color(bgD)); r < minContrast {
@@ -218,17 +218,20 @@ func TestBadgeAvatarComeLabel(t *testing.T) {
 	}
 }
 
-// D15-T11: l'ombra è il bg scurito del 35%, per variante; StatusSegment alterna
-// selection e border (D15-12).
+// D15-T11 (decisione di Andrea, 2026-11-23): l'ombra è un retino ░ nel colore dello
+// slot border, senza sfondo; StatusSegment alterna selection e border (D15-12).
 func TestOmbraESegmenti(t *testing.T) {
 	for _, name := range theme.Names() {
 		t.Run(name, func(t *testing.T) {
 			th := loadTheme(t, name)
 			s := New(th)
-			sh := adattivo(t, "OverlayShadow bg", s.OverlayShadow.GetBackground())
-			if !sameColor(sh.Dark, lipgloss.Darken(lipgloss.Color(variante(th.Bg, true)), 0.35)) ||
-				!sameColor(sh.Light, lipgloss.Darken(lipgloss.Color(variante(th.Bg, false)), 0.35)) {
-				t.Errorf("OverlayShadow: sfondo diverso da Darken(bg, 0.35)")
+			if _, none := s.OverlayShadow.GetBackground().(lipgloss.NoColor); !none {
+				t.Errorf("OverlayShadow: lo sfondo non deve esserci (retino)")
+			}
+			sh := adattivo(t, "OverlayShadow fg", s.OverlayShadow.GetForeground())
+			if !sameColor(sh.Dark, lipgloss.Color(variante(th.Border, true))) ||
+				!sameColor(sh.Light, lipgloss.Color(variante(th.Border, false))) {
+				t.Errorf("OverlayShadow: primo piano diverso dallo slot border")
 			}
 			if len(s.StatusSegment) < 2 {
 				t.Fatalf("StatusSegment: %d elementi, voglio >= 2", len(s.StatusSegment))

@@ -148,6 +148,7 @@ func runTUI(args []string, forceWizard bool) int {
 
 	store, sender, demo := selectStore(cfg, pw, openCache())
 	m := app.New(store, sender, th)
+	m.SetVersion(version)                               // splash d'avvio (Piano 15, Task 16b)
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
 	m.SetPrefs(cfg.Layout, cfg.PreviewMarkRead)         // layout e segna come letto (Piano 7.2, Task 2-3)
 	m.SetNotify(cfg.NotifyCommand)                      // notifiche desktop (Piano 11, Task 4)
@@ -174,6 +175,11 @@ func runTUI(args []string, forceWizard bool) int {
 // nessuna opzione di programma serve; WithContext (Task 8) giudicato non
 // necessario.
 func runProgram(m tea.Model) int {
+	// Allegati aperti (Piano 15, Task 16b): all'avvio si tolgono le sessioni di oltre
+	// 24 h fa; all'uscita (anche da errore o SIGINT, che fanno tornare Run) si
+	// rimuove la cartella di questa sessione.
+	app.SweepAttachments()
+	defer app.CleanupAttachments()
 	p := tea.NewProgram(m)
 	final, err := p.Run()
 	if err != nil {
@@ -197,6 +203,7 @@ func runProgram(m tea.Model) int {
 func runWizardTUI(cfgPath string, krStore keyring.Store, th theme.Theme) int {
 	mk := app.DemoStore()
 	m := app.New(mk, mk, th)
+	m.SetVersion(version) // splash d'avvio dopo il wizard (Piano 15, Task 16b)
 	m.SetWizard(wizard.New(wizard.Deps{
 		TestConnect: testConnection,
 		Keyring:     krStore,

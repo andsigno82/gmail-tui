@@ -147,6 +147,10 @@ type Model struct {
 	startup       bool                   // status d'avvio (banner demo/warning tema): sopravvive al primo load
 	pending       int                    // op store in flight (>0: spinner attivo)
 	connectFailed bool                   // Connect d'avvio fallito: R riprova (bugfix 2026-11-22)
+	listLoaded    bool                   // primo caricamento della lista arrivato: da qui lo splash non si mostra più (Piano 15, Task 16b)
+	connected     bool                   // Connect d'avvio riuscito: fase dello splash "caricamento posta…"
+	connErr       string                 // errore del Connect d'avvio, sanificato, per lo splash (vuoto = nessun errore)
+	version       string                 // versione mostrata nello splash (SetVersion)
 	refreshing    bool                   // re-list silenzioso in flight (coalescing, Task 8)
 	listGen       int                    // generazione della lista: +1 a ogni load non silenzioso (cambio cartella/ricerca/connect); i risultati di altre generazioni sono stanti (Piano 7, fix review 2)
 	refreshGen    int                    // generazione del re-list in volo: solo il suo risultato libera refreshing (Piano 7, fix review 5)
@@ -312,13 +316,16 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		m.doneOp()
 		if ev.err != nil {
 			m.connectFailed = true
+			m.connErr = splashErrText(ev.err) // Piano 15, Task 16b: lo splash mostra l'errore
 			// Piano 7.3, Task 2: "R per riprovare" è stato persistente (barra
 			// neutra); l'errore è un toast che resta finché un tasto.
 			m.status = statusMsg{text: "connessione fallita — premi R per riprovare"}
-			cmd := m.toast.Push(toast.Error, fmt.Sprintf("connessione fallita: %v", ev.err))
+			cmd := m.toast.Push(toast.Error, "connessione fallita: "+m.connErr) // sanificato e senza password (Piano 15, Task 16b)
 			return m, cmd
 		}
 		m.connectFailed = false
+		m.connected = true // Piano 15, Task 16b: fase dello splash
+		m.connErr = ""
 		m.pending++
 		m.listGen++
 		m.setSel(nil) // Piano 10, Task 2 (D10-S3): nuova lista, selezione azzerata
@@ -351,6 +358,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, follow
 		}
+		m.listLoaded = true // Piano 15, Task 16b: la lista (anche vuota o in errore) chiude lo splash
 		if ev.err != nil {
 			// La query distingue l'errore di ricerca da quello di list (toast d'errore).
 			text := fmt.Sprintf("lettura messaggi: %v", ev.err)
@@ -1357,6 +1365,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			// un secondo R durante il retry non lancia Connect concorrenti.
 			m.pending++ // il connect è un'op: spinner finché connResult
 			m.connectFailed = false
+			m.connErr = "" // Piano 15, Task 16b: lo splash torna alla fase "connessione"
 			return m, m.beginSession()
 		case key.Matches(ev, keys.Reply, keys.Forward):
 			// r/f (Piano 4, Task 3): nell'inbox fetch-then-compose (cache-
@@ -1797,6 +1806,9 @@ func (m Model) body() string {
 
 // viewBody rende la vista attiva senza finestre sovrapposte.
 func (m Model) viewBody() string {
+	if m.splashOn() {
+		return m.splashView() // Piano 15, Task 16b: splash finché non arriva la lista
+	}
 	if m.view == viewInbox && m.splitOn() {
 		return m.splitView()
 	}
@@ -1815,7 +1827,7 @@ func (m Model) viewBody() string {
 	case viewWizard:
 		return m.wizardBody()
 	default:
-		return m.inbox.View()
+		return m.listBody(m.width, max(0, m.height-1))
 	}
 }
 

@@ -4,7 +4,8 @@ package app
 // Un allegato si apre solo se e di un tipo sicuro: Content-Type in allowlist E
 // estensione coerente (su macOS `open` esegue .app, .command, .pkg: il tipo non si
 // decide dal nome da solo). Il file e scritto in una cartella temporanea 0700 con un
-// nome generato (mai quello del messaggio) e aperto col comando di sistema, senza
+// nome generato (mai quello del messaggio; cartella della sessione in una radice
+// dedicata, rimossa all'uscita: Piano 15, Task 16b) e aperto col comando di sistema, senza
 // shell e con l'ambiente filtrato (internal/childenv). Mai eseguito.
 
 import (
@@ -16,7 +17,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
@@ -80,6 +83,105 @@ func safeAttachmentExt(ctype, name string) (string, bool) {
 	return "", false
 }
 
+// Radice dedicata degli allegati aperti (Piano 15, Task 16b, richiesta di Andrea
+// 2026-11-23): <tmp>/gmail-tui-att/ (0700) contiene una cartella per sessione
+// (s-<casuale>, 0700) con i file generati. All'uscita (CleanupAttachments) si
+// rimuove SOLO la cartella della sessione e la radice se vuota; a ogni avvio
+// (SweepAttachments) si tolgono le sessioni s-* piu vecchie di 24 h. Mai nulla fuori
+// dalla radice, mai symlink seguiti.
+const (
+	attachRootName   = "gmail-tui-att"
+	attachSessPrefix = "s-"
+	attachMaxAge     = 24 * time.Hour
+)
+
+// attachRoot restituisce la radice; variabile per i test (radice iniettabile).
+var attachRoot = func() string { return filepath.Join(os.TempDir(), attachRootName) }
+
+// attachSession e la cartella di sessione corrente (creata alla prima apertura) con
+// la radice a cui appartiene: cambiando radice (test) se ne crea una nuova.
+var attachSession struct {
+	mu        sync.Mutex
+	root, dir string
+}
+
+// ensureAttachRoot crea la radice 0700 se manca e rifiuta ogni cosa che non sia una
+// cartella vera (un symlink porterebbe le scritture altrove).
+func ensureAttachRoot(root string) error {
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		return err
+	}
+	st, err := os.Lstat(root)
+	if err != nil {
+		return err
+	}
+	if !st.IsDir() { // Lstat: un symlink non e una cartella
+		return fmt.Errorf("%s non e una cartella", root)
+	}
+	if st.Mode().Perm() != 0o700 {
+		return os.Chmod(root, 0o700) // fallisce se non e nostra: allegati non aperti
+	}
+	return nil
+}
+
+// sessionDir restituisce la cartella della sessione, creandola se serve.
+func sessionDir() (string, error) {
+	attachSession.mu.Lock()
+	defer attachSession.mu.Unlock()
+	root := attachRoot()
+	if attachSession.dir != "" && attachSession.root == root {
+		if _, err := os.Lstat(attachSession.dir); err == nil {
+			return attachSession.dir, nil
+		}
+	}
+	if err := ensureAttachRoot(root); err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp(root, attachSessPrefix) // 0700
+	if err != nil {
+		return "", err
+	}
+	attachSession.root, attachSession.dir = root, dir
+	return dir, nil
+}
+
+// CleanupAttachments rimuove la cartella degli allegati aperti in questa sessione
+// (e la radice, se vuota). Il main la chiama all'uscita dell'app; non fa nulla se
+// nessun allegato e stato aperto.
+func CleanupAttachments() {
+	attachSession.mu.Lock()
+	defer attachSession.mu.Unlock()
+	root, dir := attachSession.root, attachSession.dir
+	attachSession.root, attachSession.dir = "", ""
+	if dir == "" || filepath.Dir(dir) != root { // mai fuori dalla radice
+		return
+	}
+	_ = os.RemoveAll(dir)
+	_ = os.Remove(root) // solo se vuota
+}
+
+// SweepAttachments toglie dalla radice le cartelle di sessione s-* piu vecchie di
+// 24 h (residui di sessioni chiuse male). Il main la chiama all'avvio. Ignora
+// symlink, file e cartelle con altri nomi.
+func SweepAttachments() { sweepAttachments(attachRoot(), time.Now(), attachMaxAge) }
+
+func sweepAttachments(root string, now time.Time, maxAge time.Duration) {
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !e.IsDir() || e.Type()&os.ModeSymlink != 0 || !strings.HasPrefix(e.Name(), attachSessPrefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || now.Sub(info.ModTime()) <= maxAge {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(root, e.Name()))
+	}
+}
+
 // attSeq numera i file generati (att-<n><ext>).
 var attSeq atomic.Int64
 
@@ -91,13 +193,13 @@ type attachmentOpened struct{ err error }
 // controllato dal chiamante (safeAttachmentExt): qui si riceve l'estensione.
 func openAttachment(st mail.MailStore, id msg.MessageID, part int, ext string) tea.Cmd {
 	return func() tea.Msg {
-		dir, err := os.MkdirTemp("", "gmail-tui-att-") // 0700
+		dir, err := sessionDir() // radice dedicata, 0700 (Piano 15, Task 16b)
 		if err != nil {
 			return attachmentOpened{err: err}
 		}
 		path := filepath.Join(dir, fmt.Sprintf("att-%d%s", attSeq.Add(1), ext))
 		if err := st.SaveAttachment(context.Background(), id, part, path); err != nil {
-			_ = os.RemoveAll(dir)
+			_ = os.Remove(path)
 			return attachmentOpened{err: err}
 		}
 		return attachmentOpened{err: openFile(path)}

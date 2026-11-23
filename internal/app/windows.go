@@ -94,11 +94,7 @@ func (m Model) segmentBar() string {
 	segs := []statusline.Segment{{Text: m.modeName(), Kind: statusline.SegMode}}
 	switch m.view {
 	case viewInbox, viewThread, viewSearch:
-		name := "Posta in arrivo"
-		if m.folder.Name != "" {
-			name = folderName(m.folder)
-		}
-		segs = append(segs, statusline.Segment{Text: name, Kind: statusline.SegFolder})
+		segs = append(segs, statusline.Segment{Text: m.folderLabel(), Kind: statusline.SegFolder})
 	}
 	var status []string
 	if m.pending > 0 {

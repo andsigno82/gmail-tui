@@ -68,16 +68,16 @@ type Styles struct {
 	FolderCount   lipgloss.Style   // contatore dei non letti per cartella (D15-10)
 	FolderTree    lipgloss.Style   // rami dell'albero cartelle (D15-09)
 	OverlayBorder lipgloss.Style   // bordo delle finestre sovrapposte (D15-11)
-	OverlayShadow lipgloss.Style   // ombra delle finestre sovrapposte
+	OverlayShadow lipgloss.Style   // ombra delle finestre sovrapposte: retino ░, primo piano slot border, nessuno sfondo
 	StatusSegment []lipgloss.Style // segmenti della barra di stato (D15-12)
 	StatusSep     lipgloss.Style   // separatore dei segmenti
+	ErrText       lipgloss.Style   // testo d'errore senza sfondo (splash, Piano 15, Task 16b): slot error, contrasto WCAG sul bg
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
 // slot è risolta adattivamente al rendering dal background del terminale.
 func New(t theme.Theme) Styles {
 	tint := mescola(t.Bg, t.Selection, frazioneTinta)
-	ombra := scurisci(t.Bg, frazioneOmbra) // Piano 15, Task 9 (D15-T11)
 	return Styles{
 		ListNormal:      lipgloss.NewStyle().Foreground(adaptive(t.Fg)),
 		ListUnread:      lipgloss.NewStyle().Foreground(adaptive(t.Unread)).Bold(true),
@@ -138,19 +138,18 @@ func New(t theme.Theme) Styles {
 		FolderCount:   lipgloss.NewStyle().Foreground(onColorPrima(t.Unread, t.Bg, t.Fg)).Background(adaptive(t.Unread)).Bold(true),
 		FolderTree:    lipgloss.NewStyle().Foreground(onColorPrima(t.Bg, t.Muted, t.Fg)),
 		OverlayBorder: lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
-		OverlayShadow: lipgloss.NewStyle().Foreground(onColorPrima(ombra, t.Fg, t.Bg)).Background(adaptive(ombra)),
+		// Ombra a retino ░ nel colore dello slot border, senza sfondo (decisione di Andrea,
+		// 2026-11-23): decorazione, niente testo da leggere.
+		OverlayShadow: lipgloss.NewStyle().Foreground(adaptive(t.Border)),
 		StatusSegment: statusSegmentStyles(t, t.Selection, t.Border),
 		StatusSep:     lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		ErrText:       lipgloss.NewStyle().Foreground(onColorPrima(t.Bg, t.Error, t.Warning, t.Fg)),
 	}
 }
 
 // numLivelliCitazione è il numero di livelli di annidamento distinti delle
 // citazioni (Piano 15, Task 9, D15-03); oltre, i consumatori ciclano con %.
 const numLivelliCitazione = 4
-
-// frazioneOmbra è la quota di scurimento del bg per l'ombra delle finestre
-// (Piano 15, Task 9, D15-T11).
-const frazioneOmbra = 0.35
 
 // quoteBarStyles costruisce le barre delle citazioni: n colori sfumati da quoted
 // (livello 0) a primary (ultimo) con Blend1D, calcolati per variante dark e light
@@ -363,16 +362,6 @@ func textOn(bg color.Color, cands ...color.Color) color.Color {
 		return black
 	}
 	return white
-}
-
-// scurisci scurisce lo slot di frac (0-1) con lipgloss.Darken, per variante
-// (Piano 15, Task 9, D15-T11): il risultato è ancora uno slot derivato dal tema.
-func scurisci(s theme.Slot, frac float64) theme.Slot {
-	d, l := s.Resolve()
-	return theme.Slot{
-		Dark:  hexColore(lipgloss.Darken(lipgloss.Color(d), frac)),
-		Light: hexColore(lipgloss.Darken(lipgloss.Color(l), frac)),
-	}
 }
 
 // hexColore formatta un colore come #rrggbb (8 bit per canale).
