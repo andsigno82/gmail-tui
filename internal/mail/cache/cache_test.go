@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -14,9 +15,15 @@ func newCache(t *testing.T) *Cache {
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}
+	// Piano 16, Task 3: i test non provano la durabilità, solo la logica; senza fsync
+	// per transazione le suite con 200+ scritture restano veloci.
+	c.db.NoSync = true
 	t.Cleanup(func() { _ = c.Close() })
 	return c
 }
+
+// writeFile scrive data in path (helper dei test di file corrotto).
+func writeFile(path string, data []byte) error { return os.WriteFile(path, data, 0o600) }
 
 func sample(uid uint32) *msg.Message {
 	return &msg.Message{Ref: msg.MessageRef{

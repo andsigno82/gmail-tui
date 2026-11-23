@@ -175,10 +175,10 @@ Nota: `internal/app/model.go` è il file più conteso: solo Wave 3b lo tocca (Ta
 - `TestCloseCompactsBloatedFile`: 10 MiB scritti e rimossi → file più piccolo dopo Close, permessi 0600; `TestCloseSkipsCompactionSmallFile`.
 - Benchmark `BenchmarkGetMessageHit` (nessuna transazione di scrittura per hit).
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(cache): schema 4 con LRU dei 200 messaggi aperti, account ed epoca (Piano 16, Task 3)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(cache): schema 4 con LRU dei 200 messaggi aperti, account ed epoca (Piano 16, Task 3)`.
 
 ## Task 4: istantanee nella cache
 
