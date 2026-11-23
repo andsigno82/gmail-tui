@@ -5,6 +5,7 @@ package imap
 // senza Gmail il memserver.
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -195,5 +196,44 @@ func TestModifyLabelsNoGmailRemoveOutsideFolderRefused(t *testing.T) {
 	}
 	if got := mailboxSubjects(t, store, ""); len(got) != 1 {
 		t.Errorf("INBOX dopo remove = %v, voglio 1 messaggio", got)
+	}
+}
+
+// TestModifyLabelsGmailPartialFailureKeepsCache: con Gmail lo STORE +X-GM-LABELS riesce
+// e lo STORE -X-GM-LABELS fallisce. Il server ha applicato l'aggiunta: la cache deve
+// seguire la parte riuscita (Piano 10, review punto 4), non restare indietro.
+func TestModifyLabelsGmailPartialFailureKeepsCache(t *testing.T) {
+	respond := func(cmd string) []string {
+		switch {
+		case strings.HasPrefix(cmd, "LIST"):
+			return []string{`* LIST (\HasNoChildren \All) "/" "[Gmail]/All Mail"`}
+		case strings.HasPrefix(cmd, "SELECT"):
+			return []string{"* 1 EXISTS"}
+		case strings.Contains(cmd, "-X-GM-LABELS"):
+			return []string{"NO rimozione rifiutata"}
+		}
+		return nil
+	}
+	addr := scriptedIMAP(t, "IMAP4rev1 X-GM-EXT-1 UIDPLUS", respond)
+	c := openTestCache(t)
+	if err := c.SetMessage("INBOX", 1, &msg.Message{Ref: msg.MessageRef{ID: msg.NewID("INBOX", 1), GmailID: 77}}); err != nil {
+		t.Fatalf("SetMessage: %v", err)
+	}
+
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true, Cache: c})
+	if err := s.Connect(t.Context()); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	if err := s.ModifyLabels(t.Context(), []msg.MessageID{msg.NewID("INBOX", 1)}, []string{"Lavoro"}, []string{"Vecchia"}); err == nil {
+		t.Fatal("ModifyLabels con STORE rifiutato: err = nil, voglio errore")
+	}
+	got, ok, err := c.GetMessage("INBOX", 1)
+	if err != nil || !ok {
+		t.Fatalf("GetMessage: ok=%v err=%v", ok, err)
+	}
+	if !slices.Contains(got.Ref.Labels, "Lavoro") {
+		t.Errorf("label in cache = %v, voglio Lavoro: l'aggiunta è riuscita sul server", got.Ref.Labels)
 	}
 }

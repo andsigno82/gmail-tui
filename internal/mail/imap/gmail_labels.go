@@ -144,24 +144,50 @@ func (s *Store) modifyGmailLabels(ids []msg.MessageID, add, remove []string) err
 	if err != nil {
 		return err
 	}
-	for mailbox, uids := range byMbox {
-		if _, err := c.Select(mailbox, nil).Wait(); err != nil {
-			return fmt.Errorf("imap select %s: %w", mailbox, err)
-		}
-		if len(encAdd) > 0 {
-			cmd := c.StoreGmailLabels(imap.UIDSetNum(uids...), &imap.StoreGmailLabels{Op: imap.StoreFlagsAdd, Silent: true, Labels: encAdd})
-			if _, err := cmd.Collect(); err != nil {
-				return fmt.Errorf("imap store +X-GM-LABELS in %s: %w", mailbox, err)
+	// Piano 10, review punto 4: con errore a metà (es. il STORE di rimozione rifiutato
+	// dopo quello di aggiunta riuscito) la cache segue la parte che il server ha
+	// applicato: aggiunte e rimozioni si registrano a parte, per mailbox.
+	var addOK, remOK []msg.MessageID
+	err = func() error {
+		for mailbox, uids := range byMbox {
+			if _, err := c.Select(mailbox, nil).Wait(); err != nil {
+				return fmt.Errorf("imap select %s: %w", mailbox, err)
+			}
+			if len(encAdd) > 0 {
+				cmd := c.StoreGmailLabels(imap.UIDSetNum(uids...), &imap.StoreGmailLabels{Op: imap.StoreFlagsAdd, Silent: true, Labels: encAdd})
+				if _, err := cmd.Collect(); err != nil {
+					return fmt.Errorf("imap store +X-GM-LABELS in %s: %w", mailbox, err)
+				}
+				addOK = append(addOK, idsIn(ids, mailbox)...)
+			}
+			if len(encRemove) > 0 {
+				cmd := c.StoreGmailLabels(imap.UIDSetNum(uids...), &imap.StoreGmailLabels{Op: imap.StoreFlagsDel, Silent: true, Labels: encRemove})
+				if _, err := cmd.Collect(); err != nil {
+					return fmt.Errorf("imap store -X-GM-LABELS in %s: %w", mailbox, err)
+				}
+				remOK = append(remOK, idsIn(ids, mailbox)...)
 			}
 		}
-		if len(encRemove) > 0 {
-			cmd := c.StoreGmailLabels(imap.UIDSetNum(uids...), &imap.StoreGmailLabels{Op: imap.StoreFlagsDel, Silent: true, Labels: encRemove})
-			if _, err := cmd.Collect(); err != nil {
-				return fmt.Errorf("imap store -X-GM-LABELS in %s: %w", mailbox, err)
-			}
+		return nil
+	}()
+	if cerr := s.updateCachedLabelSet(addOK, add, nil); cerr != nil && err == nil {
+		err = cerr
+	}
+	if cerr := s.updateCachedLabelSet(remOK, nil, remove); cerr != nil && err == nil {
+		err = cerr
+	}
+	return err
+}
+
+// idsIn restituisce gli ID che stanno nella mailbox data, nell'ordine dato.
+func idsIn(ids []msg.MessageID, mailbox string) []msg.MessageID {
+	var out []msg.MessageID
+	for _, id := range ids {
+		if box, _, err := id.Split(); err == nil && box == mailbox {
+			out = append(out, id)
 		}
 	}
-	return s.updateCachedLabelSet(ids, add, remove)
+	return out
 }
 
 // modifyFolderLabels (senza Gmail): la rimozione richiede che ogni id stia nella label

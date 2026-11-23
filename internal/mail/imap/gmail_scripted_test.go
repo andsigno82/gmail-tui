@@ -41,10 +41,16 @@ func scriptedIMAP(t *testing.T, caps string, respond func(cmd string) []string) 
 				fmt.Fprintf(conn, "* BYE bye\r\n%s OK LOGOUT completed\r\n", tag)
 				return
 			default:
+				status := "OK done"
 				for _, l := range respond(rest) {
+					// Una riga "NO motivo" è l'esito taggato NO del comando (Piano 10, review punto 4).
+					if reason, ok := strings.CutPrefix(l, "NO "); ok {
+						status = "NO " + reason
+						continue
+					}
 					fmt.Fprintf(conn, "%s\r\n", l)
 				}
-				fmt.Fprintf(conn, "%s OK done\r\n", tag)
+				fmt.Fprintf(conn, "%s %s\r\n", tag, status)
 			}
 		}
 	}()
