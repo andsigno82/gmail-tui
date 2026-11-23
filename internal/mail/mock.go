@@ -244,15 +244,30 @@ func (m *Mock) ListMailboxes(context.Context) ([]Mailbox, error) {
 	return append([]Mailbox(nil), m.mailboxes()...), nil
 }
 
-// UnreadCounts implementa MailStore (Piano 15, Task 2): stub con mappa vuota,
-// i dati di demo arrivano nel Task 17.
+// UnreadCounts implementa MailStore (Piano 15, Task 2, Task 17): conta per
+// cartella i messaggi non letti, con la stessa appartenenza di ListMessages
+// (prefisso "MAILBOX:" dell'ID). Ogni cartella ha una voce, anche a zero.
 func (m *Mock) UnreadCounts(context.Context) (map[string]int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.Err != nil {
 		return nil, m.Err
 	}
-	return map[string]int{}, nil
+	out := make(map[string]int, len(m.mailboxes()))
+	for _, b := range m.mailboxes() {
+		out[b.Name] = 0
+	}
+	for _, mm := range m.Msgs {
+		if !mm.Ref.Unread {
+			continue
+		}
+		if box, _, err := mm.Ref.ID.Split(); err == nil {
+			if _, ok := out[box]; ok {
+				out[box]++
+			}
+		}
+	}
+	return out, nil
 }
 
 // Trash implementa MailStore: sposta gli id nel cestino con un nuovo ID nel

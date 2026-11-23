@@ -68,7 +68,9 @@ func DemoStore() *mail.Mock {
 				Labels:  []string{"Newsletter"},
 			},
 			To:       []string{"tu@example.com"},
-			BodyText: "In questo numero:\n\n- il nuovo client IMAP in puro Go\n- pattern per le tea.Cmd nei progetti Bubble Tea\n- unprofilatore di goroutine via browser\n\nLeggi il numero completo online: https://example.com/newsletter/47",
+			BodyText: "In questo numero:\n\n- il nuovo client IMAP in puro Go\n- pattern per le tea.Cmd nei progetti Bubble Tea\n- un profilatore di goroutine via browser\n\nConferma l'iscrizione: https://example.com/conferma?token=demo\n\nLeggi il numero completo online: https://example.com/newsletter/47",
+			BodyHTML: demoNewsletterHTML, // Piano 15, Task 17: HTML ricco (bottone, link, immagine)
+			HasHTML:  true,
 		},
 		{
 			Ref: msg.MessageRef{
@@ -89,8 +91,9 @@ func DemoStore() *mail.Mock {
 				Subject: "Re: pranzo venerdì?",
 				Date:    now.Add(-5 * 24 * time.Hour),
 			},
-			To:       []string{"tu@example.com"},
-			BodyText: "Per me venerdì va bene, confermo il posto delle scorse volte.\n\nIl 17 nov 2026, tu@example.com ha scritto:\n> Ci vediamo venerdì per il solito pranzo?",
+			To: []string{"tu@example.com"},
+			// Piano 15, Task 17: citazione annidata "> > ", elenchi puntato e numerato.
+			BodyText: "Per me venerdì va bene, confermo il posto delle scorse volte.\n\nPorto io:\n\n- il dolce\n- il caffè\n\nSe preferisci cambiare posto, due alternative:\n\n1. la trattoria vicino all'ufficio\n2. il ristorante sul lungomare\n\nIl 17 nov 2026, tu@example.com ha scritto:\n> Ci vediamo venerdì per il solito pranzo?\n> > Confermi l'orario delle 13?",
 		},
 		{
 			Ref: msg.MessageRef{
@@ -113,6 +116,7 @@ func DemoStore() *mail.Mock {
 		{Name: "[Gmail]/Drafts", Role: "drafts"}, // Piano 9, Task 13: cartella Bozze
 		{Name: "[Gmail]/Trash", Role: "trash"},
 		{Name: "Work"},
+		{Name: "Lavoro/Clienti", Delimiter: "/"},        // Piano 15, Task 17: label annidata
 		{Name: "[Gmail]/Tutti i messaggi", Role: "all"}, // Piano 10, review punto 6: vedi sotto
 	}
 	mk.Msgs = append(mk.Msgs,
@@ -179,6 +183,34 @@ func DemoStore() *mail.Mock {
 		To:       []string{"luca@example.dev"},
 		BodyText: "Ciao Luca,\n\nti propongo di spostare la sprint review a venerdì.\n\nFammi sapere",
 	})
+	// Piano 15, Task 17: conferma d'ordine con tabella (INBOX) e un non letto nella
+	// label annidata Lavoro/Clienti, così il selettore cartelle e i contatori hanno dati.
+	mk.Msgs = append(mk.Msgs,
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("INBOX", 8),
+				From:    "ordini@example.org",
+				Subject: "Conferma d'ordine n. 10234",
+				Date:    now.Add(-6 * time.Hour),
+				Unread:  true,
+			},
+			To:       []string{"tu@example.com"},
+			BodyText: "Grazie per il tuo ordine. Ecco il riepilogo:\n\nProdotto | Quantità | Prezzo\nTastiera compatta | 1 | 49,00 €\nCavo USB-C 2 m | 2 | 8,90 €\n\nTotale: 66,80 €\n\nA presto.",
+			BodyHTML: demoOrdineHTML,
+			HasHTML:  true,
+		},
+		&msg.Message{
+			Ref: msg.MessageRef{
+				ID:      msg.NewID("Lavoro/Clienti", 1),
+				From:    "giulia@example.dev",
+				Subject: "Proposta di collaborazione",
+				Date:    now.Add(-2 * 24 * time.Hour),
+				Unread:  true,
+			},
+			To:       []string{"tu@example.com"},
+			BodyText: "Buongiorno,\n\ngrazie per il colloquio. Ti scrivo per confermare l'interesse a proseguire con la proposta.\n\nA presto,\nGiulia",
+		},
+	)
 	// Allegato fittizio con contenuto: `:save 1` sul messaggio 3 scrive un
 	// PDF (intestazione minima, non un file vero) — sufficiente alla demo.
 	mk.Raw[msg.NewID("INBOX", 3)] = map[int][]byte{
@@ -200,6 +232,8 @@ func DemoStore() *mail.Mock {
 		msg.NewID("Work", 1):            demoThreadSprint,
 		msg.NewID("Work", 2):            demoThreadSprint,
 		msg.NewID("[Gmail]/Drafts", 1):  demoThreadSprint,
+		msg.NewID("INBOX", 8):           demoThreadOrdine,
+		msg.NewID("Lavoro/Clienti", 1):  demoThreadClienti,
 	}
 	for i, mm := range mk.Msgs {
 		mm.Ref.ThreadID = threadOf[mm.Ref.ID]
@@ -226,9 +260,35 @@ func DemoStore() *mail.Mock {
 // Identificatori dei thread e base degli ID Gmail del seed (Piano 8, Task 12).
 // Gli ID Gmail sono sopra 2^53: serializzati come stringa in JSON (D8-2).
 const (
-	demoThreadDesign = uint64(1001)
-	demoThreadSpese  = uint64(1002)
-	demoThreadSprint = uint64(1003)
-	demoThreadLunch  = uint64(1004)
-	demoGmailBase    = uint64(1_800_000_000_000_000_000)
+	demoThreadDesign  = uint64(1001)
+	demoThreadSpese   = uint64(1002)
+	demoThreadSprint  = uint64(1003)
+	demoThreadLunch   = uint64(1004)
+	demoGmailBase     = uint64(1_800_000_000_000_000_000)
+	demoThreadOrdine  = uint64(1008) // Piano 15, Task 17
+	demoThreadClienti = uint64(1009) // Piano 15, Task 17
 )
+
+// demoNewsletterHTML è la newsletter della demo (Piano 15, Task 17): un bottone
+// «Conferma iscrizione» (a con background e padding, D15-T7), un link il cui testo
+// mostra example.org ma punta a example.com (avviso ⚠, D15-07), un'immagine con
+// testo alternativo (non scaricata). Domini di esempio, nessun contenuto reale.
+const demoNewsletterHTML = `<html><body>
+<p>In questo numero:</p>
+<ul><li>il nuovo client IMAP in puro Go</li><li>pattern per le tea.Cmd nei progetti Bubble Tea</li><li>un profilatore di goroutine via browser</li></ul>
+<img src="https://example.com/banner.png" alt="Banner della settimana: community Go">
+<p><a href="https://example.com/conferma?token=demo" style="background-color:#2563eb;color:#ffffff;padding:10px 18px;text-decoration:none">Conferma iscrizione</a></p>
+<p>Leggi il numero completo su <a href="https://example.com/newsletter/47">example.org/numero-47</a>.</p>
+</body></html>`
+
+// demoOrdineHTML è la conferma d'ordine della demo (Piano 15, Task 17): una
+// tabella con prodotto, quantità e prezzo unitario.
+const demoOrdineHTML = `<html><body>
+<p>Grazie per il tuo ordine. Ecco il riepilogo:</p>
+<table>
+<tr><th>Prodotto</th><th>Quantità</th><th>Prezzo</th></tr>
+<tr><td>Tastiera compatta</td><td>1</td><td>49,00 €</td></tr>
+<tr><td>Cavo USB-C 2 m</td><td>2</td><td>8,90 €</td></tr>
+</table>
+<p>Totale: 66,80 €</p>
+</body></html>`

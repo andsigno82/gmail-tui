@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"io/fs"
+	"net/url"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"golang.org/x/net/html"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
@@ -24,8 +26,9 @@ func TestDemoStoreRealisticSeed(t *testing.T) {
 	inbox := inboxMsgs(mk)
 	// Piano 8, Task 12: la conversazione con risposte in Inviati e un non letto
 	// richiede un messaggio in più in posta in arrivo (6 → 7).
-	if n := len(inbox); n < 5 || n > 7 {
-		t.Fatalf("messaggi seed in posta in arrivo = %d, voglio 5-7", n)
+	// Piano 15, Task 17: l'ordine con tabella porta la posta in arrivo a 8 (7 → 8).
+	if n := len(inbox); n < 5 || n > 8 {
+		t.Fatalf("messaggi seed in posta in arrivo = %d, voglio 5-8", n)
 	}
 	var unread, starred int
 	var subjects []string
@@ -105,6 +108,190 @@ func TestDemoStoreListable(t *testing.T) {
 			t.Errorf("ordine data non desc a posizione %d", i)
 		}
 	}
+}
+
+// Piano 15, Task 17: il seed mostra le novità del rendering: un bottone (a con
+// background e padding), un link il cui testo ha un dominio diverso dall'href,
+// un'immagine con alt, una tabella d'ordine, una citazione annidata e elenchi.
+func TestDemoStoreContenutoRicco(t *testing.T) {
+	mk := DemoStore()
+	find := func(part string) *msg.Message {
+		for _, mm := range inboxMsgs(mk) {
+			if strings.Contains(mm.Ref.Subject, part) {
+				return mm
+			}
+		}
+		t.Fatalf("nessun messaggio in posta in arrivo con soggetto %q", part)
+		return nil
+	}
+
+	// Newsletter: bottone, link con dominio diverso, immagine con alt.
+	news := htmlElements(t, find("Go Weekly").BodyHTML)
+	var button, warnLink, img bool
+	for _, n := range news {
+		switch {
+		case n.Data == "a" && nodeText(n) == "Conferma iscrizione":
+			style := attr(n, "style")
+			button = strings.Contains(style, "background") && strings.Contains(style, "padding")
+		case n.Data == "a" && strings.HasPrefix(nodeText(n), "example.org"):
+			u, err := url.Parse(attr(n, "href"))
+			warnLink = err == nil && u.Hostname() == "example.com"
+		case n.Data == "img":
+			img = img || strings.TrimSpace(attr(n, "alt")) != ""
+		}
+	}
+	if !button {
+		t.Error("newsletter: manca il bottone «Conferma iscrizione» (a con background e padding)")
+	}
+	if !warnLink {
+		t.Error("newsletter: manca il link con testo example.org e href su un altro dominio")
+	}
+	if !img {
+		t.Error("newsletter: manca l'immagine con testo alternativo")
+	}
+
+	// Conferma d'ordine: tabella con prodotto, quantità, prezzo.
+	var table bool
+	var headers []string
+	for _, n := range htmlElements(t, find("Conferma d'ordine").BodyHTML) {
+		if n.Data == "table" {
+			table = true
+		}
+		if n.Data == "th" || n.Data == "td" {
+			headers = append(headers, nodeText(n))
+		}
+	}
+	if !table {
+		t.Fatal("conferma d'ordine: nessuna tabella")
+	}
+	for _, want := range []string{"Prodotto", "Quantità", "Prezzo"} {
+		if !containsStr(headers, want) {
+			t.Errorf("tabella d'ordine: manca la colonna %q (celle %v)", want, headers)
+		}
+	}
+
+	// Risposta: citazione annidata "> > ", elenco puntato e numerato (testo semplice).
+	var nested, bullet, numbered bool
+	for _, line := range strings.Split(find("pranzo").BodyText, "\n") {
+		nested = nested || strings.HasPrefix(line, "> > ")
+		bullet = bullet || strings.HasPrefix(line, "- ")
+		numbered = numbered || strings.HasPrefix(line, "1. ")
+	}
+	if !nested {
+		t.Error("risposta: manca la citazione annidata «> > »")
+	}
+	if !bullet {
+		t.Error("risposta: manca un elenco puntato «- »")
+	}
+	if !numbered {
+		t.Error("risposta: manca un elenco numerato «1. »")
+	}
+}
+
+// Piano 15, Task 17: una label annidata con Delimiter "/" nelle Mailboxes, con
+// messaggi (albero cartelle e contatori).
+func TestDemoStoreLabelAnnidata(t *testing.T) {
+	mk := DemoStore()
+	boxes, err := mk.ListMailboxes(t.Context())
+	if err != nil {
+		t.Fatalf("ListMailboxes: %v", err)
+	}
+	var nested *mail.Mailbox
+	for i := range boxes {
+		if boxes[i].Name == "Lavoro/Clienti" {
+			nested = &boxes[i]
+		}
+	}
+	if nested == nil {
+		t.Fatalf("cartelle = %+v, voglio la label annidata Lavoro/Clienti", boxes)
+	}
+	if nested.Delimiter != "/" {
+		t.Errorf("Lavoro/Clienti: Delimiter = %q, voglio \"/\"", nested.Delimiter)
+	}
+	refs, err := mk.ListMessages(t.Context(), msg.Query{Label: "Lavoro/Clienti"}, mail.Page{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListMessages Lavoro/Clienti: %v", err)
+	}
+	if len(refs) == 0 {
+		t.Error("Lavoro/Clienti: nessun messaggio nel seed")
+	}
+}
+
+// Piano 15, Task 17: i contatori della demo coincidono con le liste: per ogni
+// cartella UnreadCounts = non letti di ListMessages; INBOX e la label annidata
+// hanno non letti da mostrare.
+func TestDemoStoreContatoriCoerenti(t *testing.T) {
+	mk := DemoStore()
+	counts, err := mk.UnreadCounts(t.Context())
+	if err != nil {
+		t.Fatalf("UnreadCounts: %v", err)
+	}
+	boxes, err := mk.ListMailboxes(t.Context())
+	if err != nil {
+		t.Fatalf("ListMailboxes: %v", err)
+	}
+	for _, b := range boxes {
+		refs, err := mk.ListMessages(t.Context(), msg.Query{Label: b.Name, Unread: true}, mail.Page{Limit: 1000})
+		if err != nil {
+			t.Fatalf("ListMessages %s: %v", b.Name, err)
+		}
+		if counts[b.Name] != len(refs) {
+			t.Errorf("%s: UnreadCounts = %d, non letti in lista = %d", b.Name, counts[b.Name], len(refs))
+		}
+	}
+	if counts["INBOX"] == 0 {
+		t.Error("INBOX: nessun non letto nei contatori demo")
+	}
+	if counts["Lavoro/Clienti"] == 0 {
+		t.Error("Lavoro/Clienti: nessun non letto nei contatori demo")
+	}
+}
+
+// htmlElements restituisce gli elementi di s, in ordine di documento.
+func htmlElements(t *testing.T, s string) []*html.Node {
+	t.Helper()
+	doc, err := html.Parse(strings.NewReader(s))
+	if err != nil {
+		t.Fatalf("html.Parse: %v", err)
+	}
+	var out []*html.Node
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.ElementNode {
+			out = append(out, n)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(doc)
+	return out
+}
+
+// nodeText restituisce il testo del nodo con gli spazi normalizzati.
+func nodeText(n *html.Node) string {
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.TextNode {
+			b.WriteString(n.Data)
+		}
+		for c := n.FirstChild; c != nil; c = c.NextSibling {
+			walk(c)
+		}
+	}
+	walk(n)
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// attr restituisce il valore dell'attributo key (vuoto se assente).
+func attr(n *html.Node, key string) string {
+	for _, a := range n.Attr {
+		if a.Key == key {
+			return a.Val
+		}
+	}
+	return ""
 }
 
 // inboxMsgs restituisce i messaggi del seed nella posta in arrivo (INBOX).

@@ -453,10 +453,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** demo: il messaggio demo ha almeno un bottone, una tabella, una citazione annidata, un link con warn; MCP: `tools` restituisce ancora `BodyText` (test esistente verde); isolamento verde.
 
-- [ ] Test RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(demo): contenuto ricco e contatori demo (Piano 15, Task 17)`.
+- [x] Test RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(demo): contenuto ricco e contatori demo (Piano 15, Task 17)`.
 
 ## Task 18: documentazione
 
