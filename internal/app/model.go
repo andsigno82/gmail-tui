@@ -578,12 +578,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.err == nil && len(ev.observed) > 0 {
 			m.feedBook(true, ev.observed...) // destinatari dell'invio riuscito: incremento (D9-F)
 		}
-		if len(ev.gone) > 0 && (ev.err == nil || ev.undo != nil) {
+		if len(ev.gone) > 0 {
 			// Piano 7, fix review 1: gli ID usciti dalla cartella (Archive/Trash)
 			// si tolgono dalla coda PRIMA del merge del refresh profondo, che
-			// riaccoda le righe oltre refreshCap dalla lista precedente. Con errore
-			// a metà di un cestino (Piano 10, review punto 2) le spostate escono
-			// comunque: hanno un annulla.
+			// riaccoda le righe oltre refreshCap dalla lista precedente. `gone` è
+			// l'elenco di ciò che è davvero uscito (anche con errore a metà di un
+			// cestino, Piano 10, review punto 5): nessun errore di archivia lo riempie.
 			m.refs = withoutIDs(m.refs, ev.gone)
 		}
 		if ev.send {

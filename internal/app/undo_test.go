@@ -300,3 +300,208 @@ func TestBulkTrashPartialErrorOffersUndoForMoved(t *testing.T) {
 		}
 	}
 }
+
+// toastCount conta i toast il cui testo contiene s.
+func toastCount(m Model, s string) int {
+	n := 0
+	for _, t := range m.toast.Texts() {
+		if strings.Contains(t, s) {
+			n++
+		}
+	}
+	return n
+}
+
+// Piano 10, review punto 2 (ordine archivia → invio): l'invio sostituisce l'annulla
+// dell'archivia, quindi il toast dell'archivia non deve più dire "u annulla" (u ora
+// annulla l'invio). Il testo torna all'esito, senza l'offerta.
+func TestArchiveToastDropsUndoHintWhenSendReplacesIt(t *testing.T) {
+	mock := undoFixture(t, false)
+	rec := &senderRecorder{}
+	m := undoSenderModel(t, mock, rec)
+	m, cmd := step(m, pressKey("a"))
+	m = applyAll(t, m, cmd)
+	if !toastContains(m, "archiviata — u annulla") {
+		t.Fatalf("precondizione: toast = %v, voglio l'archivia con u", m.toast.Texts())
+	}
+	m = confirmDrained(t, sendRequested(t, writing(m)))
+	if toastContains(m, "archiviata — u annulla") {
+		t.Errorf("toast = %v: l'archivia non offre più u, ora annulla l'invio", m.toast.Texts())
+	}
+	if !toastContains(m, "archiviata") {
+		t.Errorf("toast = %v, voglio l'esito \"archiviata\" senza offerta", m.toast.Texts())
+	}
+}
+
+// Piano 10, review punto 2 (stesso meccanismo, archivia → archivia): il nuovo
+// archivia sostituisce l'annulla del precedente, quindi solo UN toast offre u.
+func TestSecondArchiveDropsUndoHintOfFirst(t *testing.T) {
+	old := undoBulkWindow
+	undoBulkWindow = time.Millisecond // il timer dell'annulla è eseguito dal runCmd dei test
+	t.Cleanup(func() { undoBulkWindow = old })
+	mock := inboxTrioFixture()
+	for uid := uint32(1); uid <= 3; uid++ {
+		mock.Msgs = append(mock.Msgs, &msg.Message{Ref: msg.MessageRef{
+			ID: msg.NewID("[Gmail]/Tutti i messaggi", 100+uid), GmailID: uint64(10 + uid),
+		}})
+	}
+	m := pagedModel(t, mock)
+	m, cmd := step(m, pressKey("a"))
+	m = settle(t, m, cmd, 4) // col refresh: il secondo archivia è sulla riga successiva
+	m, cmd = step(m, pressKey("a"))
+	m = settle(t, m, cmd, 4)
+	if n := toastCount(m, "u annulla"); n != 1 {
+		t.Errorf("toast con u = %d (%v), voglio 1: l'ultimo archivia è l'unico annullabile", n, m.toast.Texts())
+	}
+}
+
+// modRec registra anche le label aggiunte e rimosse da ModifyLabels (opRec registra
+// solo gli ID). Piano 10, review punto 3.
+type modRec struct {
+	*opRec
+	adds [][]string
+}
+
+// ModifyLabels registra le label e delega a opRec.
+func (r *modRec) ModifyLabels(ctx context.Context, ids []msg.MessageID, add, remove []string) error {
+	r.adds = append(r.adds, append([]string(nil), add...))
+	return r.opRec.ModifyLabels(ctx, ids, add, remove)
+}
+
+// convSentFixture: una conversazione (thread 50) con un messaggio in INBOX (uid 1,
+// GmailID 11, label utente "Lavoro", il più recente) e uno in Inviati (uid 5, GmailID
+// 12, il più vecchio). Ciascuno ha la sua copia in Tutti i messaggi (uid 9 e 10).
+func convSentFixture() *mail.Mock {
+	base := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	return &mail.Mock{
+		Mailboxes: []mail.Mailbox{
+			{Name: "INBOX", Role: "inbox"},
+			{Name: "[Gmail]/Inviati", Role: "sent"},
+			{Name: "[Gmail]/Tutti i messaggi", Role: "all"},
+			{Name: "[Gmail]/Trash", Role: "trash"},
+			{Name: "Lavoro"},
+		},
+		Msgs: []*msg.Message{
+			{Ref: msg.MessageRef{ID: msg.NewID("INBOX", 1), GmailID: 11, ThreadID: 50,
+				From: "anna@x.dev", Subject: "tema", Date: base.Add(2 * time.Hour), Labels: []string{"Lavoro"}}},
+			{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Inviati", 5), GmailID: 12, ThreadID: 50,
+				From: "tu@x.dev", Subject: "Re: tema", Date: base.Add(time.Hour)}},
+			{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Tutti i messaggi", 9), GmailID: 11, ThreadID: 50,
+				From: "anna@x.dev", Subject: "tema", Date: base.Add(2 * time.Hour), Labels: []string{"Lavoro"}}},
+			{Ref: msg.MessageRef{ID: msg.NewID("[Gmail]/Tutti i messaggi", 10), GmailID: 12, ThreadID: 50,
+				From: "tu@x.dev", Subject: "Re: tema", Date: base.Add(time.Hour)}},
+		},
+	}
+}
+
+// inboxHasGmailID dice se in INBOX c'è una copia con quel GmailID.
+func inboxHasGmailID(mock *mail.Mock, gid uint64) bool {
+	for _, mm := range mock.Msgs {
+		if box, _, err := mm.Ref.ID.Split(); err == nil && box == "INBOX" && mm.Ref.GmailID == gid {
+			return true
+		}
+	}
+	return false
+}
+
+// Piano 10, review punto 3 (D10-T4): su una conversazione con un messaggio in Inviati,
+// l'annulla dell'archivia rimette in INBOX SOLO il messaggio archiviato (ID di All Mail);
+// il messaggio in Inviati non riceve \Inbox.
+func TestArchiveUndoRestoresOnlyArchivedMessages(t *testing.T) {
+	mock := convSentFixture()
+	rec := &modRec{opRec: &opRec{MailStore: mock, mock: mock}}
+	m := pagedModel(t, rec)
+	m, cmd := step(m, pressKey("a"))
+	m = applyAll(t, m, cmd)
+	if len(rec.archived) != 1 || !sameIDs(rec.archived[0], msg.NewID("INBOX", 1)) {
+		t.Fatalf("Archive = %v, voglio solo il messaggio in INBOX", rec.archived)
+	}
+	m, cmd = step(m, pressKey("u"))
+	applyAll(t, m, cmd)
+	if len(rec.modified) != 1 || !sameIDs(rec.modified[0], msg.NewID("[Gmail]/Tutti i messaggi", 9)) {
+		t.Fatalf("ModifyLabels dell'annulla = %v, voglio la sola copia di All Mail dell'archiviato", rec.modified)
+	}
+	if len(rec.adds) != 1 || len(rec.adds[0]) != 1 || rec.adds[0][0] != `\Inbox` {
+		t.Errorf("label aggiunte dell'annulla = %v, voglio [\\Inbox]", rec.adds)
+	}
+	if !inboxHasGmailID(mock, 11) {
+		t.Error("u: il messaggio archiviato non è tornato in INBOX")
+	}
+	if inboxHasGmailID(mock, 12) {
+		t.Error("u: il messaggio in Inviati è stato riportato in INBOX")
+	}
+}
+
+// Piano 10, review punto 3 (D10-C2): l'annulla del cestino riporta nella cartella
+// d'origine SOLO i messaggi cestinati e riapplica la label utente (non \Inbox).
+func TestTrashUndoReappliesUserLabelsOnly(t *testing.T) {
+	mock := convSentFixture()
+	rec := &modRec{opRec: &opRec{MailStore: mock, mock: mock}}
+	m := pagedModel(t, rec)
+	m, _ = step(m, pressKey("#"))
+	m, cmd := step(m, pressKey("s"))
+	m = applyAll(t, m, cmd)
+	if len(rec.trashed) != 1 || !sameIDs(rec.trashed[0], msg.NewID("INBOX", 1)) {
+		t.Fatalf("Trash = %v, voglio solo il messaggio in INBOX", rec.trashed)
+	}
+	m, cmd = step(m, pressKey("u"))
+	applyAll(t, m, cmd)
+	if len(rec.adds) != 1 || len(rec.adds[0]) != 1 || rec.adds[0][0] != "Lavoro" {
+		t.Errorf("label riapplicate = %v, voglio [Lavoro]", rec.adds)
+	}
+	if len(rec.modified) != 1 || len(rec.modified[0]) != 1 {
+		t.Fatalf("ModifyLabels del ritorno = %v, voglio un solo ID ripristinato", rec.modified)
+	}
+	if box, _, err := rec.modified[0][0].Split(); err != nil || box != "INBOX" {
+		t.Errorf("ModifyLabels del ritorno = %v, voglio un ID in INBOX", rec.modified[0])
+	}
+	if !inboxHasGmailID(mock, 11) {
+		t.Error("u: il messaggio cestinato non è tornato in INBOX")
+	}
+	if inboxHasGmailID(mock, 12) {
+		t.Error("u: il messaggio in Inviati è stato riportato in INBOX")
+	}
+}
+
+// noIDsFirstTrash: la prima Trash sposta ma non restituisce gli ID nel cestino (server
+// senza UIDPLUS: nessun annulla possibile); la seconda fallisce. Piano 10, review punto 5.
+type noIDsFirstTrash struct {
+	*mail.Mock
+	calls int
+}
+
+// Trash delega la prima chiamata scartando gli ID; la seconda fallisce senza agire.
+func (f *noIDsFirstTrash) Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
+	f.calls++
+	if f.calls == 1 {
+		_, err := f.Mock.Trash(ctx, ids)
+		return nil, err
+	}
+	return nil, errors.New("server giù")
+}
+
+// Piano 10, review punto 5: errore a metà di un cestino senza annulla (il server non ha
+// restituito gli ID). Le conversazioni effettivamente spostate escono comunque dalla
+// lista: il loro esito è nel toast e non si rivedono in INBOX alla prossima lettura.
+// Lo step è sull'opDone da solo, senza il refresh che lo seguirebbe.
+func TestBulkTrashPartialErrorWithoutUndoRemovesMovedRows(t *testing.T) {
+	mock := inboxTrioFixture()
+	m := pagedModel(t, &noIDsFirstTrash{Mock: mock})
+	m, _ = step(m, pressKey("X"))
+	m, _ = step(m, pressKey("#"))
+	m, cmd := step(m, pressKey("s"))
+	od := opDoneOf(t, runCmd(cmd))
+	if od.undo != nil {
+		t.Fatalf("precondizione: undo = %+v, voglio nil (nessun ID nel cestino)", od.undo)
+	}
+	m, _ = step(m, od)
+	moved := msg.NewID("INBOX", 3)
+	for _, r := range m.refs {
+		if r.ID == moved {
+			t.Errorf("lista = %v: la conversazione spostata nel cestino è ancora visibile", m.refs)
+		}
+	}
+	if !toastContains(m, "server giù") {
+		t.Errorf("toast = %v, voglio l'errore del cestino", m.toast.Texts())
+	}
+}

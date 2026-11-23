@@ -73,6 +73,7 @@ func undoTimer(seq int) tea.Cmd {
 // in Bozze, la finestra parte subito. m.draft è la bozza normalizzata.
 func (m *Model) startUndo() tea.Cmd {
 	m.undoSeq++
+	m.dropUndoHint() // Piano 10, review punto 2: l'annulla sostituito non offre più u
 	m.lastUndo = nil // Piano 10, Task 6 (D10-U2): l'invio è l'ultima azione annullabile
 	m.undoSendOff = false
 	p := &pendingSend{seq: m.undoSeq, out: m.draft, draftID: m.draftID, comp: m.composer, back: m.composeBack, tmp: m.draftTmp, keep: m.draftKeep, saved: make(chan struct{})}

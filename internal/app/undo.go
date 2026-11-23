@@ -48,6 +48,11 @@ type bulkUndo struct {
 	n        int
 	archived []msg.MessageID
 	groups   []trashGroup
+	// label è il testo dell'esito senza l'offerta di u; toastID è il toast che la
+	// mostra (Piano 10, review punto 2): quando un'azione successiva sostituisce
+	// l'annulla, il toast torna a label.
+	label   string
+	toastID int
 }
 
 // bulkUndoDueMsg è lo scadere della finestra dell'annulla; seq stantio → ignorato.
@@ -60,7 +65,8 @@ func bulkUndoTimer(seq int) tea.Cmd {
 
 // archiveRows archivia le conversazioni delle righe (Piano 10, Task 6). PRIMA di
 // Archive registra gli ID di All Mail (D10-T6): se AllMailIDs fallisce l'archivia
-// avviene comunque, ma senza annulla. Restituisce gli ID usciti dalla INBOX.
+// avviene comunque, ma senza annulla. Restituisce gli ID usciti dalla INBOX (nil con
+// errore: con Archive fallito nulla è uscito, Piano 10, review punto 5).
 func archiveRows(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) ([]msg.MessageID, *bulkUndo, error) {
 	ids, err := bulkIDs(ctx, st, rows)
 	if err != nil {
@@ -71,7 +77,8 @@ func archiveRows(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) 
 		undo = &bulkUndo{kind: undoArchive, n: len(rows), archived: all}
 	}
 	if err := st.Archive(ctx, ids); err != nil {
-		return ids, nil, err
+		// Piano 10, review punto 5: nulla è uscito dalla INBOX con un errore (gone vuoto).
+		return nil, nil, err
 	}
 	return ids, undo, nil
 }
@@ -162,8 +169,10 @@ func undoCmd(st mail.MailStore, u bulkUndo) tea.Cmd {
 // o cestino: il toast d'esito offre `u` per undoBulkWindow (D10-U1). Un invio in
 // attesa resta inviato allo scadere: il suo `u` è sostituito (D10-U2).
 func (m *Model) armBulkUndo(u *bulkUndo, label string) tea.Cmd {
+	m.dropUndoHint()
 	m.undoBulkSeq++
 	u.seq = m.undoBulkSeq
+	u.label = label
 	m.lastUndo = u
 	if m.undo != nil {
 		// Piano 10, review punto 1 (D10-U2): il toast dell'invio non offre più `u`: l'invio parte
@@ -171,13 +180,24 @@ func (m *Model) armBulkUndo(u *bulkUndo, label string) tea.Cmd {
 		m.undoSendOff = true
 		m.toast.SetText(m.sendToast, fmt.Sprintf("invio tra %d s", m.sendSecondsLeft()))
 	}
-	toastCmd := m.toast.PushFor(toast.Info, label+" — u annulla", undoBulkWindow)
+	id, toastCmd := m.toast.PushForID(toast.Info, label+" — u annulla", undoBulkWindow)
+	u.toastID = id
 	return tea.Batch(toastCmd, bulkUndoTimer(u.seq))
+}
+
+// dropUndoHint toglie l'offerta di u dal toast dell'annulla che sta per essere sostituito
+// o chiuso (Piano 10, review punto 2): il testo torna all'esito, senza "u annulla", così
+// il toast non promette un'azione che `u` non compie più.
+func (m *Model) dropUndoHint() {
+	if m.lastUndo != nil && m.lastUndo.toastID != 0 {
+		m.toast.SetText(m.lastUndo.toastID, m.lastUndo.label)
+	}
 }
 
 // restoreBulkUndo è `u` dopo archivia o cestino: l'ultima azione torna com'era.
 func (m *Model) restoreBulkUndo() tea.Cmd {
 	u := m.lastUndo
+	m.dropUndoHint()
 	m.lastUndo = nil
 	m.pending++
 	return tea.Batch(undoCmd(m.store, *u), m.spinner.Tick)
