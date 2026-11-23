@@ -1,7 +1,6 @@
 package render
 
 import (
-	"regexp"
 	"strings"
 	"testing"
 
@@ -10,11 +9,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/msg/richtext"
 )
 
-// ansiRE toglie SGR e OSC 8 dalle righe rese (Piano 15, Task 8).
-var ansiRE = regexp.MustCompile(`\x1b\[[0-9;:]*[A-Za-z]|\x1b\]8;[^\x1b]*\x1b\\`)
-
-// plain ritorna la riga senza sequenze di escape.
-func plain(s string) string { return ansiRE.ReplaceAllString(s, "") }
+// ansiRE e plain sono in link_test.go (Task 6).
 
 // cut ritorna le celle [x0,x1) della riga resa, senza escape: e il testo che
 // l'utente vede sotto la zona (Piano 15, Task 8).

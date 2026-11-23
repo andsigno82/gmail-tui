@@ -265,13 +265,7 @@ func wrapWords(words []word, width int) [][]irun {
 	return lines
 }
 
-// osc8Open e osc8Close avvolgono una porzione di link (OSC 8, ST = ESC \), come
-// links.go del thread.
-const osc8Close = "\x1b]8;;\x1b\\"
-
-func osc8Open(href, id string) string {
-	return "\x1b]8;id=" + id + ";" + href + "\x1b\\"
-}
+// osc8Open e osc8Close sono in link.go (Task 6): stessa sequenza OSC 8 con ST.
 
 // renderSegs compone una riga: testo semplice in base (o nello stile del tratto),
 // link in St.Link avvolto in OSC 8.
