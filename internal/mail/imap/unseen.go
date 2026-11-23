@@ -32,7 +32,7 @@ var unseenBudget = 10 * time.Second // var: i test lo accorciano
 // [Gmail]/* e i \Noselect sono escluse). Errore su una singola mailbox: saltata
 // (best-effort); errore di connessione o ctx annullato: restituito. Sotto gate.
 func (s *Store) UnreadCounts(ctx context.Context) (map[string]int, error) {
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	if err := ctx.Err(); err != nil {
 		return nil, err

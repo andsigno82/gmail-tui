@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -11,6 +12,7 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/mail/cache"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 // defaultPageLimit è il limite usato quando Page.Limit == 0.
@@ -135,6 +137,25 @@ func (g *idleGate) acquire() func() {
 		g.mu.Unlock()
 		g.cond.Broadcast()
 	}
+}
+
+// acquire è gate.acquire con la misura opzionale dell'attesa (Piano 16, traccia):
+// se il ctx porta uno Span (lo mette il wrapper di internal/trace/tracestore) il
+// tempo passato in coda sul gate (ops in volo e uscita dall'IDLE) si somma allo
+// Span, separato dal tempo di esecuzione. Senza traccia è gate.acquire, con la
+// stessa semantica e senza costo (un caricamento atomico).
+func (s *Store) acquire(ctx context.Context) func() {
+	if !trace.Enabled() {
+		return s.gate.acquire()
+	}
+	sp := trace.SpanFrom(ctx)
+	if sp == nil {
+		return s.gate.acquire()
+	}
+	t0 := time.Now()
+	release := s.gate.acquire()
+	sp.AddWait(time.Since(t0))
+	return release
 }
 
 // waitToIdle è il lato Watch: attende (cond) finché ci sono ops che vogliono
@@ -309,7 +330,7 @@ func (s *Store) ListMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		}
 		return pageRefs(refs, pg), nil
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	mailbox, uids, err := s.selectAndSearch(ctx, q)
 	if err != nil {

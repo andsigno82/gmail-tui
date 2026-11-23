@@ -21,7 +21,7 @@ import (
 // selettiva). Dopo l'APPEND rimuove le bozze di replace; se la rimozione
 // fallisce l'errore riporta il nuovo ID, così la copia in più è visibile.
 func (s *Store) SaveDraft(ctx context.Context, raw []byte, replace []msg.MessageID) (msg.MessageID, error) {
-	defer s.gate.acquire()() // gate: APPEND e rimozione non interleaveano con IDLE
+	defer s.acquire(ctx)() // gate: APPEND e rimozione non interleaveano con IDLE
 
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -69,7 +69,7 @@ func (s *Store) SaveDraft(ctx context.Context, raw []byte, replace []msg.Message
 // DeleteDraft implementa mail.MailStore (Piano 9, Task 3). Sotto gate. Rifiuta
 // senza agire se un ID sta fuori da Bozze o se manca UIDPLUS (come Trash).
 func (s *Store) DeleteDraft(ctx context.Context, ids []msg.MessageID) error {
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	if err := ctx.Err(); err != nil {
 		return err

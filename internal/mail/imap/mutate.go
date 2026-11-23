@@ -17,7 +17,7 @@ import (
 // MarkRead marca i messaggi come letti (read=true: UID STORE ADD \Seen) o
 // come non letti (false: REMOVE), sulla mailbox di appartenenza di ogni id.
 func (s *Store) MarkRead(ctx context.Context, ids []msg.MessageID, read bool) error {
-	defer s.gate.acquire()() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
+	defer s.acquire(ctx)() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
 
 	op := imap.StoreFlagsAdd
 	if !read {
@@ -30,7 +30,7 @@ func (s *Store) MarkRead(ctx context.Context, ids []msg.MessageID, read bool) er
 // Star aggiunge (on=true: UID STORE ADD \Flagged) o rimuove la stella,
 // sulla mailbox di appartenenza di ogni id.
 func (s *Store) Star(ctx context.Context, ids []msg.MessageID, on bool) error {
-	defer s.gate.acquire()() // gate (fix review): STORE rompe l'IDLE del Watch
+	defer s.acquire(ctx)() // gate (fix review): STORE rompe l'IDLE del Watch
 
 	op := imap.StoreFlagsAdd
 	if !on {
@@ -50,7 +50,7 @@ func (s *Store) Archive(ctx context.Context, ids []msg.MessageID) error {
 	if err := s.refuseAllMail(ctx, ids, "archivia"); err != nil {
 		return err
 	}
-	defer s.gate.acquire()() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
+	defer s.acquire(ctx)() // gate (fix review): STORE/EXPUNGE rompono l'IDLE
 
 	return s.deleteAndExpunge(ctx, ids, "")
 }
@@ -69,7 +69,7 @@ func (s *Store) Archive(ctx context.Context, ids []msg.MessageID) error {
 // deleteAndExpunge del ramo off) — LIST/CREATE/COPY/STORE romperebbero
 // l'IDLE del Watch.
 func (s *Store) ApplyLabel(ctx context.Context, ids []msg.MessageID, label string, on bool) error {
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	if err := ctx.Err(); err != nil {
 		return err

@@ -42,7 +42,7 @@ func (s *Store) trashMove(ctx context.Context, ids []msg.MessageID, out *[]msg.M
 	if err := s.refuseAllMail(ctx, ids, "cestina"); err != nil {
 		return err
 	}
-	defer s.gate.acquire()() // gate: SELECT/MOVE rompono l'IDLE; listMailboxes sotto gate
+	defer s.acquire(ctx)() // gate: SELECT/MOVE rompono l'IDLE; listMailboxes sotto gate
 
 	if err := ctx.Err(); err != nil {
 		return err

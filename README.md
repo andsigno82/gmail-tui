@@ -158,6 +158,7 @@ Set `notify_command = ["/path/to/wrapper"]` to use one. Behaviour: the command r
 | `gmail-tui themes` | list available themes |
 | `gmail-tui doctor` | diagnose config, theme, password and cache; with credentials, also checks that the IMAP server announces MOVE, UIDPLUS, SPECIAL-USE and LIST-EXTENDED |
 | `gmail-tui mcp` | run a read-only [MCP](#mcp-server-read-only) server on stdio for AI agents |
+| `gmail-tui trace <file>` | summarize a timing trace (see [Troubleshooting](#troubleshooting)) |
 | `gmail-tui version` | print the version |
 
 Password resolution (TUI and CLI alike): `GMAIL_APP_PASSWORD` env → system keychain → absent (demo mode).
@@ -214,6 +215,28 @@ The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASS
 - **Markdown**: composed messages go out as `multipart/alternative`. The `text/plain` part is the Markdown source; the `text/html` part is rendered with GitHub-flavored Markdown (tables, strikethrough, task lists). Raw HTML typed in a message is shown as escaped text. `gmail-tui send --markdown` does the same for stdin. Messages you receive are shown as plain text: Markdown in incoming mail is not interpreted.
 - The composer is adapted from [charmbracelet/pop](https://github.com/charmbracelet/pop) (MIT).
 - An external `SIGINT` exits without cancelling the IMAP IDLE watcher (harmless — the process is exiting anyway); use `q`/`Ctrl+C` inside the app for a clean exit.
+
+## Troubleshooting
+
+### Slow startup, slow keys or slow message opening: timing trace
+
+To see where the time goes on your real account, start the app with `GMAIL_TUI_TRACE=1`:
+
+```sh
+GMAIL_TUI_TRACE=1 gmail-tui
+```
+
+Without the variable nothing is measured and no file is written. With it, the app writes one JSON line per event to `trace-<date>-<time>.jsonl` in the user cache directory (`~/Library/Caches/gmail-tui/` on macOS, `~/.cache/gmail-tui/` on Linux; mode 0600) and prints the file path on stderr when you quit. Use the app for a minute (open messages, move with the keys, change folder), quit, then:
+
+```sh
+gmail-tui trace ~/Library/Caches/gmail-tui/trace-20261123-101500.jsonl
+```
+
+The summary, short enough to paste into an issue or a chat, has: the startup timeline (first screen, connect, first list); per mail operation count, median, p95 and max in milliseconds, with the **gate wait** (time queued behind another operation or an IDLE exit on the single IMAP connection) apart from the rest; per Bubble Tea message the `Update` and `View` times and the average bytes of the rendered screen; the 10 slowest frames; and the body rendering phases (`FromHTML`, `render`, sync or async).
+
+Event format (all times in microseconds, `t` = end of the event since start): `{"t":..,"k":"store","op":"ListConversations","dur_us":..,"wait_us":..,"n":..,"role":"inbox"}`; kinds are `meta`, `store`, `msg`, `phase` and `body`.
+
+**Privacy.** The trace holds only operation names, durations, counts and byte sizes. It never holds addresses, subjects, names, bodies, label or folder names (only the role: `inbox`, `sent`, `drafts`, `all`, `trash`, `junk`, `flagged` or `label`), URLs, passwords or error text. Typed text is never recorded: a key that produces a character is logged as `char`; only command keys (`enter`, `esc`, `ctrl+x`, arrows) keep their name.
 
 ## Roadmap
 

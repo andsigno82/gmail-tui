@@ -20,6 +20,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/config"
 	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/trace/tracestore"
 	"github.com/andsigno82/gmail-tui/internal/ui/toast"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
@@ -74,7 +75,7 @@ func (m Model) wizardCompleted(ev wizard.CompletedMsg) (tea.Model, tea.Cmd) {
 		// destinatario dei seed ("tu@example.com"): senza SetIdentity il
 		// composer aperto col primo `c` nasce col campo Da vuoto.
 		mk := DemoStore()
-		m.store, m.sender = mk, mk
+		m.store, m.sender = tracestore.Wrap(mk), tracestore.WrapSender(mk) // no-op senza traccia (Piano 16)
 		m.SetIdentity("tu@example.com", "", "")
 		m.SetDemoBanner()
 	} else {

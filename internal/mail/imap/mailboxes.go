@@ -32,7 +32,7 @@ var specialRoles = []struct {
 
 // ListMailboxes implementa mail.MailStore (Piano 7, Task 1). Sotto gate.
 func (s *Store) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	if err := ctx.Err(); err != nil {
 		return nil, err

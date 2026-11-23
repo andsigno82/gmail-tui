@@ -69,7 +69,7 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		}
 	}
 
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return nil, err
@@ -173,7 +173,7 @@ func (s *Store) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.Mess
 	if err != nil {
 		return nil, err
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return nil, err
@@ -209,7 +209,7 @@ func (s *Store) ConversationMembers(ctx context.Context, mailbox string, threadI
 	if mailbox == "" {
 		return nil, errors.New("imap: mailbox dei membri vuota")
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return nil, err
@@ -436,7 +436,7 @@ func (s *Store) searchRaw(ctx context.Context, q msg.Query) ([]msg.MessageRef, e
 	if mailbox == "" {
 		mailbox = allMail
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return nil, err

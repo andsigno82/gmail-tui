@@ -129,7 +129,7 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	// per non interleaveare con op in flight. Nessun rischio di deadlock con
 	// l'idle loop: qui il watch-goroutine non esiste ancora (niente idling
 	// possibile), acquire può solo attendere ops in flight.
-	release := s.gate.acquire()
+	release := s.acquire(ctx)
 	st, err := baselineState(c)
 	release()
 	if err != nil {
@@ -367,7 +367,7 @@ func (s *Store) reconnect(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 		// fine dell'idleRound fallito, prima della riconnessione) e il watch
 		// non detiene nulla mentre attende: il round parte quando le ops in
 		// flight hanno finito.
-		release := s.gate.acquire()
+		release := s.acquire(ctx)
 		err = s.recheckNewMail(c, ch, st)
 		release()
 		if err != nil {

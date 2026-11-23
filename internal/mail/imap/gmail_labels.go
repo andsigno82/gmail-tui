@@ -46,7 +46,7 @@ func (s *Store) AllMailIDs(ctx context.Context, ids []msg.MessageID) ([]msg.Mess
 	if err != nil {
 		return nil, err
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return nil, err
@@ -104,7 +104,7 @@ func (s *Store) ModifyLabels(ctx context.Context, ids []msg.MessageID, add, remo
 		return nil
 	}
 	if gmail {
-		return s.modifyGmailLabels(ids, add, remove)
+		return s.modifyGmailLabels(ctx, ids, add, remove)
 	}
 	return s.modifyFolderLabels(ctx, ids, add, remove)
 }
@@ -131,7 +131,7 @@ func checkLabelSet(add, remove []string, gmail bool) error {
 
 // modifyGmailLabels invia STORE +/-X-GM-LABELS (SILENT) per mailbox di appartenenza
 // degli id. È sicuro anche su Tutti i messaggi: cambia solo le label.
-func (s *Store) modifyGmailLabels(ids []msg.MessageID, add, remove []string) error {
+func (s *Store) modifyGmailLabels(ctx context.Context, ids []msg.MessageID, add, remove []string) error {
 	byMbox, err := groupByMailbox(ids)
 	if err != nil {
 		return err
@@ -139,7 +139,7 @@ func (s *Store) modifyGmailLabels(ids []msg.MessageID, add, remove []string) err
 	encAdd := encodeLabels(add)
 	encRemove := encodeLabels(remove)
 
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return err
@@ -206,7 +206,7 @@ func (s *Store) modifyFolderLabels(ctx context.Context, ids []msg.MessageID, add
 		return err
 	}
 
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 	c, err := s.connected()
 	if err != nil {
 		return err

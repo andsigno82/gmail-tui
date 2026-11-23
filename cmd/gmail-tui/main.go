@@ -22,6 +22,9 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/mail/smtp"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/theme"
+	"github.com/andsigno82/gmail-tui/internal/trace"
+	"github.com/andsigno82/gmail-tui/internal/trace/tracestore"
+	"github.com/andsigno82/gmail-tui/internal/trace/tracetea"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 	"github.com/andsigno82/gmail-tui/internal/ui/wizard"
 )
@@ -52,6 +55,8 @@ func main() {
 				os.Exit(1)
 			}
 			os.Exit(cmd.Doctor(os.Stdout, cfgPath, os.Getenv, doctorProbe(cfgPath)))
+		case "trace":
+			os.Exit(cmd.Trace(os.Stdout, os.Stderr, os.Args[2:])) // Piano 16: riepilogo di una traccia dei tempi
 		case "fetch":
 			os.Exit(runFetch(os.Args[2:]))
 		case "send":
@@ -122,6 +127,12 @@ func runTUI(args []string, forceWizard bool) int {
 	if code >= 0 {
 		return code
 	}
+	// Traccia dei tempi opzionale (Piano 16): solo con GMAIL_TUI_TRACE=1; senza la
+	// variabile non tocca il disco. Stop stampa su stderr il percorso del file.
+	if _, err := trace.Start(os.Getenv, version); err != nil {
+		fmt.Fprintf(os.Stderr, "traccia dei tempi non attivata: %v\n", err)
+	}
+	defer trace.Stop(os.Stderr)
 	cfg, ok := loadConfig()
 	if !ok {
 		// Config assente/rotta: la TUI parte comunque dai default (in wizard/
@@ -147,6 +158,7 @@ func runTUI(args []string, forceWizard bool) int {
 	}
 
 	store, sender, demo := selectStore(cfg, pw, openCache())
+	store, sender = tracestore.Wrap(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
 	m := app.New(store, sender, th)
 	m.SetVersion(version)                               // splash d'avvio (Piano 15, Task 16b)
 	m.SetIdentity(cfg.Address, cfg.Name, cfg.Signature) // composer r/f/c (Piano 4, Task 3; nome Piano 7.2, Task 3)
@@ -180,7 +192,7 @@ func runProgram(m tea.Model) int {
 	// rimuove la cartella di questa sessione.
 	app.SweepAttachments()
 	defer app.CleanupAttachments()
-	p := tea.NewProgram(m)
+	p := tea.NewProgram(tracetea.Wrap(m)) // no-op senza traccia (Piano 16)
 	final, err := p.Run()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "tui: %v\n", err)
@@ -358,7 +370,7 @@ func backendFactory(address, password string) (mail.MailStore, app.Sender) {
 		Username: address,
 		Password: password,
 	})
-	return store, sender
+	return tracestore.Wrap(store), tracestore.WrapSender(sender) // no-op senza traccia (Piano 16)
 }
 
 // runFetch: gmail-tui fetch [--limit N] [--query "from:x is:unread"].

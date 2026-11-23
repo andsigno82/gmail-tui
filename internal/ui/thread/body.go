@@ -16,6 +16,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/msg/richtext"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 	"github.com/andsigno82/gmail-tui/internal/ui/render"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
@@ -97,21 +98,38 @@ func stackBlocks(blocks []richtext.Block, c render.Ctx) render.Out {
 // limite di richtext, in coda compare "[messaggio troncato: N KiB]" con N i KiB
 // tagliati (D15-T4). Pura: gira anche fuori dal loop.
 func buildBody(full *msg.Message, width int, st styles.Styles) render.Out {
+	return buildBodyMode(full, width, st, "sync")
+}
+
+// buildBodyMode e buildBody con la modalita da scrivere nella traccia dei tempi
+// (Piano 16): "sync" nel loop Update, "async" nella Cmd in background. Con la
+// traccia spenta i timer sono nulli. Nella traccia solo durate, byte del sorgente
+// e numero di blocchi, mai il testo.
+func buildBodyMode(full *msg.Message, width int, st styles.Styles, mode string) render.Out {
+	total := trace.Begin()
+	src := sourceLen(full)
 	c := render.Ctx{Width: width, St: st}
 	var blocks []richtext.Block
 	truncated := false
 	if full.BodyHTML != "" {
+		tp := trace.Begin()
 		blocks, truncated = richtext.FromHTML(full.BodyHTML)
+		tp.End(trace.Event{K: "body", Op: "FromHTML", Bytes: len(full.BodyHTML), N: len(blocks), Mode: mode})
 	}
 	if len(blocks) == 0 {
+		tp := trace.Begin()
 		blocks = richtext.FromText(full.BodyText)
+		tp.End(trace.Event{K: "body", Op: "FromText", Bytes: len(full.BodyText), N: len(blocks), Mode: mode})
 	}
+	tr := trace.Begin()
 	o := stackBlocks(blocks, c)
+	tr.End(trace.Event{K: "body", Op: "render", Bytes: src, N: len(blocks), Mode: mode})
 	if truncated {
 		cut := (len(full.BodyHTML) - richtext.MaxInputBytes + 1023) / 1024
 		note := richtext.Block{Runs: []richtext.Run{{Text: fmt.Sprintf("[messaggio troncato: %d KiB]", cut)}}}
 		o = render.Stack(o, blankOut(), render.Dispatch(note, c))
 	}
+	total.End(trace.Event{K: "body", Op: "build", Bytes: src, N: len(blocks), Mode: mode})
 	return o
 }
 
@@ -158,7 +176,7 @@ func (m *Model) bodyOut(full *msg.Message) render.Out {
 	if m.cache.markPending(key) {
 		st, gen := m.st, m.gen
 		m.renderQ = append(m.renderQ, func() tea.Msg {
-			return RenderedMsg{ID: key.id, Width: w, Gen: gen, Variant: key.variant, Out: buildBody(full, w, st)}
+			return RenderedMsg{ID: key.id, Width: w, Gen: gen, Variant: key.variant, Out: buildBodyMode(full, w, st, "async")}
 		})
 	}
 	return m.fallbackBody(full, w)

@@ -37,6 +37,7 @@ internal/cmd/         CLI subcommands: doctor, fetch, login, send
 internal/config/      TOML config at ~/.config/gmail-tui/config.toml
 internal/keyring/     keychain via system CLIs (security / secret-tool), env → keychain resolution
 internal/theme/       embedded TOML themes → 14 semantic slots
+internal/trace/       optional timing trace (GMAIL_TUI_TRACE=1): core + tracestore/tracetea wrappers; privacy: only names, durations, counts, bytes
 site/                 GitHub Pages landing page (self-contained index.html)
 docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/plans
 ```

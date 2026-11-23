@@ -232,3 +232,14 @@ Run on Andrea's Ghostty terminal. Do not paste real senders, subjects, addresses
 - [ ] Startup: the inbox shows the splash (title, spinner phase "connessione a imap.gmail.com…" then "caricamento posta…", version), then the list, with no artificial delay.
 - [ ] Network off at startup: the splash shows the sanitised error and "R per riprovare"; `R` retries.
 - [ ] An empty folder reads "Nessun messaggio in <folder>"; with no message selected, the two-column preview reads "Seleziona un messaggio per leggerlo".
+
+## Timing trace (Piano 16) — real account, Ghostty
+
+Run on Andrea's Ghostty terminal to measure where the time goes. Do not paste the trace file contents anywhere other than a chat you trust; it holds no personal data, but still check it.
+
+- [ ] Without `GMAIL_TUI_TRACE`: no `trace-*.jsonl` appears in the `gmail-tui` user cache directory after a session.
+- [ ] `GMAIL_TUI_TRACE=1 gmail-tui`: on quit, stderr prints `traccia dei tempi: <path>`; the file exists, mode 0600 (`ls -l`).
+- [ ] Use the app: start, open 3 messages (one with a large HTML body), move 20 times with `j`/`k`, switch folder with `m`, search with `/`, quit.
+- [ ] `gmail-tui trace <path>` prints the summary: startup timeline, `MailStore` operations with the gate wait columns, messages with `Update`/`View`, the slowest frames, bytes per `View` and the body rendering rows.
+- [ ] Privacy: `grep -ciE "@|http|<your label names>|<a subject>" <path>` prints 0; typed letters appear only as `"key":"char"`.
+- [ ] Paste the summary in the chat to compare startup, key and message-opening times with the demo mode.

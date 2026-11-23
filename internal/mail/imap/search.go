@@ -39,7 +39,7 @@ func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, erro
 	if q.Raw != "" { // Piano 8, Task 8: sintassi Gmail nativa, senza post-filtri
 		return s.searchRaw(ctx, q)
 	}
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	mailbox, uids, err := s.selectAndSearch(ctx, q)
 	if err != nil {

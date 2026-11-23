@@ -25,7 +25,7 @@ func (s *Store) Restore(ctx context.Context, ids []msg.MessageID, dest string) (
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	defer s.gate.acquire()() // gate: SELECT/MOVE rompono l'IDLE; listMailboxes sotto gate
+	defer s.acquire(ctx)() // gate: SELECT/MOVE rompono l'IDLE; listMailboxes sotto gate
 
 	c, err := s.connected()
 	if err != nil {

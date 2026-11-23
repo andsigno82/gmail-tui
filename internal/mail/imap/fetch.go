@@ -66,7 +66,7 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 	// connessione fino alla fine del metodo (se non già detenuto dal
 	// chiamante: heldGate).
 	if !heldGate {
-		defer s.gate.acquire()()
+		defer s.acquire(ctx)()
 	}
 
 	raw, flags, uidValidity, gx, err := s.fetchRaw(mailbox, imap.UID(uid))
@@ -122,7 +122,7 @@ func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, 
 	}
 
 	// Gate (fix review): il download tocca la rete — rompe l'eventuale IDLE.
-	defer s.gate.acquire()()
+	defer s.acquire(ctx)()
 
 	raw, _, _, _, err := s.fetchRaw(mailbox, imap.UID(uid))
 	if err != nil {
