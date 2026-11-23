@@ -214,8 +214,11 @@ func TestStartupFirstListFromSnapshot(t *testing.T) {
 					p.Send(tea.KeyPressMsg{Code: tea.KeyEnter}) // apre la prima conversazione
 				}
 				// con le latenze di default non si aspetta la lista fresca
-				if n == "CORPO-SNAP-2" && os.Getenv("P16_CONNECT") == "" {
-					return
+				if n == "CORPO-SNAP-2" {
+					if os.Getenv("P16_CONNECT") == "" {
+						return
+					}
+					p.Send(tea.KeyPressMsg{Code: tea.KeyEscape}) // torna alla lista: la fresca deve comparire
 				}
 			case <-timeout:
 				return
