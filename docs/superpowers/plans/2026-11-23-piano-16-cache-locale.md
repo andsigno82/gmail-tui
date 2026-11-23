@@ -210,10 +210,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 - `TestGuardSnapshotIDsNeverConfirmed`: ID visti solo da `CachedConversations`/`CachedThread` restano rifiutati.
 - `TestGuardWatchConfirmsNewMail`, `TestGuardForwardsSnapshotterAndGmailExt`, `TestGuardConcurrentUse` (con `-race`).
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(mail): guardia degli ID confermati dal server (Piano 16, Task 5)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(mail): guardia degli ID confermati dal server (Piano 16, Task 5)`.
 
 ## Task 6: conciliazione del thread
 
