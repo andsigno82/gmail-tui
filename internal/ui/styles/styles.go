@@ -36,6 +36,7 @@ type Styles struct {
 	ThreadHeader    lipgloss.Style // intestazione del thread
 	ThreadHeaderKey lipgloss.Style // etichette dell'header (Da:/A:/Oggetto:)
 	Quoted          lipgloss.Style // righe citate attenuate
+	Link            lipgloss.Style // link nel corpo del messaggio: slot accent sottolineato (Richiesta di Andrea, 2026-11-23)
 	Border          lipgloss.Style // riquadri (viewport, overlay)
 	Spinner         lipgloss.Style // spinner durante il caricamento
 	Divider         lipgloss.Style // separatore lista/anteprima a due colonne (Piano 7.2, Task 4)
@@ -75,6 +76,7 @@ func New(t theme.Theme) Styles {
 		ThreadHeader:    lipgloss.NewStyle().Foreground(adaptive(t.Primary)).Bold(true).Padding(0, 1),
 		ThreadHeaderKey: lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
 		Quoted:          lipgloss.NewStyle().Foreground(adaptive(t.Quoted)).Italic(true),
+		Link:            lipgloss.NewStyle().Foreground(adaptive(linkSlot(t))).Underline(true),
 		Border:          lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(adaptive(t.Border)),
 		Spinner:         lipgloss.NewStyle().Foreground(adaptive(t.Accent)).Bold(true),
 		Divider:         lipgloss.NewStyle().Foreground(adaptive(t.Border)),
@@ -128,6 +130,18 @@ func labelSlots(t theme.Theme) []theme.Slot {
 		}
 	}
 	return out
+}
+
+// linkSlot sceglie lo slot del testo dei link (Richiesta di Andrea, 2026-11-23):
+// l'accent, o il primary se l'accent non ha contrasto WCAG >= 4.5:1 sul bg del
+// tema in entrambe le varianti; ultimo ripiego il testo (fg).
+func linkSlot(t theme.Theme) theme.Slot {
+	for _, s := range []theme.Slot{t.Accent, t.Primary} {
+		if slotContrasta(s, t.Bg) {
+			return s
+		}
+	}
+	return t.Fg
 }
 
 // slotContrasta dice se lo slot fg, come testo, ha contrasto WCAG >= 4.5:1 su bg

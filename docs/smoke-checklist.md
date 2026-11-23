@@ -29,6 +29,12 @@ app actually shows; status messages are quoted verbatim (UI strings are Italian)
 - [ ] Opening an unread message marks it read automatically (marker flips on the next list refresh, no error).
 - [ ] Thread scrolling: `j`/`k` line-by-line; `pgup`/`pgdn`/`space`/`d`/`u` page/half-page scroll.
 - [ ] `o` on a message with an HTML part: browser opens a `.html` temp file containing the original HTML. On a plain-text-only message: nothing happens (no error).
+- [ ] Click a URL in the body (full-screen thread): the browser opens it and the toast reads "aperto nel browser: <host>". Clicking plain text does nothing.
+- [ ] In the two-column preview, a click on a link opens it and does not move the focus; a click on the text next to it focuses the preview as before.
+- [ ] A URL longer than the line wraps onto two lines and both parts open the same link.
+- [ ] Links are underlined; a `javascript:` or `file:` text is not underlined and does not open.
+- [ ] iTerm2, Ghostty, Kitty or WezTerm: `cmd+click` on a link opens it natively (OSC 8), without going through the click handler.
+- [ ] Demo mode: the "Go Weekly" newsletter contains `https://example.com/newsletter/47`; clicking it opens the browser.
 - [ ] `Esc`/`q` in the thread returns to the inbox with the list and cursor position preserved; a slow fetch interrupted by `Esc` does not open a stale message later.
 
 ## Search

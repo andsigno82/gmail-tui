@@ -61,6 +61,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `v` | mark read/unread (with a selection: read for all if any is unread, otherwise unread for all) |
 | `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before; with a selection it adds the label to all selected conversations |
 | `o` | open the selected message's HTML body in browser (thread view) |
+| mouse click on a link | open the link in the browser (thread view, or the preview: it does not move the focus); only `http`, `https` and `mailto` links are clickable |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
 | `,` | settings menu: theme, layout, mark-as-read, name, signature |
@@ -183,6 +184,7 @@ The password is resolved as everywhere else: system keychain, or `GMAIL_APP_PASS
 - **Gmail conversations** need the server to announce `X-GM-EXT-1` (Gmail does). Without it the list shows one row per message and `/` uses the plain matcher. `gmail-tui doctor` reports the capability.
 - **Conversations and folders**: spam and Trash messages stay out of a conversation, except when you open it from those folders. `a`, `#` and `v` on a row act only on the conversation's messages in the current folder; All Mail is never touched by archive or trash.
 - **Conversation paging**: the list pages count conversations, and each page reads at most 500 messages. A page can be shorter than 50, and a very old conversation deep in the list may not appear.
+- **Links in the body**: a URL in the text (and the destination of an HTML link, which the converter shows as the URL) is clickable: a click opens it in the system browser. Terminals with native OSC 8 hyperlinks (iTerm2, Ghostty, Kitty, WezTerm) also get the link, so `cmd+click` works. Only `http`, `https` and `mailto` are opened; a link is underlined in the accent colour. Links are not listed for keyboard selection.
 - **Lazy bodies**: opening a conversation downloads the bodies of the expanded messages only; collapsed rows show sender and date.
 - **Cache upgrade**: the message cache moved to schema v3. On the first start after upgrading, cached message entries are discarded and downloaded again.
 - **Pagination**: the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.

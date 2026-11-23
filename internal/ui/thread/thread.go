@@ -19,6 +19,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/andsigno82/gmail-tui/internal/childenv"
 	"github.com/andsigno82/gmail-tui/internal/msg"
 	"github.com/andsigno82/gmail-tui/internal/ui/styles"
 )
@@ -58,6 +59,7 @@ type Model struct {
 	conv     []entry       // messaggi in ordine cronologico; uno solo = vista singola
 	sel      int           // messaggio selezionato: azioni, r/f, o, :save (default l'ultimo)
 	starts   []int         // riga del titolo di ogni messaggio nel contenuto (solo conversazione)
+	linkRows [][]linkSpan  // link per riga del contenuto (indice = riga nel viewport, Richiesta di Andrea, 2026-11-23)
 	vp       viewport.Model
 	header   string   // blocco header pre-renderizzato (4 righe) del messaggio selezionato
 	attLines []string // righe allegati pre-renderizzate del messaggio selezionato
@@ -107,7 +109,7 @@ func NewConversation(anchor msg.MessageRef, full []*msg.Message, st styles.Style
 func newBase(id msg.MessageID, st styles.Styles) Model {
 	m := Model{id: id, st: st}
 	m.vp = viewport.New()
-	m.vp.SoftWrap = true // le righe lunghe vanno a capo (lettura email)
+	m.vp.SoftWrap = false // il corpo va a capo in bodyRows, per tenere i link su piu righe (Richiesta di Andrea, 2026-11-23)
 	// Rebind scroll (Piano 4, Task 3, decisione controller): il keymap default
 	// di bubbles viewport lega f (page giù) e b (page su) — tasti che il
 	// spec keymap riserva a inoltra (f) e libera (b). Restano pgup/pgdn/space
@@ -135,6 +137,13 @@ func (m Model) Update(ev tea.Msg) (Model, tea.Cmd) {
 	if m.cmdOpen {
 		cmd := mm.updateCommand(ev)
 		return mm, cmd
+	}
+	// Link nel corpo (Richiesta di Andrea, 2026-11-23): il clic sinistro su un link
+	// apre il browser senza toccare selezione o scorrimento; altrove il clic resta.
+	if click, ok := ev.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+		if cmd, ok := mm.LinkClick(click.Mouse().X, click.Mouse().Y); ok {
+			return mm, cmd
+		}
 	}
 	// Conversazione (Piano 8, Task 10): j/k scelgono il messaggio, invio ne
 	// alterna l'espansione, il clic sul titolo lo seleziona ed espande. Con un
@@ -207,9 +216,7 @@ func (m Model) View() string {
 // bubbles (viewport/filepicker) mutano lo stato con i loro Set*.
 func (m *Model) SetSize(width, height int) {
 	m.width, m.height = width, height
-	if m.multi() {
-		m.refresh() // i titoli e il corpo a capo dipendono dalla larghezza
-	}
+	m.refresh() // i titoli e il corpo a capo dipendono dalla larghezza
 	m.resize()
 	if m.pickerOpen {
 		m.picker = m.pickerHeight(m.picker)
@@ -317,19 +324,6 @@ func (m Model) renderHeader() string {
 	return strings.Join(lines, "\n")
 }
 
-// renderBody prepara il contenuto del viewport: le righe citate (che iniziano
-// con ">") ricevono lo stile Quoted riga per riga PRIMA di entrare nel
-// viewport (contenuto pre-stilizzato; la viewport non aggiunge stili).
-func (m Model) renderBody(full *msg.Message) string {
-	lines := strings.Split(full.BodyText, "\n")
-	for i, ln := range lines {
-		if strings.HasPrefix(ln, ">") {
-			lines[i] = m.st.Quoted.Render(ln)
-		}
-	}
-	return strings.Join(lines, "\n")
-}
-
 // renderAttachments prepara le righe degli allegati (solo elenco: save/open
 // arrivano in Piano 4) con dimensione umana.
 func (m Model) renderAttachments(full *msg.Message) []string {
@@ -368,10 +362,15 @@ func OpenCmd(path string) tea.Cmd {
 
 // browserCmd sceglie il comando di sistema: open su darwin, xdg-open altrove.
 func browserCmd(path string) *exec.Cmd {
+	var c *exec.Cmd
 	if runtime.GOOS == "darwin" {
-		return exec.Command("open", path)
+		c = exec.Command("open", path)
+	} else {
+		c = exec.Command("xdg-open", path)
 	}
-	return exec.Command("xdg-open", path)
+	// Ambiente filtrato: la password App e le GMAIL_TUI_* non escono verso il browser (childenv).
+	c.Env = childenv.Filtered()
+	return c
 }
 
 // writeHTMLTemp scrive l'HTML del messaggio in un tmpfile .html e restituisce

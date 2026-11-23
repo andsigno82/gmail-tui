@@ -728,6 +728,16 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.toast.Push(toast.Success, "aperto nel browser")
 		return m, cmd
 
+	case thread.LinkOpenedMsg:
+		// Link cliccato nel corpo (Richiesta di Andrea, 2026-11-23): esito come toast,
+		// con la destinazione (host, o indirizzo per mailto).
+		if ev.Err != nil {
+			cmd := m.toast.Push(toast.Error, fmt.Sprintf("apertura link: %v", ev.Err))
+			return m, cmd
+		}
+		cmd := m.toast.Push(toast.Success, "aperto nel browser: "+ev.Target)
+		return m, cmd
+
 	case thread.SaveRequested:
 		// `:save`/`:open` della command line (Piano 4, Task 2): il salvataggio
 		// gira fuori dal loop UI (spinner finché attachmentSaved); il feedback
@@ -1426,7 +1436,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 					// Piano 7.2, fix review: click sinistro sull'anteprima = focus; doppio
 					// click = thread a schermo intero (previewClick).
 					if click, ok := ev.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
-						return m.previewClick(click.Mouse().Y)
+						return m.previewClick(click.Mouse().X, click.Mouse().Y)
 					}
 					if _, wheel := ev.(tea.MouseWheelMsg); wheel && m.previewReady() {
 						var cmd tea.Cmd

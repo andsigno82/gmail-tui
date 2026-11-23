@@ -68,7 +68,7 @@ func DemoStore() *mail.Mock {
 				Labels:  []string{"Newsletter"},
 			},
 			To:       []string{"tu@example.com"},
-			BodyText: "In questo numero:\n\n- il nuovo client IMAP in puro Go\n- pattern per le tea.Cmd nei progetti Bubble Tea\n- unprofilatore di goroutine via browser\n\nLeggi il numero completo online.",
+			BodyText: "In questo numero:\n\n- il nuovo client IMAP in puro Go\n- pattern per le tea.Cmd nei progetti Bubble Tea\n- unprofilatore di goroutine via browser\n\nLeggi il numero completo online: https://example.com/newsletter/47",
 		},
 		{
 			Ref: msg.MessageRef{

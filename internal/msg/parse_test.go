@@ -141,6 +141,23 @@ func TestParseBodyHTML(t *testing.T) {
 	}
 }
 
+// TestParseHTMLLinkDestinazioneVisibile (Richiesta di Andrea, 2026-11-23): la
+// conversione HTML→testo (html2text senza WithLinksInnerText) sostituisce il testo
+// di un <a href> con la destinazione, quindi il link resta un URL visibile nel
+// corpo e la TUI lo rende cliccabile. Il testo dell'ancora non compare.
+func TestParseHTMLLinkDestinazioneVisibile(t *testing.T) {
+	raw := "From: a@example.com\r\nTo: b@example.com\r\nSubject: x\r\n" +
+		"Date: Mon, 23 Nov 2026 10:00:00 +0000\r\nContent-Type: text/html; charset=utf-8\r\n\r\n" +
+		"<p>Vai a <a href=\"https://example.net/offerta\">la pagina</a></p>\r\n"
+	m, err := Parse(NewID("INBOX", 50), strings.NewReader(raw))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if !strings.Contains(m.BodyText, "https://example.net/offerta") {
+		t.Errorf("BodyText = %q, voglio la destinazione del link visibile", m.BodyText)
+	}
+}
+
 func TestIDSplitRoundtrip(t *testing.T) {
 	id := NewID("INBOX", 7)
 	mb, uid, err := id.Split()

@@ -222,7 +222,15 @@ func (m Model) splitView() string {
 // previewClick gestisce il click sinistro sulla colonna dell'anteprima (Piano
 // 7.2, fix review): dà il focus all'anteprima; un secondo click entro la finestra
 // del doppio click apre il messaggio a schermo intero (come invio).
-func (m Model) previewClick(y int) (Model, tea.Cmd) {
+// Un clic su un link del corpo apre il browser e NON sposta il focus (Richiesta di
+// Andrea, 2026-11-23): il thread nell'anteprima inizia dopo separatore e padding.
+func (m Model) previewClick(x, y int) (Model, tea.Cmd) {
+	if m.previewReady() {
+		list, _ := splitWidths(m.width)
+		if cmd, ok := m.thread.LinkClick(x-(list+splitSepWidth+splitPreviewPad), y); ok {
+			return m, cmd
+		}
+	}
 	m.focusPreview = true
 	// Piano 8, Task 10: il click su un titolo della conversazione (riga y) la
 	// espande o comprime; il doppio click la apre a schermo intero.

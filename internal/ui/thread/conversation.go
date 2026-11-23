@@ -70,9 +70,7 @@ func (m *Model) SetBody(id msg.MessageID, full *msg.Message) {
 			m.conv[i].full = full
 		}
 	}
-	if m.multi() {
-		m.refresh()
-	}
+	m.refresh() // il corpo a capo dipende dalla larghezza anche nella vista singola
 }
 
 // multi dice se la vista è una conversazione (più di un messaggio): il ramo
@@ -119,39 +117,56 @@ func (m *Model) refresh() {
 		m.attLines = m.renderAttachments(sel)
 	}
 	if m.multi() {
-		m.vp.SoftWrap = false
-		content, starts := m.renderConversation()
+		lines, links, starts := m.renderConversation()
 		m.starts = starts
-		m.vp.SetContent(content)
+		m.setContent(lines, links)
 		return
 	}
-	m.vp.SoftWrap = true
 	m.starts = nil
+	var lines []string
+	var links [][]linkSpan
 	if sel != nil {
-		m.vp.SetContent(m.renderBody(sel))
+		seq := 0
+		lines, links = m.bodyRows(sel.BodyText, &seq)
 	}
+	m.setContent(lines, links)
+}
+
+// setContent installa le righe nel viewport, che non va a capo da solo (il corpo
+// e gia a capo in bodyRows, cosi i link restano sulla stessa riga logica), e le
+// porzioni dei link per riga per il clic (Richiesta di Andrea, 2026-11-23).
+func (m *Model) setContent(lines []string, links [][]linkSpan) {
+	m.linkRows = links
+	m.vp.SetContent(strings.Join(lines, "\n"))
 }
 
 // renderConversation compone il contenuto della conversazione e la riga di
 // inizio di ogni titolo (indice nel contenuto, non sullo schermo). Un messaggio
 // espanso senza corpo mostra un avviso al posto del testo.
-func (m Model) renderConversation() (string, []int) {
+func (m Model) renderConversation() ([]string, [][]linkSpan, []int) {
 	var lines []string
+	var links [][]linkSpan
 	starts := make([]int, len(m.conv))
+	seq := 0 // numerazione dei link di tutta la conversazione (id OSC 8 unici)
 	for i, e := range m.conv {
 		starts[i] = len(lines)
 		lines = append(lines, m.renderTitle(i))
+		links = append(links, nil)
 		if !e.expanded {
 			continue
 		}
 		if e.full == nil {
 			lines = append(lines, m.st.ListDate.Render("corpo in caricamento…"), "")
+			links = append(links, nil, nil)
 			continue
 		}
-		lines = append(lines, wrapLines(m.renderBody(e.full), m.width)...)
+		bl, bs := m.bodyRows(e.full.BodyText, &seq)
+		lines = append(lines, bl...)
+		links = append(links, bs...)
 		lines = append(lines, "")
+		links = append(links, nil)
 	}
-	return strings.Join(lines, "\n"), starts
+	return lines, links, starts
 }
 
 // renderTitle è la riga di un messaggio della conversazione: marcatore ▸/▾,
@@ -194,15 +209,6 @@ func truncWidth(s string, w int) string {
 		cur += rw
 	}
 	return b.String() + "…"
-}
-
-// wrapLines spezza il testo a capo sulla larghezza w: ogni riga restituita occupa
-// una sola riga del viewport (w <= 0: nessun a capo).
-func wrapLines(s string, w int) []string {
-	if w <= 0 {
-		return strings.Split(s, "\n")
-	}
-	return strings.Split(lipgloss.NewStyle().Width(w).Render(s), "\n")
 }
 
 // needBody chiede il corpo del messaggio i se non è ancora caricato (Piano 8,
