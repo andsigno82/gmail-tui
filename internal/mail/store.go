@@ -33,6 +33,9 @@ type Mailbox struct {
 	// Role viene dagli attributi SPECIAL-USE (RFC 6154), mai dal nome localizzato.
 	// Valori: "" (label) | "inbox" | "sent" | "drafts" | "trash" | "junk" | "all" | "flagged"
 	Role string
+	// Delimiter è il separatore della gerarchia dal LIST IMAP ("/" per Gmail);
+	// vuoto se non noto (Piano 15, Task 2, D15-T9: serve all'albero cartelle).
+	Delimiter string
 }
 
 // ChangeKind indica cosa è cambiato nel feed Watch.
@@ -156,6 +159,12 @@ type MailStore interface {
 	// poi le label in ordine alfabetico. Le mailbox \Noselect (contenitori come
 	// "[Gmail]") sono escluse.
 	ListMailboxes(ctx context.Context) ([]Mailbox, error)
+
+	// UnreadCounts restituisce i messaggi non letti per cartella (Piano 15,
+	// Task 2, D15-10, D15-T10): chiave = Mailbox.Name, valore = conteggio UNSEEN.
+	// Le mailbox assenti dalla mappa non sono state calcolate. Solo lettura: non
+	// modifica nulla, non è esposto al server MCP (il Reader resta com'è).
+	UnreadCounts(ctx context.Context) (map[string]int, error)
 
 	// Trash sposta i messaggi nel cestino (ruolo "trash"), con semantica Gmail:
 	// escono dalla cartella d'origine ed entrano nel cestino. Rifiuta senza

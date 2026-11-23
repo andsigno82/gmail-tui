@@ -50,6 +50,29 @@ type Styles struct {
 	// LabelsTint è Labels sulla tinta della riga spuntata, stesso ordine e indice
 	// (richiesta di Andrea, 2026-11-23).
 	LabelsTint []lipgloss.Style
+
+	// Piano 15, Task 2: campi del contratto per i Task 6-16. Fino al Task 9 sono
+	// segnaposto solo con colore di testo (nessun Background, nessuna sfumatura):
+	// il test di contrasto tabellare non li vede e TestNewTuttiITemi li trova con
+	// ANSI. Il Task 9 li sostituisce con i valori derivati dal tema.
+	LinkWarn      lipgloss.Style   // link con dominio diverso dal testo mostrato (D15-07)
+	LinkDashed    lipgloss.Style   // link sottolineato tratteggiato (D15-07)
+	Button        lipgloss.Style   // bottone a riquadro (D15-01)
+	ButtonFocus   lipgloss.Style   // bottone con il focus
+	ButtonHost    lipgloss.Style   // host di destinazione accanto al bottone
+	ChipAttach    lipgloss.Style   // chip allegato (D15-06)
+	ChipImage     lipgloss.Style   // chip immagine con testo alternativo (D15-08)
+	QuoteBar      []lipgloss.Style // barra della citazione, un elemento per livello (D15-03)
+	TableBorder   lipgloss.Style   // bordo delle tabelle (D15-02)
+	TableHeader   lipgloss.Style   // intestazione delle tabelle
+	TableCell     lipgloss.Style   // celle delle tabelle
+	BadgeAvatar   []lipgloss.Style // badge delle iniziali, un colore per indice (D15-05)
+	FolderCount   lipgloss.Style   // contatore dei non letti per cartella (D15-10)
+	FolderTree    lipgloss.Style   // rami dell'albero cartelle (D15-09)
+	OverlayBorder lipgloss.Style   // bordo delle finestre sovrapposte (D15-11)
+	OverlayShadow lipgloss.Style   // ombra delle finestre sovrapposte
+	StatusSegment []lipgloss.Style // segmenti della barra di stato (D15-12)
+	StatusSep     lipgloss.Style   // separatore dei segmenti
 }
 
 // New costruisce gli stili per il tema dato. La variante dark/light di ogni
@@ -86,7 +109,36 @@ func New(t theme.Theme) Styles {
 		ToastError:      toastStyle(t, t.Error),
 		Labels:          labelStyles(labelSlots(t)),
 		LabelsTint:      labelStylesTint(labelSlots(t), tint, t.Fg),
+
+		// Segnaposto del Piano 15, Task 2 (valori reali nel Task 9).
+		LinkWarn:      lipgloss.NewStyle().Foreground(adaptive(t.Warning)),
+		LinkDashed:    lipgloss.NewStyle().Foreground(adaptive(linkSlot(t))),
+		Button:        lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
+		ButtonFocus:   lipgloss.NewStyle().Foreground(adaptive(t.Primary)).Bold(true),
+		ButtonHost:    lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
+		ChipAttach:    lipgloss.NewStyle().Foreground(adaptive(t.Accent)),
+		ChipImage:     lipgloss.NewStyle().Foreground(adaptive(t.Muted)),
+		QuoteBar:      repeatStyle(lipgloss.NewStyle().Foreground(adaptive(t.Quoted)), 4),
+		TableBorder:   lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		TableHeader:   lipgloss.NewStyle().Foreground(adaptive(t.Primary)).Bold(true),
+		TableCell:     lipgloss.NewStyle().Foreground(adaptive(t.Fg)),
+		BadgeAvatar:   labelStyles(labelSlots(t)),
+		FolderCount:   lipgloss.NewStyle().Foreground(adaptive(t.Unread)).Bold(true),
+		FolderTree:    lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		OverlayBorder: lipgloss.NewStyle().Foreground(adaptive(t.Primary)),
+		OverlayShadow: lipgloss.NewStyle().Foreground(adaptive(t.Border)),
+		StatusSegment: repeatStyle(lipgloss.NewStyle().Foreground(adaptive(t.Fg)), 2),
+		StatusSep:     lipgloss.NewStyle().Foreground(adaptive(t.Border)),
 	}
+}
+
+// repeatStyle ripete lo stile n volte (segnaposto delle liste, Piano 15, Task 2).
+func repeatStyle(s lipgloss.Style, n int) []lipgloss.Style {
+	out := make([]lipgloss.Style, n)
+	for i := range out {
+		out[i] = s
+	}
+	return out
 }
 
 // LabelStyle restituisce il colore di una etichetta utente: hash deterministico

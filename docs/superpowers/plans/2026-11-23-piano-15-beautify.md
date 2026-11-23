@@ -199,11 +199,11 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test:** `go build ./...` e `go vet ./...` verdi; l'assertion a compile time che Mock e imap.Store implementano `MailStore` resta verde. Nessun test di comportamento.
 
-- [ ] Modificare `store.go` (campo e metodo con commento in italiano e riferimento Piano 15, Task 2).
-- [ ] Stub in `mock.go` e `imap/unseen.go`.
-- [ ] Campi in `styles.go` (senza valori: la valorizzazione è Task 9).
-- [ ] Gate (incluso `grep -rn "go-imap" internal --include="*.go" -l | grep -v internal/mail/imap` vuoto).
-- [ ] Commit `feat(mail,styles): contratti del Piano 15 (Task 2)`.
+- [x] Modificare `store.go` (campo e metodo con commento in italiano e riferimento Piano 15, Task 2).
+- [x] Stub in `mock.go` e `imap/unseen.go`.
+- [x] Campi in `styles.go` (senza valori: la valorizzazione è Task 9).
+- [x] Gate (incluso `grep -rn "go-imap" internal --include="*.go" -l | grep -v internal/mail/imap` vuoto).
+- [x] Commit `feat(mail,styles): contratti del Piano 15 (Task 2)`.
 
 ## Task 3: contratto del renderer (`internal/ui/render`)
 

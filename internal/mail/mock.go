@@ -244,6 +244,17 @@ func (m *Mock) ListMailboxes(context.Context) ([]Mailbox, error) {
 	return append([]Mailbox(nil), m.mailboxes()...), nil
 }
 
+// UnreadCounts implementa MailStore (Piano 15, Task 2): stub con mappa vuota,
+// i dati di demo arrivano nel Task 17.
+func (m *Mock) UnreadCounts(context.Context) (map[string]int, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.Err != nil {
+		return nil, m.Err
+	}
+	return map[string]int{}, nil
+}
+
 // Trash implementa MailStore: sposta gli id nel cestino con un nuovo ID nel
 // prefisso del cestino. Valida TUTTI gli id prima di agire (niente azioni
 // parziali, come il Trash IMAP).
