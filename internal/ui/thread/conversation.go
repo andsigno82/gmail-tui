@@ -47,10 +47,20 @@ func DefaultExpanded(refs []msg.MessageRef) []msg.MessageID {
 // cronologico) e dai soli corpi già caricati in bodies (Piano 8, Task 13). anchor
 // è la riga aperta. Selezione di default: l'ultimo messaggio.
 func NewLazy(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, st styles.Styles) Model {
+	return NewLazyCached(anchor, refs, bodies, st, nil)
+}
+
+// NewLazyCached e NewLazy con la cache di rendering condivisa rc: l'app ne crea una
+// sola (NewRenderCache) e la passa a ogni thread, cosi i corpi gia resi valgono
+// anche tra messaggi diversi (D15-T2, revisione 2026-11-23). nil = cache privata.
+func NewLazyCached(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, st styles.Styles, rc *RenderCache) Model {
 	if len(refs) == 0 {
-		return New(anchor, bodies[anchor.ID], st)
+		m := newBaseOn(anchor.ID, st, rc) // come New
+		m.conv = []entry{{ref: anchor, full: bodies[anchor.ID], expanded: true}}
+		m.refresh()
+		return m
 	}
-	m := newBase(anchor.ID, st)
+	m := newBaseOn(anchor.ID, st, rc)
 	for i, r := range refs {
 		m.conv = append(m.conv, entry{ref: r, full: bodies[r.ID], expanded: isDefaultExpanded(i, refs)})
 	}
@@ -110,6 +120,7 @@ func (m Model) bodyHeight() int {
 // espansi della conversazione con righe già a capo, così i titoli restano
 // allineati a `starts` senza che il viewport ri-vada a capo).
 func (m *Model) refresh() {
+	m.cache.beginRound() // i corpi richiesti da questo giro (bodyOut) non si espellono
 	m.header = m.renderHeader()
 	m.attLines, m.attZones = nil, nil
 	sel := m.selMsg()

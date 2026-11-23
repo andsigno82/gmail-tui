@@ -166,6 +166,7 @@ type Model struct {
 	labelPick     labelPicker            // stato del pannello label (Piano 10, Task 7)
 	trashOpen     bool                   // conferma "spostare nel cestino?" aperta (Piano 7, Task 5)
 	linkAsk       *linkAsk               // conferma di un link/bottone con Warn in attesa (Piano 15, Task 16)
+	renderCache   *thread.RenderCache    // corpi resi, condivisi tra i thread (D15-T2, revisione 2026-11-23)
 	trashRef      msg.MessageRef         // messaggio in conferma: letto all'apertura, non al sì
 	trashSel      []msg.MessageRef       // conversazioni selezionate in conferma cestino (Piano 10, Task 3); vuoto = trashRef
 	sel           map[msg.MessageID]bool // righe selezionate nella lista, per ID della conversazione (Piano 10, Task 2)
@@ -222,7 +223,7 @@ func New(store mail.MailStore, sender Sender, th theme.Theme) Model {
 	}
 	memBook, _ := contacts.Open("") // Piano 9: rubrica in memoria; il main la collega al file
 	return Model{
-		exit: &exitLog{},
+		exit: &exitLog{}, renderCache: thread.NewRenderCache(),
 		book: memBook, clock: time.Now,
 		store:    store,
 		sender:   sender,
@@ -510,7 +511,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
 		// precedente sono scartati.
 		m.threadGen++
-		m.thread = thread.NewLazy(m.pendingRef, refs, bodies, m.styles)
+		m.thread = thread.NewLazyCached(m.pendingRef, refs, bodies, m.styles, m.renderCache)
 		m.relayout()
 		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
 			m.thread.MarkRead()
@@ -887,7 +888,7 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		m.threadGen++
-		m.thread = thread.NewLazy(m.prevRef, refs, bodies, m.styles)
+		m.thread = thread.NewLazyCached(m.prevRef, refs, bodies, m.styles, m.renderCache)
 		m.relayout()
 		return m.previewMarkRead(ev.tok)
 

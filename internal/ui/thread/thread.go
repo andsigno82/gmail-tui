@@ -124,8 +124,11 @@ func NewConversation(anchor msg.MessageRef, full []*msg.Message, st styles.Style
 }
 
 // newBase prepara viewport (con il rebind dello scroll) e command line.
-func newBase(id msg.MessageID, st styles.Styles) Model {
-	m := Model{id: id, st: st, cache: newRenderCache(), theme: themeKey(st), gen: nextGen()}
+func newBase(id msg.MessageID, st styles.Styles) Model { return newBaseOn(id, st, nil) }
+
+// newBaseOn e newBase con la cache di rendering condivisa rc (nil = privata).
+func newBaseOn(id msg.MessageID, st styles.Styles, rc *RenderCache) Model {
+	m := Model{id: id, st: st, cache: newRenderCacheOn(rc), theme: themeKey(st), gen: nextGen()}
 	m.vp = viewport.New()
 	m.vp.SoftWrap = false // il corpo va a capo in bodyRows, per tenere i link su piu righe (Richiesta di Andrea, 2026-11-23)
 	// Rebind scroll (Piano 4, Task 3, decisione controller): il keymap default

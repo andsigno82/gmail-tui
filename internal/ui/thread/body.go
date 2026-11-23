@@ -148,6 +148,7 @@ func (m Model) bodyWidth() int {
 func (m *Model) bodyOut(full *msg.Message) render.Out {
 	w := m.bodyWidth()
 	key := cacheKey{id: full.Ref.ID, width: w, theme: m.theme, variant: variantOf(full)}
+	m.cache.use(key)
 	if sourceLen(full) <= syncRenderLimit {
 		return m.cache.lookup(key, func() render.Out { return buildBody(full, w, m.st) })
 	}
