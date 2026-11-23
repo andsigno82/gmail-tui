@@ -111,13 +111,27 @@ func (m *Model) sizeInbox() {
 // sizeThread dà al thread l'intera vista se è aperto a schermo intero, altrimenti
 // la colonna dell'anteprima (due colonne).
 func (m *Model) sizeThread() {
-	h := max(0, m.height-1)
-	if m.view != viewThread && m.splitOn() {
-		_, preview := splitWidths(m.width)
-		m.thread.SetSize(max(0, preview-splitPreviewPad), h)
+	w, h := m.threadSize()
+	// Stessa misura: il thread e gia a posto (il suo SetSize rifarebbe header e corpo).
+	if tw, th := m.thread.Size(); tw == w && th == h {
 		return
 	}
-	m.thread.SetSize(m.width, h)
+	m.thread.SetSize(w, h)
+}
+
+// threadSize e la misura del thread: l'intera vista se e aperto a schermo intero,
+// altrimenti la colonna dell'anteprima (due colonne). Senza size nota (0, 0), cosi
+// i costruttori del thread non anticipano una misura inventata.
+func (m Model) threadSize() (w, h int) {
+	if m.width == 0 {
+		return 0, 0
+	}
+	h = max(0, m.height-1)
+	if m.view != viewThread && m.splitOn() {
+		_, preview := splitWidths(m.width)
+		return max(0, preview-splitPreviewPad), h
+	}
+	return m.width, h
 }
 
 // syncPreview allinea l'anteprima al cursore: ogni cambio del messaggio sotto il

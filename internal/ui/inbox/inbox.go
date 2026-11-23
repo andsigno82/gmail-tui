@@ -59,7 +59,7 @@ func (i item) FilterValue() string { return i.ref.From + " " + i.ref.Subject }
 // demandato a delegate; enter/doppio click producono SelectedMsg.
 type Model struct {
 	list  list.Model
-	st    styles.Styles
+	st    *styles.Styles         // mai mutato dopo la creazione: i Model copiati per valore lo condividono
 	clock func() time.Time       // date relative e doppio click (seam di test)
 	sel   map[msg.MessageID]bool // righe selezionate per ID della conversazione (Piano 10, Task 2)
 
@@ -71,7 +71,7 @@ type Model struct {
 // New costruisce l'inbox sui ref dati (l'ordine di arrivo è preservato: lo
 // store consegna già data desc, qui nessun riordino).
 func New(refs []msg.MessageRef, st styles.Styles) Model {
-	d := delegate{st: st, clock: time.Now}
+	d := delegate{st: &st, clock: time.Now}
 	l := list.New(refsToItems(refs), d, 0, 0)
 	// La radice possiede già titolo/status/paginazione/help: la lista rende
 	// solo le righe dei messaggi, senza decorazioni bubbles.
@@ -87,7 +87,7 @@ func New(refs []msg.MessageRef, st styles.Styles) Model {
 	km.PrevPage = key.NewBinding(key.WithKeys("left", "pgup"), key.WithHelp("←/pgup", "pag. prec."))
 	km.NextPage = key.NewBinding(key.WithKeys("right", "pgdown"), key.WithHelp("→/pgdn", "pag. succ."))
 	l.KeyMap = km
-	return Model{list: l, st: st, clock: time.Now}
+	return Model{list: l, st: &st, clock: time.Now}
 }
 
 // Update gestisce i messaggi della vista: enter apre il messaggio
@@ -273,8 +273,8 @@ func (m *Model) SetClock(f func() time.Time) {
 // Piano 4 Task 2): aggiorna la copia locale e ricostruisce il delegate, che
 // custodisce gli stili per il render delle righe. Lista e cursore restano.
 func (m *Model) SetStyles(st styles.Styles) {
-	m.st = st
-	m.list.SetDelegate(delegate{st: st, clock: m.clock, sel: m.sel})
+	m.st = &st // copia nuova: il delegate non deve vedere modifiche altrui
+	m.list.SetDelegate(delegate{st: m.st, clock: m.clock, sel: m.sel})
 }
 
 // openSelected produce la Cmd che notifica il ref sotto il cursore.
@@ -373,7 +373,7 @@ func stessoGiorno(a, b time.Time) bool {
 // delegate è l'ItemDelegate custom: una riga per messaggio, stile per slot
 // del tema (ListUnread/ListNormal/ListStarred/ListDate/ListSelected).
 type delegate struct {
-	st    styles.Styles
+	st    *styles.Styles // puntatore: Styles pesa decine di KB e il delegate si copia a ogni riga
 	clock func() time.Time
 	sel   map[msg.MessageID]bool // righe selezionate (Piano 10, Task 2): casella ☑
 }

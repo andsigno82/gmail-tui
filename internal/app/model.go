@@ -511,7 +511,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		// del terminale è già nota. Nuova generazione: i corpi in volo dal thread
 		// precedente sono scartati.
 		m.threadGen++
-		m.thread = thread.NewLazyCached(m.pendingRef, refs, bodies, m.styles, m.renderCache)
+		tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
+		m.thread = thread.NewLazyCachedSized(m.pendingRef, refs, bodies, m.styles, m.renderCache, tw, th)
 		m.relayout()
 		if unread := m.thread.UnreadIDs(); len(unread) > 0 {
 			m.thread.MarkRead()
@@ -888,7 +889,8 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		m.threadGen++
-		m.thread = thread.NewLazyCached(m.prevRef, refs, bodies, m.styles, m.renderCache)
+		tw, th := m.threadSize() // gia alla misura finale: un solo rendering del corpo
+		m.thread = thread.NewLazyCachedSized(m.prevRef, refs, bodies, m.styles, m.renderCache, tw, th)
 		m.relayout()
 		return m.previewMarkRead(ev.tok)
 

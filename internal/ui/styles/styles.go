@@ -189,7 +189,7 @@ func statusSegmentStyles(t theme.Theme, bgs ...theme.Slot) []lipgloss.Style {
 
 // LabelStyle restituisce il colore di una etichetta utente: hash deterministico
 // del nome sul palette (Piano 8, Task 9, D8-5). Senza palette ricade su ListNormal.
-func (s Styles) LabelStyle(name string) lipgloss.Style {
+func (s *Styles) LabelStyle(name string) lipgloss.Style { // puntatore: Styles pesa decine di KB
 	if len(s.Labels) == 0 {
 		return s.ListNormal
 	}
@@ -199,7 +199,7 @@ func (s Styles) LabelStyle(name string) lipgloss.Style {
 // LabelStyleTint è LabelStyle per una riga spuntata (sfondo tinta, richiesta di
 // Andrea, 2026-11-23): stesso indice sul palette LabelsTint. Senza palette ricade
 // su ListTint.
-func (s Styles) LabelStyleTint(name string) lipgloss.Style {
+func (s *Styles) LabelStyleTint(name string) lipgloss.Style {
 	if len(s.LabelsTint) == 0 {
 		return s.ListTint
 	}

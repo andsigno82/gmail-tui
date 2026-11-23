@@ -54,20 +54,35 @@ func NewLazy(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.Messag
 // sola (NewRenderCache) e la passa a ogni thread, cosi i corpi gia resi valgono
 // anche tra messaggi diversi (D15-T2, revisione 2026-11-23). nil = cache privata.
 func NewLazyCached(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, st styles.Styles, rc *RenderCache) Model {
-	if len(refs) == 0 {
-		m := newBaseOn(anchor.ID, st, rc) // come New
-		m.conv = []entry{{ref: anchor, full: bodies[anchor.ID], expanded: true}}
-		m.refresh()
-		return m
-	}
+	return NewLazyCachedSized(anchor, refs, bodies, st, rc, 0, 0)
+}
+
+// NewLazyCachedSized e NewLazyCached gia alla misura finale width x height (come un
+// SetSize subito dopo la costruzione, ma senza il primo rendering inutile del corpo
+// alla larghezza di default: indagine prestazioni dopo il Piano 15). width <= 0 =
+// misura non nota, identico a NewLazyCached.
+func NewLazyCachedSized(anchor msg.MessageRef, refs []msg.MessageRef, bodies map[msg.MessageID]*msg.Message, st styles.Styles, rc *RenderCache, width, height int) Model {
 	m := newBaseOn(anchor.ID, st, rc)
-	for i, r := range refs {
-		m.conv = append(m.conv, entry{ref: r, full: bodies[r.ID], expanded: isDefaultExpanded(i, refs)})
+	if width > 0 {
+		m.width, m.height = width, height
 	}
-	m.sel = len(refs) - 1
+	if len(refs) == 0 {
+		m.conv = []entry{{ref: anchor, full: bodies[anchor.ID], expanded: true}} // come New
+	} else {
+		for i, r := range refs {
+			m.conv = append(m.conv, entry{ref: r, full: bodies[r.ID], expanded: isDefaultExpanded(i, refs)})
+		}
+		m.sel = len(refs) - 1
+	}
 	m.refresh()
+	if width > 0 {
+		m.resize()
+	}
 	return m
 }
+
+// Size e la misura corrente (larghezza, altezza) impostata da SetSize.
+func (m Model) Size() (width, height int) { return m.width, m.height }
 
 // SetBody installa il corpo arrivato per il messaggio id (risposta a BodyRequested).
 // Un corpo per un messaggio assente o nil non cambia nulla.
