@@ -74,8 +74,8 @@ func requireBgSuTutto(t *testing.T, riga, want string) {
 
 // TestRigaSpuntataTintaSuTuttaLaLarghezza (richiesta di Andrea, 2026-11-23): con
 // profilo dark forzato, una riga spuntata ma non sotto il cursore ha come sfondo
-// la tinta (bg mescolato al 20% con selection: default dark #16161e+#2e2e42 =
-// #1b1b25) su tutte le celle, date comprese. La riga sotto il cursore mantiene
+// la tinta (bg mescolato al 50% con selection: default dark #16161e+#2e2e42 =
+// #222230) su tutte le celle, date comprese. La riga sotto il cursore mantiene
 // lo sfondo Selection (#2e2e42).
 func TestRigaSpuntataTintaSuTuttaLaLarghezza(t *testing.T) {
 	orig := compat.HasDarkBackground
@@ -92,7 +92,7 @@ func TestRigaSpuntataTintaSuTuttaLaLarghezza(t *testing.T) {
 		t.Fatalf("righe = %d, voglio almeno 2", len(r))
 	}
 	requireBgSuTutto(t, r[0], "rgb(46,46,66)")
-	requireBgSuTutto(t, r[1], "rgb(27,27,37)")
+	requireBgSuTutto(t, r[1], "rgb(34,34,48)")
 }
 
 // TestRigaSpuntataConEtichetteSullaTinta: le etichette della riga spuntata restano
@@ -108,7 +108,7 @@ func TestRigaSpuntataConEtichetteSullaTinta(t *testing.T) {
 	m.SetConversations(convs)
 	m.SetSelection(map[msg.MessageID]bool{msg.NewID("INBOX", 2): true})
 	r := rows(m)
-	requireBgSuTutto(t, r[1], "rgb(27,27,37)")
+	requireBgSuTutto(t, r[1], "rgb(34,34,48)")
 	if !strings.Contains(r[1], "[lavoro]") {
 		t.Errorf("riga = %q, voglio l'etichetta [lavoro]", r[1])
 	}

@@ -186,8 +186,8 @@ func adaptive(s theme.Slot) color.Color {
 }
 
 // frazioneTinta è la quota di selection mescolata nel bg per la riga spuntata con x
-// (richiesta di Andrea, 2026-11-23): 20% verso selection, tenue e rispettosa dei temi.
-const frazioneTinta = 0.20
+// (richiesta di Andrea, 2026-11-23): 50% verso selection (il 20% iniziale era invisibile sul fondo del terminale), sempre più tenue del cursore.
+const frazioneTinta = 0.50
 
 // mescola mescola linearmente in sRGB lo slot a verso lo slot b di frac (0 dà a, 1
 // dà b), separatamente per la variante dark e light. Nessun colore fisso: la tinta
