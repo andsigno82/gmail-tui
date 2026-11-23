@@ -362,10 +362,10 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 **Test (spike, prima di adottare):** un `Layer` con celle di spazio stilizzate copre le celle sottostanti nel render del compositor; l'ombra è visibile fuori dalla finestra; la finestra è sopra il contenuto. Se lo spike fallisce, il piano si ferma e la Q15-5 va posta ad Andrea.
 
-- [ ] Spike RED.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(overlay): finestre con ombra (Piano 15, Task 12)`.
+- [x] Spike RED.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(overlay): finestre con ombra (Piano 15, Task 12)`.
 
 ## Task 13: barra di stato a segmenti (`internal/ui/statusline`)
 
