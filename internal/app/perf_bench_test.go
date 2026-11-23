@@ -327,6 +327,36 @@ var perfDims = []dims{{120, 35}, {200, 50}}
 
 func (d dims) name() string { return fmt.Sprintf("%dx%d", d.w, d.h) }
 
+// --- benchmark: avvio fino alla prima lista ------------------------------------
+
+// BenchmarkStartupToFirstList: lavoro sul loop UI dall'avvio alla prima lista
+// visibile (WindowSize, splash, connResult, msgsLoaded, View finale); lo store e
+// in memoria, quindi la latenza di rete non c'e: misura solo il costo dell'app.
+func BenchmarkStartupToFirstList(b *testing.B) {
+	for _, d := range perfDims {
+		b.Run(d.name(), func(b *testing.B) {
+			var mt meter
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				b.StopTimer()
+				st := perfStore()
+				m := New(st, noopSender{}, perfTheme(b))
+				m.SetPrefs(config.LayoutSingle, config.PreviewMarkReadNever)
+				mt.skipPreview = true
+				b.StartTimer()
+				m, _ = mt.stepM(m, tea.WindowSizeMsg{Width: d.w, Height: d.h})
+				_ = mt.viewM(m) // splash
+				m = mt.drain(m, m.Init(), 5)
+				_ = mt.viewM(m) // prima lista
+				if len(m.refs) == 0 {
+					b.Fatal("lista vuota")
+				}
+			}
+			mt.report(b)
+		})
+	}
+}
+
 // --- benchmark: tasti in lista (stato stazionario) ---------------------------
 
 func benchListKey(b *testing.B, layout string, withView bool) {
