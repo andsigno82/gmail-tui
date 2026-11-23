@@ -221,10 +221,10 @@ Il package `cache` importa `internal/mail` solo per il tipo `Conversation`; se c
 
 **Test (RED prima):** `TestReconcileKeepsSelectionByGmailID`, `TestReconcileKeepsExpandedAndScroll`, `TestReconcileDoesNotMatchByUIDAcrossEpochs` (stesso ID, GmailID diverso = messaggio diverso: la selezione non lo segue), `TestReconcileNewMessageAppended`, `TestReconcileNoRerenderOfUnchangedBodies`.
 
-- [ ] RED riportato.
-- [ ] Implementazione.
-- [ ] Gate.
-- [ ] Commit `feat(thread): conciliazione del thread con i dati freschi (Piano 16, Task 6)`.
+- [x] RED riportato.
+- [x] Implementazione.
+- [x] Gate.
+- [x] Commit `feat(thread): conciliazione del thread con i dati freschi (Piano 16, Task 6)`.
 
 ## Task 7: traccia della cache
 
