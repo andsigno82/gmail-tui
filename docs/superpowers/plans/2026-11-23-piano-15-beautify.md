@@ -481,6 +481,8 @@ Nota: `internal/app/model.go` è il file più conteso. Wave 3b e 3c sono sequenz
 
 ## Domande per Andrea
 
+**Risposte (2026-11-23):** Q15-1 solo tipi sicuri (PDF, immagini, testo; il resto → toast "usa :save"), come il default proposto. Q15-2 nessun glifo speciale (nessun campo di config). Q15-3 terminale principale di Andrea: Ghostty (undercurl e colore supportati; il marcatore `⚠` resta comunque). Q15-4 confermato dal coordinatore: contatori su INBOX e label, icone solo testo. Q15-6 confermato: 512 KiB con troncamento dichiarato. Q15-5 resta aperta finché lo spike del Task 12 non dà esito.
+
 - **Q15-1: apertura degli allegati.** Default proposto (D15-T14): aprire solo PDF, immagini e testo; tutto il resto (`.app`, `.command`, `.pkg`, Office con macro) → toast "usa :save". Alternativa: aprire tutto con conferma. Quale?
 - **Q15-2: separatori powerline.** Il glifo `U+E0B0` richiede un font Powerline/Nerd. Default: separatori senza glifo (cambio di sfondo). Opzione `statusline_glyphs = "powerline"` in config: si aggiunge un campo di configurazione. Confermare?
 - **Q15-3: sottolineature.** Undercurl e colore della sottolineatura dipendono dal terminale (Apple Terminal non le supporta: da verificare). Default: il link ondulato ha sempre anche il marcatore `⚠` nel testo. Quali terminali usa Andrea per lo smoke?
