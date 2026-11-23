@@ -59,7 +59,7 @@ Config file: `~/.config/gmail-tui/config.toml` on Linux (or `$XDG_CONFIG_HOME/gm
 | `m` | folders and labels picker (`Enter` opens, `Esc` closes); choosing a folder clears the active search |
 | `s` | star on/off (with a selection: on for all if any is unstarred, otherwise off for all) |
 | `v` | mark read/unread (with a selection: read for all if any is unread, otherwise unread for all) |
-| `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before |
+| `l` | label panel on Gmail: with a selection, check labels on all selected conversations (☑ on all, ◪ on some); `tab` toggles the row under the cursor, `space` too when the filter is empty; type to filter, or a new name and `Enter` to create it; `Enter` applies additions and removals together. Without Gmail (`X-GM-EXT-1`): the one-line prompt, as before; with a selection it adds the label to all selected conversations |
 | `o` | open the selected message's HTML body in browser (thread view) |
 | `:` | commands (thread view): `:save <n> [path]`, `:open <n>`, `:theme <name>` |
 | `pgup`/`pgdn`/`space`/`d`/`u` | page scroll (thread view, or the preview when focused) |
