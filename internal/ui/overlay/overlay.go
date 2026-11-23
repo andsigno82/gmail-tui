@@ -66,26 +66,49 @@ func Window(content, title string, st styles.Styles, w, h int) string {
 // Z=1 in (x+2, y+1), finestra Z=2 in (x, y). Le coordinate sono riportate dentro
 // la base in modo che finestra e ombra restino visibili; l'uscita ha sempre le
 // dimensioni di base (finestra più grande: tagliata). Piano 15, Task 12.
+//
+// Il compositor lavora solo sulla banda di righe coperta da finestra e ombra (le
+// righe sopra e sotto restano quelle della base): ogni riga e indipendente, quindi
+// l'uscita e identica a quella sull'intera base (TestOverlayABandaEquivaleAlCompositorePieno)
+// ma il buffer di celle e alto quanto la finestra e non quanto lo schermo (indagine
+// prestazioni dopo il Piano 15: il buffer pieno era il costo di ogni frame con una
+// finestra aperta).
 func Overlay(base, win string, x, y int, st styles.Styles) string {
-	bw, bh := lipgloss.Width(base), lipgloss.Height(base)
+	lines := strings.Split(base, "\n")
+	bw, bh := lipgloss.Width(base), len(lines)
 	ww, wh := lipgloss.Width(win), lipgloss.Height(win)
 	x = min(max(x, 0), max(bw-ww-shadowDX, 0))
 	y = min(max(y, 0), max(bh-wh-shadowDY, 0))
 
+	top := min(y, bh)
+	bot := min(bh, y+wh+shadowDY) // ultima riga (esclusa) coperta dall'ombra
+	band := strings.Join(lines[top:bot], "\n")
+	bandH := bot - top
+
 	row := strings.Repeat(shadowRune, ww)
 	shadow := st.OverlayShadow.UnsetBackground().Render(strings.TrimSuffix(strings.Repeat(row+"\n", wh), "\n"))
 	out := lipgloss.NewCompositor(
-		lipgloss.NewLayer(base),
-		lipgloss.NewLayer(shadow).X(x+shadowDX).Y(y+shadowDY).Z(1),
-		lipgloss.NewLayer(win).X(x).Y(y).Z(2),
+		lipgloss.NewLayer(band),
+		lipgloss.NewLayer(shadow).X(x+shadowDX).Y(shadowDY).Z(1),
+		lipgloss.NewLayer(win).X(x).Z(2),
 	).Render()
 
 	// Il render dei layer toglie le righe vuote finali: si riportano all'altezza
-	// della base, poi si taglia ciò che sfora (finestra più grande della base).
-	if n := strings.Count(out, "\n") + 1; n < bh {
-		out += strings.Repeat("\n", bh-n)
+	// della banda, poi si taglia ciò che sfora (finestra più grande della base).
+	if n := strings.Count(out, "\n") + 1; n < bandH {
+		out += strings.Repeat("\n", bandH-n)
 	}
-	return lipgloss.NewStyle().MaxWidth(bw).MaxHeight(bh).Render(out)
+	out = lipgloss.NewStyle().MaxWidth(bw).MaxHeight(bandH).Render(out)
+
+	parts := make([]string, 0, 3)
+	if top > 0 {
+		parts = append(parts, strings.Join(lines[:top], "\n"))
+	}
+	parts = append(parts, out)
+	if bot < bh {
+		parts = append(parts, strings.Join(lines[bot:], "\n"))
+	}
+	return strings.Join(parts, "\n")
 }
 
 // Center dà le coordinate (x, y) che centrano win in base, mai negative.
