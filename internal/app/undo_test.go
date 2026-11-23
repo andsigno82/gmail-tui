@@ -1,6 +1,8 @@
 package app
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -229,4 +231,72 @@ func toastContains(m Model, text string) bool {
 		}
 	}
 	return false
+}
+
+// failSecondTrash fa fallire la seconda Trash: un cestino multiplo con errore a metà
+// (Piano 10, review punto 2).
+type failSecondTrash struct {
+	*mail.Mock
+	calls int
+}
+
+// Trash delega al Mock, tranne la seconda chiamata che fallisce senza agire.
+func (f *failSecondTrash) Trash(ctx context.Context, ids []msg.MessageID) ([]msg.MessageID, error) {
+	f.calls++
+	if f.calls == 2 {
+		return nil, errors.New("server giù")
+	}
+	return f.Mock.Trash(ctx, ids)
+}
+
+// inboxTrioFixture: tre messaggi in INBOX (uid 1..3, GmailID 11..13), senza thread:
+// ogni riga è una conversazione, come con le fixture di archivia.
+func inboxTrioFixture() *mail.Mock {
+	base := time.Date(2026, 11, 20, 10, 0, 0, 0, time.UTC)
+	var msgs []*msg.Message
+	for uid := uint32(1); uid <= 3; uid++ {
+		msgs = append(msgs, &msg.Message{Ref: msg.MessageRef{
+			ID: msg.NewID("INBOX", uid), GmailID: uint64(10 + uid), From: "anna@x.dev",
+			Subject: "tema", Date: base.Add(time.Duration(uid) * time.Hour),
+		}})
+	}
+	return &mail.Mock{
+		Mailboxes: []mail.Mailbox{
+			{Name: "INBOX", Role: "inbox"},
+			{Name: "[Gmail]/Tutti i messaggi", Role: "all"},
+			{Name: "[Gmail]/Trash", Role: "trash"},
+		},
+		Msgs: msgs,
+	}
+}
+
+// Piano 10, review punto 2: cestino di tre conversazioni con errore alla seconda. La
+// prima è spostata: il toast offre `u` per lei (ritorno al suo posto); la seconda e la
+// terza restano in INBOX e il toast d'errore le dice.
+func TestBulkTrashPartialErrorOffersUndoForMoved(t *testing.T) {
+	mock := inboxTrioFixture()
+	m := pagedModel(t, &failSecondTrash{Mock: mock})
+	m, _ = step(m, pressKey("X"))
+	m, _ = step(m, pressKey("#"))
+	m, cmd := step(m, pressKey("s"))
+	m = applyAll(t, m, cmd)
+	if inTrash(mock) != 1 {
+		t.Fatalf("nel cestino = %d, voglio 1 (la sola spostata prima dell'errore)", inTrash(mock))
+	}
+	if !toastHasUndo(m) {
+		t.Fatalf("toast = %v, voglio l'offerta di u per la conversazione spostata", m.toast.Texts())
+	}
+	if !toastContains(m, "server giù") {
+		t.Fatalf("toast = %v, voglio l'errore per le conversazioni non spostate", m.toast.Texts())
+	}
+	m, cmd = step(m, pressKey("u"))
+	applyAll(t, m, cmd)
+	if inTrash(mock) != 0 {
+		t.Errorf("u: nel cestino = %d, voglio 0", inTrash(mock))
+	}
+	for uid := uint32(1); uid <= 3; uid++ {
+		if !hasInbox(mock, uid) {
+			t.Errorf("u: uid %d non è tornato in INBOX", uid)
+		}
+	}
 }

@@ -155,7 +155,7 @@ func bulkArchive(st mail.MailStore, rows []msg.MessageRef, gen int) tea.Cmd {
 func bulkTrash(st mail.MailStore, rows []msg.MessageRef, gen int) tea.Cmd {
 	return func() tea.Msg {
 		gone, undo, err := trashRows(context.Background(), st, rows)
-		return opDone{label: fmt.Sprintf("nel cestino %d", len(rows)), err: err, refresh: true, deep: true, gone: gone, gen: gen, checkGen: true, undo: undo}
+		return opDone{label: trashLabel(len(rows), undo, err), err: err, refresh: true, deep: true, gone: gone, gen: gen, checkGen: true, undo: undo}
 	}
 }
 

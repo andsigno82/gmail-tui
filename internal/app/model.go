@@ -558,10 +558,12 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 		if ev.err == nil && len(ev.observed) > 0 {
 			m.feedBook(true, ev.observed...) // destinatari dell'invio riuscito: incremento (D9-F)
 		}
-		if ev.err == nil && len(ev.gone) > 0 {
+		if len(ev.gone) > 0 && (ev.err == nil || ev.undo != nil) {
 			// Piano 7, fix review 1: gli ID usciti dalla cartella (Archive/Trash)
 			// si tolgono dalla coda PRIMA del merge del refresh profondo, che
-			// riaccoda le righe oltre refreshCap dalla lista precedente.
+			// riaccoda le righe oltre refreshCap dalla lista precedente. Con errore
+			// a metà di un cestino (Piano 10, review punto 2) le spostate escono
+			// comunque: hanno un annulla.
 			m.refs = withoutIDs(m.refs, ev.gone)
 		}
 		if ev.send {
@@ -582,6 +584,11 @@ func (m Model) update(ev tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			cmd := m.toast.Push(toast.Error, text)
+			if ev.undo != nil {
+				// Piano 10, review punto 2: errore a metà di un cestino. L'errore dice
+				// cosa non è andato; l'annulla resta per le conversazioni spostate.
+				return m, tea.Batch(cmd, m.armBulkUndo(ev.undo, ev.label))
+			}
 			return m, cmd
 		}
 		// Esito riuscito: toast di successo (Piano 7.3, Task 2), la barra non lo tiene.

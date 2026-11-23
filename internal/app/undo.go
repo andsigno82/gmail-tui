@@ -99,7 +99,9 @@ func trashRows(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) ([
 	for i, r := range rows {
 		in, err := st.Trash(ctx, plan[i])
 		if err != nil {
-			return gone, nil, err
+			// Piano 10, review punto 2: errore a metà. Le conversazioni già spostate
+			// restano annullabili con `u`; le altre non sono toccate.
+			return gone, trashUndo(groups, restorable), err
 		}
 		gone = append(gone, plan[i]...)
 		if len(in) == 0 {
@@ -107,10 +109,25 @@ func trashRows(ctx context.Context, st mail.MailStore, rows []msg.MessageRef) ([
 		}
 		groups = append(groups, trashGroup{ids: in, dest: boxOf(r), labels: userLabels(r.Labels)})
 	}
-	if !restorable {
-		return gone, nil, nil
+	return gone, trashUndo(groups, restorable), nil
+}
+
+// trashUndo è l'annulla di un cestino fatto di gruppi: nil se non c'è nulla da
+// riportare o se un gruppo non ha gli ID nel cestino (il ritorno non si può fare).
+func trashUndo(groups []trashGroup, restorable bool) *bulkUndo {
+	if !restorable || len(groups) == 0 {
+		return nil
 	}
-	return gone, &bulkUndo{kind: undoTrash, n: len(rows), groups: groups}, nil
+	return &bulkUndo{kind: undoTrash, n: len(groups), groups: groups}
+}
+
+// trashLabel è l'esito del cestino di n conversazioni. Con errore a metà e annulla
+// disponibile dice quante sono davvero spostate (Piano 10, review punto 2).
+func trashLabel(n int, undo *bulkUndo, err error) string {
+	if err != nil && undo != nil {
+		return fmt.Sprintf("%d di %d nel cestino", len(undo.groups), n)
+	}
+	return fmt.Sprintf("nel cestino %d", n)
 }
 
 // userLabels toglie dalle label della riga quelle di sistema (\Inbox, \Important…),
