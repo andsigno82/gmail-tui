@@ -2,6 +2,7 @@ package imap
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -25,6 +26,11 @@ type Options struct {
 	Password string
 	Cache    *cache.Cache // può essere nil (no cache)
 	Insecure bool         // true solo nei test: connessione in chiaro, nessun TLS
+
+	// TLSConfig sostituisce la configurazione TLS di default del dial (Piano 12a,
+	// Task 3): nil in produzione; nei test porta la CA del certificato autofirmato.
+	// Nome del server e ALPN "imap" si riempiono comunque in dialConn se vuoti.
+	TLSConfig *tls.Config
 }
 
 // Store è il mail.MailStore su IMAP (Gmail). Semantica Gmail via IMAP:
@@ -232,10 +238,12 @@ func NewStore(o Options) *Store {
 	return s
 }
 
-// Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed
-// effettua il login. Se esiste già un client (doppio Connect, o il path di
-// riconnessione di Watch dopo un errore di rete) viene chiuso PRIMA di
-// diallare: così un secondo Connect non leaka la connessione precedente.
+// Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed effettua
+// il login, rispettando ctx per tutto il dial (dialSession, Piano 12a, Task 3): alla
+// scadenza la connessione si chiude e l'errore è quello del ctx. Se esiste già un
+// client (doppio Connect, o il path di riconnessione di Watch dopo un errore di
+// rete) viene chiuso PRIMA di diallare: così un secondo Connect non leaka la
+// connessione precedente.
 func (s *Store) Connect(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -250,17 +258,9 @@ func (s *Store) Connect(ctx context.Context) error {
 		s.client = nil
 	}
 
-	dial := imapclient.DialTLS
-	if s.opts.Insecure {
-		dial = imapclient.DialInsecure
-	}
-	c, err := dial(s.opts.Addr, s.dialOptions())
+	c, err := dialSession(ctx, s.opts, s.dialOptions())
 	if err != nil {
-		return fmt.Errorf("imap dial %s: %w", s.opts.Addr, err)
-	}
-	if err := c.Login(s.opts.Username, s.opts.Password).Wait(); err != nil {
-		_ = c.Close()
-		return fmt.Errorf("imap login %s: %w", s.opts.Username, err)
+		return err
 	}
 	s.gate.reset()                       // riese dopo Close: il gate torna operativo
 	s.gmail = c.Caps().Has(capGmailExt1) // Piano 8, Task 6

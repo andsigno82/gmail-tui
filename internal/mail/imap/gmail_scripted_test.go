@@ -19,6 +19,19 @@ func scriptedIMAP(t *testing.T, caps string, respond func(cmd string) []string) 
 		t.Fatalf("listen: %v", err)
 	}
 	t.Cleanup(func() { _ = ln.Close() })
+	serveScripted(ln, caps, respond)
+	return ln.Addr().String()
+}
+
+// scriptedIMAPOn serve il protocollo scriptato su un listener già pronto: TLS
+// implicito nei test del dial (Piano 12a, Task 3).
+func scriptedIMAPOn(ln net.Listener, caps string, respond func(cmd string) []string) {
+	serveScripted(ln, caps, respond)
+}
+
+// serveScripted accetta UNA connessione su ln: risponde a LOGIN e LOGOUT, e per
+// ogni altro comando chiama respond (senza tag) e chiude il comando con OK.
+func serveScripted(ln net.Listener, caps string, respond func(cmd string) []string) {
 	go func() {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -54,5 +67,4 @@ func scriptedIMAP(t *testing.T, caps string, respond func(cmd string) []string) 
 			}
 		}
 	}()
-	return ln.Addr().String()
 }

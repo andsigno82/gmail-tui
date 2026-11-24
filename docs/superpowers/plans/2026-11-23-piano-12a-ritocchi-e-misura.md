@@ -672,7 +672,7 @@ Expected: PASS. La scansione per conversazioni chiede il blocco successivo finch
 - Produces: campo `Options.TLSConfig *tls.Config` (solo test); `dialSession(ctx context.Context, o Options, options *imapclient.Options) (*imapclient.Client, error)`; `dialConn(ctx context.Context, o Options) (net.Conn, error)`; costante `dialTimeout`.
 - Il Task 5 aggiunge a `dialSession` un parametro `op string`.
 
-- [ ] **Step 1: rendere il server a copione servibile anche su TLS** in `gmail_scripted_test.go`. Sostituire `scriptedIMAP` (righe 15–58) con tre funzioni: il corpo del loop resta identico, cambia solo chi crea il listener.
+- [x] **Step 1: rendere il server a copione servibile anche su TLS** in `gmail_scripted_test.go`. Sostituire `scriptedIMAP` (righe 15–58) con tre funzioni: il corpo del loop resta identico, cambia solo chi crea il listener.
 
 ```go
 func scriptedIMAP(t *testing.T, caps string, respond func(cmd string) []string) string {
@@ -736,7 +736,7 @@ func serveScripted(ln net.Listener, caps string, respond func(cmd string) []stri
 Run: `go test ./internal/mail/imap/ -count=1`
 Expected: PASS (spostamento puro: nessun comportamento cambia).
 
-- [ ] **Step 2: scrivere i test della scadenza** in `internal/mail/imap/dial_test.go` (i test TLS arrivano nello Step 5, nello stesso file).
+- [x] **Step 2: scrivere i test della scadenza** in `internal/mail/imap/dial_test.go` (i test TLS arrivano nello Step 5, nello stesso file).
 
 ```go
 package imap
@@ -856,12 +856,18 @@ func TestConnectSurvivesCallerContextCancel(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: vedere rosso.**
+- [x] **Step 3: vedere rosso.**
 
 Run: `go test ./internal/mail/imap/ -run 'TestConnectStopsAtContextDeadline|TestCapabilitiesStopsAtContextDeadline' -count=1`
-Expected: FAIL, e il rosso è lento perché è il bug stesso: ogni caso torna dopo circa 30 s con `err = imap login u: ... i/o timeout, voglio context.DeadlineExceeded` e con `la connessione e rimasta aperta dopo la scadenza`. (`TestConnectSurvivesCallerContextCancel` è verde già oggi: è una guardia per il codice nuovo.)
+Expected: FAIL, e il rosso è lento perché è il bug stesso. Prima della correzione (misurato su una copia dell'albero `a9d68d6`):
 
-- [ ] **Step 4: implementare.** In `internal/mail/imap/imap.go` aggiungere l'import `"crypto/tls"` e, in `Options`, il campo:
+- «senza greeting»: `Connect` torna dopo 60 s con `err = imap login u: in response: cannot read tag: read tcp …: i/o timeout, voglio context.DeadlineExceeded`;
+- «greeting ma login muto»: non torna affatto. Dopo il greeting il ciclo di lettura del client attende senza scadenza (`Client.read` chiama `Decoder.EOF` prima che `readResponse` rimetta i 30 s), quindi questo caso si raccoglie con `-timeout` (per esempio `go test -timeout 20s`) e muore con `panic: test timed out`;
+- `TestCapabilitiesStopsAtContextDeadline`: `la connessione e rimasta aperta dopo la scadenza`.
+
+(`TestConnectSurvivesCallerContextCancel` è verde già oggi: è una guardia per il codice nuovo.)
+
+- [x] **Step 4: implementare.** In `internal/mail/imap/imap.go` aggiungere l'import `"crypto/tls"` e, in `Options`, il campo:
 
 ```go
 	// TLSConfig sostituisce la configurazione TLS di default del dial (Piano 12a,
@@ -912,7 +918,9 @@ package imap
 // Apertura della sessione (dial, TLS, login) col contesto rispettato (Piano 12a,
 // Task 3). Le funzioni di dial di imapclient (beta.9) non prendono un contesto: una
 // Connect che scadeva lasciava girare dial e login dietro le spalle dell'app, fino
-// ai timeout di lettura del client. Qui TCP e TLS partono col contesto e, alla sua
+// ai timeout di lettura del client, o anche senza fine: dopo il greeting il loop di
+// lettura del client aspetta senza scadenza (Client.read chiama Decoder.EOF prima
+// che readResponse rimetta i 30 s). Qui TCP e TLS partono col contesto e, alla sua
 // scadenza, la connessione si CHIUDE: anche l'attesa del greeting e il LOGIN in
 // corso tornano subito. Lo usa anche la sonda di doctor (Capabilities).
 
@@ -1023,7 +1031,7 @@ func Capabilities(ctx context.Context, o Options) ([]string, error) {
 }
 ```
 
-- [ ] **Step 5: aggiungere i test TLS** in `dial_test.go`, aggiungendo agli import `"crypto/ecdsa"`, `"crypto/elliptic"`, `"crypto/rand"`, `"crypto/tls"`, `"crypto/x509"`, `"crypto/x509/pkix"`, `"math/big"`:
+- [x] **Step 5: aggiungere i test TLS** in `dial_test.go`, aggiungendo agli import `"crypto/ecdsa"`, `"crypto/elliptic"`, `"crypto/rand"`, `"crypto/tls"`, `"crypto/x509"`, `"crypto/x509/pkix"`, `"math/big"`:
 
 ```go
 // selfSignedCert genera un certificato per 127.0.0.1 (solo stdlib), come nei test
@@ -1047,7 +1055,7 @@ func selfSignedCert(t *testing.T) tls.Certificate {
 	if err != nil {
 		t.Fatal(err)
 	}
-	leaf, err := x509.ParseCert(der)
+	leaf, err := x509.ParseCertificate(der)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1100,7 +1108,37 @@ func TestConnectTLSRejectsUntrustedCertificate(t *testing.T) {
 }
 ```
 
-- [ ] **Step 6: vedere verde e controllare che i dial di imapclient non ci siano più.**
+Il contratto di `dialSession` dice "scaduto o annullato", ma i test fin qui coprono solo la scadenza durante il greeting e il login. Aggiungere in `dial_test.go`, prima del test di guardia, i due casi che mancano (aggiunti il 24 novembre durante l'esecuzione):
+
+```go
+// TestConnectStopsAtContextCancel: una cancellazione esplicita vale quanto la
+// scadenza (il contratto di dialSession dice "scaduto o annullato").
+func TestConnectStopsAtContextCancel(t *testing.T) {
+	addr, closed := silentServer(t, "* OK ready\r\n")
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	time.AfterFunc(300*time.Millisecond, cancel)
+	if err := s.Connect(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v, voglio context.Canceled", err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Error("la connessione e rimasta aperta dopo la cancellazione")
+	}
+}
+
+// TestConnectStopsDuringTLSHandshake: il ctx scade mentre l'handshake TLS non
+// procede (il server accetta la connessione e non risponde).
+func TestConnectStopsDuringTLSHandshake(t *testing.T) {
+	addr, closed := silentServer(t, "")
+	s := NewStore(Options{Addr: addr, Username: "u", Password: "p"})
+	assertScaduto(t, closed, s.Connect)
+}
+```
+
+- [x] **Step 6: vedere verde e controllare che i dial di imapclient non ci siano più.**
 
 Run: `go test ./internal/mail/imap/ -count=1 -v`
 Expected: PASS. I tre casi di scadenza tornano in pochi centesimi di secondo.
@@ -1108,7 +1146,7 @@ Expected: PASS. I tre casi di scadenza tornano in pochi centesimi di secondo.
 Run: `grep -rn "imapclient.Dial" internal cmd --include="*.go"`
 Expected: nessuna riga.
 
-- [ ] **Step 7: gate**, poi commit `fix(imap): Connect e la sonda di doctor rispettano il contesto, TLS provato (Piano 12a, Task 3)`.
+- [x] **Step 7: gate**, poi commit `fix(imap): Connect e la sonda di doctor rispettano il contesto, TLS provato (Piano 12a, Task 3)`.
 
 ## Task 4: evento `step` e tabella nel riepilogo
 
