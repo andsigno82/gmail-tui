@@ -29,8 +29,8 @@ internal/ui/render/   block renderers (buttons, tables, quotes, lists, links, at
 internal/ui/overlay/  floating windows with shadow; internal/ui/statusline/ segmented status bar; internal/ui/foldertree/ folder tree and unread counts
 internal/mail/        MailStore interface (store.go) + in-memory Mock (mock.go)
 internal/mcpserver/   MCP server over stdio (`gmail-tui mcp`), read-only Reader, untrusted-content markers (Piano 14); never imports go-imap
-internal/mail/imap/   the ONLY IMAP implementation (go-imap v2), IDLE watch, idleGate
-internal/mail/smtp/   MIME builder + STARTTLS sender (go-smtp)
+internal/mail/imap/   the ONLY IMAP implementation (go-imap v2), IDLE watch, idleGate; ctx-aware dial (dial.go), trace steps (steps.go)
+internal/mail/smtp/   MIME builder (text parts with Content-Transfer-Encoding) + STARTTLS sender (go-smtp)
 internal/mail/cache/  bbolt cache: message bodies (LRU, 200), folder and thread snapshots, invalidated by uidvalidity
 internal/msg/         normalized types, MIME parsing (enmime), Gmail-style query parser, richtext (body → blocks, Piano 15)
 internal/cmd/         CLI subcommands: doctor, fetch, login, send
@@ -77,9 +77,11 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 6. Password resolution order everywhere: `GMAIL_APP_PASSWORD` env → system
    keychain → absent (demo mode). Secrets must stay masked in errors and logs.
 7. **Connect before any read.** Startup is `beginSession` → `connectCmd`
-   (30s timeout) → `connResult`: on success list load + `Watch`, on failure an
+   (90 s timeout) → `connResult`: on success list load + `Watch`, on failure an
    error status and `R` to retry. A retry never runs concurrent `Connect`s
-   (`connectFailed` is cleared at dispatch).
+   (`connectFailed` is cleared at dispatch). `Store.Connect` honours its ctx for
+   the whole dial and login: it closes the connection when the ctx expires
+   (`dialSession`, `internal/mail/imap/dial.go`).
 8. **Bcc never appears in headers** (`internal/mail/smtp/mime.go`): it is an
    RCPT-only recipient.
 9. **The MCP server stays plain text.** `internal/mcpserver` never imports
@@ -97,6 +99,9 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   `Mock.Connect` once masked a real "store not connected" bug).
 - Time-dependent UI (relative dates, double-click) uses injectable clocks
   (`clock func() time.Time`); never call `time.Now` directly in testable paths.
+- **TLS dial**: `Options.TLSConfig` (test-only) carries the CA of a self-signed
+  certificate, as the SMTP tests do. Never add `InsecureSkipVerify` to production
+  code.
 - Adding a theme needs no test changes: `TestEveryEmbeddedThemeValid` validates
   every file in `internal/theme/themes/`.
 
@@ -191,6 +196,24 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 - **Gated store methods**: a new `Store` method acquires `s.gate`; a method that calls
   another gated method passes `heldGate=true` (the gate is not reentrant, see
   `fetchMessage` in `internal/mail/imap/fetch.go`).
+- **`Connect` is the only ctx-aware store path** (Piano 12a): go-imap beta.9 has
+  no ctx API, and after the greeting its read loop waits with no deadline
+  (`Client.read` calls `Decoder.EOF` before `readResponse` re-arms the 30 s).
+  `dialSession` opens TCP, TLS and login itself and closes the socket when the
+  ctx expires. The other ops still check only `ctx.Err()` at entry.
+- **Rows always carry FETCH data** (Piano 12a): `gmailRefs` and `fetchRefs` skip
+  the UIDs missing from the FETCH response (message expunged in between); `toRef`
+  takes a non-nil buffer.
+- **Trace steps** (Piano 12a): the SELECT and UID SEARCH of the read path go
+  through `selectBox` and `uidSearch` (`internal/mail/imap/steps.go`), which emit
+  the `step` events with the folder role (`traceRole`, never the name). A read
+  command added with a raw `c.Select`/`c.UIDSearch` is invisible in the trace.
+  Mutations are not traced (D12-T3).
+- **Text parts declare their `Content-Transfer-Encoding`** (`textPart`,
+  `internal/mail/smtp/encoding.go`): `7bit`, or `quoted-printable` when the text
+  has a byte above 127, a NUL or a line above 998 bytes. The standard
+  `quotedprintable` writer does the encoding; to read the header back in a test
+  use `NextRawPart` (`NextPart` hides it on quoted-printable parts).
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the
   source of the pinned version, not against docs or memory (e.g. `DialInsecure`,
   `UIDExpunge`). bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.

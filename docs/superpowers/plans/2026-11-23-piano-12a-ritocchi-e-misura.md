@@ -87,8 +87,8 @@ go build ./... && go vet ./... && go test -race -count=1 ./... && golangci-lint 
 
 **Produces:** il branch di lavoro e questo file committato.
 
-- [ ] `git checkout -b feat/piano-12a` (da `main`). `ROADMAP.md` è già modificato nell'albero di lavoro: resta lì e si committa con il Task 7.
-- [ ] `git add docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md && git commit -m "docs: Piano 12a (ritocchi e misura)"`, con la riga Co-Authored-By.
+- [x] `git checkout -b feat/piano-12a` (da `main`). `ROADMAP.md` è già modificato nell'albero di lavoro: resta lì e si committa con il Task 7.
+- [x] `git add docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md && git commit -m "docs: Piano 12a (ritocchi e misura)"`, con la riga Co-Authored-By.
 
 ## Task 1: codifica di trasferimento delle parti di testo
 
@@ -2346,7 +2346,7 @@ Expected: PASS. Il server MCP riporta il ruolo `"important"` così com'è: nessu
 
 **Produces:** la documentazione pubblica e interna al passo con il codice (CHANGELOG e README in inglese, il resto in italiano).
 
-- [ ] **Step 1: `CHANGELOG.md`**, sotto `## [Unreleased]`. In cima a `### Added`:
+- [x] **Step 1: `CHANGELOG.md`**, sotto `## [Unreleased]`. In cima a `### Added`:
 
 ```markdown
 - **Important folder** — `[Gmail]/Important` (`\Important`) is listed with the special folders, right after Inbox, as "Importanti". Before, it appeared nested under a "[Gmail]" branch among the labels.
@@ -2366,7 +2366,7 @@ In cima a `### Fixed`:
 - **Ghost rows** — a message expunged between the IMAP search and the fetch no longer leaves an empty row in the list.
 ```
 
-- [ ] **Step 2: `README.md`**, cinque punti.
+- [x] **Step 2: `README.md`**, cinque punti.
 
 1. Riga 96 (punto **Folders** della sezione Rendering): `(not Drafts, Sent, Spam, Trash or All Mail)` diventa `(not Important, Drafts, Sent, Spam, Trash or All Mail)`, e in fondo al punto si aggiunge: `The Important folder ("Importanti") sits with the special folders, right after Inbox.`
 2. Riga 236 (punto **Markdown** delle Notes), in fondo: `Both text parts declare their \`Content-Transfer-Encoding\` (\`7bit\`, or \`quoted-printable\` for accents and lines above 998 bytes).`
@@ -2374,7 +2374,7 @@ In cima a `### Fixed`:
 4. Riga 258: `kinds are \`meta\`, \`store\`, \`msg\`, \`phase\` and \`body\`` diventa `kinds are \`meta\`, \`store\`, \`step\`, \`cache\`, \`msg\`, \`phase\` and \`body\``.
 5. Riga 260 (Privacy): l'elenco dei ruoli diventa `(\`inbox\`, \`important\`, \`sent\`, \`drafts\`, \`all\`, \`trash\`, \`junk\`, \`flagged\` or \`label\`)`.
 
-- [ ] **Step 3: `docs/smoke-checklist.md`**, in fondo al file (in inglese, come le sezioni vicine):
+- [x] **Step 3: `docs/smoke-checklist.md`**, in fondo al file (in inglese, come le sezioni vicine):
 
 ```markdown
 ## Piano 12a — fixes (real account, run by hand)
@@ -2400,7 +2400,7 @@ This is the measurement the Piano 12b design is built on. Do it first and paste 
 - [ ] Paste the "Passi IMAP" table and the startup timeline in the chat: they decide the order of Piano 12b.
 ```
 
-- [ ] **Step 4: `AGENTS.md`.**
+- [x] **Step 4: `AGENTS.md`.**
 
 1. Regola 7: «(30s timeout)» diventa «(90 s timeout)», e in fondo alla regola si aggiunge: `` `Store.Connect` honours its ctx for the whole dial and login: it closes the connection when the ctx expires (`dialSession`, `internal/mail/imap/dial.go`). ``
 2. Testing conventions, nuovo punto dopo quello sugli orologi iniettabili: `- **TLS dial**: `Options.TLSConfig` (test-only) carries the CA of a self-signed certificate, as the SMTP tests do. Never add `InsecureSkipVerify` to production code.`
@@ -2422,7 +2422,7 @@ This is the measurement the Piano 12b design is built on. Do it first and paste 
   format; the standard `quotedprintable` writer does the encoding.
 ```
 
-- [ ] **Step 5: `ROADMAP.md`** (già modificato nell'albero di lavoro, ora allineato a `v0.1.0` e `Unreleased — delivered`). In `Unreleased — delivered`, in coda all'elenco:
+- [x] **Step 5: `ROADMAP.md`** (già modificato nell'albero di lavoro, ora allineato a `v0.1.0` e `Unreleased — delivered`). In `Unreleased — delivered`, in coda all'elenco:
 
 ```markdown
 - **Message encoding** — the text parts of outgoing messages declare their
@@ -2434,13 +2434,13 @@ This is the measurement the Piano 12b design is built on. Do it first and paste 
 
 In `Next — planned` togliere il punto `Outgoing message encoding` e lasciare `Incremental sync` così: `- **Incremental sync and performance (Piano 12b)** — designed on a real-account trace: CONDSTORE-based refresh, fewer IMAP round trips in the list, paged search.`
 
-- [ ] **Step 6: `docs/superpowers/plans/2026-11-22-piano-sviluppo-gap.md`**, sotto il titolo `## Piano 12 — Sincronizzazione incrementale e prestazioni`, prima dell'elenco:
+- [x] **Step 6: `docs/superpowers/plans/2026-11-22-piano-sviluppo-gap.md`**, sotto il titolo `## Piano 12 — Sincronizzazione incrementale e prestazioni`, prima dell'elenco:
 
 ```markdown
 **Stato (23 novembre 2026): diviso in due.** **12a** — ritocchi e misura, in `docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md`: codifica MIME, `Connect` con contesto, ruolo di `\Important`, traccia per passo. La voce "Trash su più cartelle" è chiusa senza codice: l'app già gestisce l'errore a metà una conversazione alla volta. **12b** — CONDSTORE, prestazioni della lista e ricerca paginata: piano proprio, scritto dopo una traccia reale presa con 12a.
 ```
 
-- [ ] **Step 7: `docs/stato-dei-lavori.md`.** Nella tabella di `Fatto`, nuova prima riga (il commit è quello del merge):
+- [x] **Step 7: `docs/stato-dei-lavori.md`.** Nella tabella di `Fatto`, nuova prima riga (il commit è quello del merge):
 
 ```markdown
 | 23 nov | 12a, ritocchi e misura | Codifica delle parti di testo, niente righe fantasma, Connect interrompibile con il TLS provato, Importanti tra le speciali, traccia per passo IMAP; ROADMAP allineata a `v0.1.0` | `<merge>` |
@@ -2469,9 +2469,9 @@ Altri lavori aperti:
 
 Il punto «`ROADMAP.md` è indietro» esce dalla lista perché è fatto; i due punti sul Piano 16 che aspettano una decisione di Andrea ("azioni bloccate dopo `R`" e "toast store non connesso") restano dove sono.
 
-- [ ] **Step 8: `RIEPILOGO.md`.** Dopo la sezione del Piano 16 aggiungere `### Piano 12a — Ritocchi e misura (2026-11-23)`, nello stesso formato delle sezioni vicine: le cinque voci consegnate, le decisioni D12-S1, D12-S2 e D12-T1…T6 in sintesi, i file nuovi (`encoding.go`, `dial.go`, `steps.go`) e i passi manuali (smoke di 12a e la traccia per passo per il 12b). In `Passi manuali rimasti` aggiungere gli stessi due passi.
+- [x] **Step 8: `RIEPILOGO.md`.** Dopo la sezione del Piano 16 aggiungere `### Piano 12a — Ritocchi e misura (2026-11-23)`, nello stesso formato delle sezioni vicine: le cinque voci consegnate, le decisioni D12-S1, D12-S2 e D12-T1…T6 in sintesi, i file nuovi (`encoding.go`, `dial.go`, `steps.go`) e i passi manuali (smoke di 12a e la traccia per passo per il 12b). In `Passi manuali rimasti` aggiungere gli stessi due passi.
 
-- [ ] **Step 9: gate**, poi commit `docs: Piano 12a (ritocchi e misura) in CHANGELOG, README, smoke checklist, AGENTS e stato`.
+- [x] **Step 9: gate**, poi commit `docs: Piano 12a (ritocchi e misura) in CHANGELOG, README, smoke checklist, AGENTS e stato`.
 
 ## Revisione e chiusura
 

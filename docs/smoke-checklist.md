@@ -259,3 +259,25 @@ Run the steps in order: the second start needs the cache filled by the first. Cl
 - [ ] Permissions: `ls -ld` on the `gmail-tui` cache folder shows `drwx------`; `ls -l` on `cache.db` shows `-rw-------`.
 - [ ] Trace: with `GMAIL_TUI_TRACE=1` on the second start, the file contains `"k":"cache"` events with `"op":"snap_list"` and `"mode":"hit"`; `gmail-tui trace <path>` runs without errors.
 - [ ] Delete the `gmail-tui` cache folder with gmail-tui closed. The next start behaves like the first one (splash until Connect).
+
+## Piano 12a — fixes (real account, run by hand)
+
+Run on a real Gmail account; nothing here is covered by tests.
+
+- [ ] `m`: "Importanti" is the second entry, right after Inbox, with the other special folders and no `[Gmail]` branch above it. Opening it lists the messages Gmail marks as important. It shows no unread count.
+- [ ] Compose a message with accented letters and a line longer than 1000 characters (paste a long URL), send it to yourself. In Gmail web, "Show original": the text part has `Content-Transfer-Encoding: quoted-printable`, no line above 998 characters, and the message reads correctly in Gmail and in another client.
+- [ ] Send a plain ASCII message: "Show original" shows `Content-Transfer-Encoding: 7bit` and the text as typed.
+- [ ] Markdown message with accents: both parts of the `multipart/alternative` open correctly. Save it as a draft with `Esc`, reopen it from Drafts: the text is the same.
+- [ ] Delete a message from Gmail web while the list is open: after the refresh there is no empty row.
+- [ ] Network off at startup: the splash shows the error within the 90 s budget. Network on and `R`: the app connects (the timed-out attempt left no connection behind).
+
+## Timing trace, steps (Piano 12a) — real account
+
+This is the measurement the Piano 12b design is built on. Do it first and paste the summary in the chat.
+
+- [ ] `GMAIL_TUI_TRACE=1 gmail-tui`: start, wait for the list, open 2 conversations (one with several messages), press `v` on a row, switch to another folder with `m`, quit.
+- [ ] `gmail-tui trace <path>`: the summary has the "Passi IMAP" table, with rows for `Connect tcp`, `Connect tls` and `Connect login`, and `list`, `select`, `search` and `fetch` for `ListConversations`, `ThreadMessages` and `FetchMessage`.
+- [ ] Startup timeline: it lists the three Connect steps. Note the time of `Connect login` (the 28.9 s of the 23 November trace were all inside Connect).
+- [ ] First `ListConversations`: note the slowest step, and whether it is in `inbox` or in `all`.
+- [ ] Privacy: `grep -ciE "inbox|all mail|\[Gmail\]" <path>` prints 0.
+- [ ] Paste the "Passi IMAP" table and the startup timeline in the chat: they decide the order of Piano 12b.

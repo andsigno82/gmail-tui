@@ -97,6 +97,14 @@ Rilievi bassi delle review del Piano 7, ognuno da poche righe:
 
 ## Piano 12 — Sincronizzazione incrementale e prestazioni
 
+**Stato (24 novembre 2026): diviso in due.** **12a**, ritocchi e misura, in
+`docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md`, implementato:
+codifica MIME delle parti di testo, `Connect` con contesto (TLS provato), ruolo di
+`\Important`, niente righe fantasma, traccia per passo IMAP. La voce "Trash su più
+cartelle" è chiusa senza codice: l'app già gestisce l'errore a metà, una
+conversazione alla volta. **12b**, CONDSTORE, prestazioni della lista e ricerca
+paginata: piano proprio, scritto dopo una traccia reale presa con 12a.
+
 - **CONDSTORE** (`CHANGEDSINCE`, `HIGHESTMODSEQ`, supportati da go-imap v2): rileggere solo i messaggi cambiati invece di rilistare fino a 500 righe a ogni refresh. Elimina il tetto 500 e il compromesso D5 (coda tenuta dopo stella/letto).
 - **Paginazione della ricerca:** oggi `Search` fa FETCH di tutti i risultati. Paginarla come la lista (o con ESEARCH, se Gmail lo annuncia).
 - **Trash su più cartelle:** oggi può fermarsi a metà lasciando spostato solo il primo gruppo. Riportare quali messaggi sono stati spostati invece di un errore generico.
