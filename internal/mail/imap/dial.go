@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/emersion/go-imap/v2/imapclient"
+
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 // dialTimeout e il tempo massimo di TCP e dell'handshake TLS: lo stesso default di
@@ -26,7 +28,9 @@ const dialTimeout = 30 * time.Second
 // dialSession apre la connessione (TLS, o in chiaro se o.Insecure) e fa il login.
 // A ctx scaduto o annullato la connessione e chiusa e l'errore e quello del ctx
 // (riconoscibile con errors.Is): non resta una connessione aperta dietro.
-func dialSession(ctx context.Context, o Options, options *imapclient.Options) (*imapclient.Client, error) {
+// op e il nome dell'operazione per la traccia dei passi (Piano 12a, Task 5).
+func dialSession(ctx context.Context, o Options, op string, options *imapclient.Options) (*imapclient.Client, error) {
+	ctx = trace.WithOp(ctx, op)
 	conn, err := dialConn(ctx, o)
 	if err != nil {
 		return nil, err
@@ -36,13 +40,15 @@ func dialSession(ctx context.Context, o Options, options *imapclient.Options) (*
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
 
 	c := imapclient.New(conn, options)
+	step := trace.BeginStep(ctx, trace.StepLogin) // Piano 12a, Task 5
 	err = c.Login(o.Username, o.Password).Wait()
 	cerr := ctx.Err() // scaduto durante il login: vale il suo errore, non quello di rete
-	if err != nil || cerr != nil {
+	if cerr != nil {
+		err = cerr
+	}
+	step.End("", 0, 0, err)
+	if err != nil {
 		_ = c.Close()
-		if cerr != nil {
-			err = cerr
-		}
 		return nil, fmt.Errorf("imap login %s: %w", o.Username, err)
 	}
 	stop() // da qui la connessione vive con lo Store: il ctx del chiamante non la chiude
@@ -54,10 +60,13 @@ func dialSession(ctx context.Context, o Options, options *imapclient.Options) (*
 // o.TLSConfig, se dato, parte al posto della configurazione di default (nei test
 // porta la CA del certificato autofirmato).
 func dialConn(ctx context.Context, o Options) (net.Conn, error) {
+	step := trace.BeginStep(ctx, trace.StepTCP) // Piano 12a, Task 5: DNS e TCP
 	raw, err := (&net.Dialer{Timeout: dialTimeout}).DialContext(ctx, "tcp", o.Addr)
 	if err != nil {
+		step.End("", 0, 0, err)
 		return nil, fmt.Errorf("imap dial %s: %w", o.Addr, err)
 	}
+	step.End("", 0, 0, nil)
 	if o.Insecure {
 		return raw, nil
 	}
@@ -78,10 +87,13 @@ func dialConn(ctx context.Context, o Options) (net.Conn, error) {
 	}
 	hsCtx, cancel := context.WithTimeout(ctx, dialTimeout)
 	defer cancel()
+	step = trace.BeginStep(ctx, trace.StepTLS)
 	tc := tls.Client(raw, cfg)
 	if err := tc.HandshakeContext(hsCtx); err != nil {
+		step.End("", 0, 0, err)
 		_ = raw.Close()
 		return nil, fmt.Errorf("imap dial %s: %w", o.Addr, err)
 	}
+	step.End("", 0, 0, nil)
 	return tc, nil
 }

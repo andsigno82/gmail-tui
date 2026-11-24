@@ -20,7 +20,7 @@ func Capabilities(ctx context.Context, o Options) ([]string, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	c, err := dialSession(ctx, o, &imapclient.Options{})
+	c, err := dialSession(ctx, o, "Capabilities", &imapclient.Options{})
 	if err != nil {
 		return nil, err
 	}

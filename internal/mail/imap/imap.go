@@ -61,6 +61,10 @@ type Store struct {
 	// produzione (time.Now), iniettabile nei test.
 	clock func() time.Time
 
+	// roles (Piano 12a, Task 5) mappa nome di mailbox -> ruolo dell'ultimo LIST: serve
+	// alla traccia dei passi (traceRole). Protetta da mu.
+	roles map[string]string
+
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
 	// alla violazione) e SEARCH/STORE/EXPUNGE agiscono sulla mailbox
@@ -258,7 +262,7 @@ func (s *Store) Connect(ctx context.Context) error {
 		s.client = nil
 	}
 
-	c, err := dialSession(ctx, s.opts, s.dialOptions())
+	c, err := dialSession(ctx, s.opts, "Connect", s.dialOptions())
 	if err != nil {
 		return err
 	}
@@ -353,7 +357,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		// Piano 14, Wave 4 review (punto 2): post-filtro best-effort come Search (contratto
 		// mail.MailStore), prima della paginazione. Il gate è già detenuto:
 		// filterWithAttachment usa fetchMessage(heldGate=true).
-		refs, err := s.fetchRefs(mailbox, uids)
+		refs, err := s.fetchRefs(ctx, mailbox, uids)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -380,7 +384,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 	if start >= end {
 		return nil, uidValidity, nil
 	}
-	refs, err := s.fetchRefs(mailbox, uids[start:end])
+	refs, err := s.fetchRefs(ctx, mailbox, uids[start:end])
 	return refs, uidValidity, err
 }
 
@@ -388,7 +392,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 // Select della mailbox di q (q.Label o "INBOX" se vuota: la label seleziona
 // la mailbox, non è un criterio SEARCH) e UIDSearch con i criteri tradotti
 // da searchCriteria(q). Ritorna gli UID matchanti in ordine ascendente e la
-// UIDVALIDITY della SELECT (gia registrata con noteEpoch: Piano 16, Task 8, R3).
+// UIDVALIDITY della SELECT (registrata da selectBox: Piano 16, Task 8, R3).
 func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []imap.UID, uint32, error) {
 	if err := ctx.Err(); err != nil {
 		return "", nil, 0, err
@@ -402,14 +406,13 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 	if q.Label != "" {
 		mailbox = q.Label
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
+	// Piano 16, Task 8, R3: l'epoca si registra prima di ogni riga (selectBox).
+	sel, err := s.selectBox(ctx, c, mailbox)
 	if err != nil {
-		return "", nil, 0, fmt.Errorf("imap select %s: %w", mailbox, err)
+		return "", nil, 0, err
 	}
-	// Piano 16, Task 8, R3: l'epoca si registra prima di ogni riga.
-	s.noteEpoch(mailbox, sel.UIDValidity)
 
-	data, err := c.UIDSearch(searchCriteria(q), nil).Wait()
+	data, err := s.uidSearch(ctx, c, mailbox, searchCriteria(q), nil)
 	if err != nil {
 		return "", nil, 0, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
 	}
@@ -421,7 +424,7 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 // mapping in msg.MessageRef, dal più nuovo al più vecchio. Piano 12a, Task 2: gli
 // uid che il FETCH non restituisce (messaggio espunto fra SEARCH e FETCH) si
 // saltano, mai una riga senza dati.
-func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
+func (s *Store) fetchRefs(ctx context.Context, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
 	}
@@ -440,10 +443,13 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 		GmailThreadID: gm,
 		GmailLabels:   gm,
 	})
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	bufs, err := cmd.Collect()
 	if err != nil {
+		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, fmt.Errorf("imap fetch envelope in %s: %w", mailbox, err)
 	}
+	step.End(s.traceRole(mailbox), len(bufs), 0, nil)
 	byUID := make(map[imap.UID]*imapclient.FetchMessageBuffer, len(bufs))
 	for _, b := range bufs {
 		byUID[b.UID] = b

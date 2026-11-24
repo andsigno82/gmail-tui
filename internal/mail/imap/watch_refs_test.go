@@ -28,7 +28,7 @@ func recheckSetup(t *testing.T, ts *testServer) (*Store, *watchState, chan mail.
 	if err != nil {
 		t.Fatal(err)
 	}
-	last, err := highestUID(c)
+	last, err := store.highestUID(t.Context(), c, "INBOX")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func recheckRun(t *testing.T, store *Store, st *watchState, ch chan mail.Change)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := store.recheckNewMail(c, ch, st); err != nil {
+	if err := store.recheckNewMail(t.Context(), c, ch, st); err != nil {
 		t.Fatalf("recheckNewMail: %v", err)
 	}
 	select {

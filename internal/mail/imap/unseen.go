@@ -70,7 +70,7 @@ func unreadCounts(ctx context.Context, c *imapclient.Client) (map[string]int, er
 	if caps.Has(imap.CapListStatus) && caps.Has(imap.CapListExtended) {
 		withStatus = opts
 	}
-	data, err := awaitBudget(ctx, budget, c, func() ([]*imap.ListData, error) { return listData(c, withStatus) })
+	data, err := awaitBudget(ctx, budget, c, func() ([]*imap.ListData, error) { return listData(ctx, c, withStatus) })
 	if errors.Is(err, errBudget) {
 		return map[string]int{}, nil // il LIST non e' arrivato in tempo: nulla da contare
 	}

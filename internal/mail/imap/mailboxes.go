@@ -14,6 +14,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 // specialRoles associa gli attributi SPECIAL-USE ai ruoli, nell'ordine di
@@ -41,13 +42,18 @@ func (s *Store) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listMailboxes(c)
+	boxes, err := listMailboxes(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	s.noteRoles(boxes) // Piano 12a, Task 5: i ruoli servono alla traccia dei passi
+	return boxes, nil
 }
 
 // listMailboxes è il corpo di ListMailboxes SENZA gate: il gate non è rientrante
 // (cfr. idleGate), quindi chi è già sotto gate (Trash) lo chiama direttamente.
-func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
-	data, err := listData(c, nil)
+func listMailboxes(ctx context.Context, c *imapclient.Client) ([]mail.Mailbox, error) {
+	data, err := listData(ctx, c, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -71,11 +77,14 @@ func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
 // listData è il LIST "*" con RETURN (SPECIAL-USE), SENZA gate. status != nil
 // aggiunge RETURN (STATUS ...) (LIST-STATUS, RFC 5819: solo se il server lo
 // annuncia; Piano 15, Task 11). Condiviso da listMailboxes e unreadCounts.
-func listData(c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
+func listData(ctx context.Context, c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
+	step := trace.BeginStep(ctx, trace.StepList) // Piano 12a, Task 5
 	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true, ReturnStatus: status}).Collect()
 	if err != nil {
+		step.End("", 0, 0, err)
 		return nil, fmt.Errorf("imap list: %w", err)
 	}
+	step.End("", len(data), 0, nil)
 	return data, nil
 }
 

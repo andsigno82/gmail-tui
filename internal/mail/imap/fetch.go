@@ -73,7 +73,7 @@ func (s *Store) fetchMessage(ctx context.Context, id msg.MessageID, heldGate boo
 		defer s.acquire(ctx)()
 	}
 
-	raw, flags, uidValidity, gx, err := s.fetchRaw(mailbox, imap.UID(uid))
+	raw, flags, uidValidity, gx, err := s.fetchRaw(ctx, mailbox, imap.UID(uid))
 	if err != nil {
 		return nil, err
 	}
@@ -130,7 +130,7 @@ func (s *Store) SaveAttachment(ctx context.Context, id msg.MessageID, part int, 
 	// Gate (fix review): il download tocca la rete — rompe l'eventuale IDLE.
 	defer s.acquire(ctx)()
 
-	raw, _, _, _, err := s.fetchRaw(mailbox, imap.UID(uid))
+	raw, _, _, _, err := s.fetchRaw(ctx, mailbox, imap.UID(uid))
 	if err != nil {
 		return err
 	}
@@ -175,16 +175,15 @@ type gmailFields struct {
 	labels          []string
 }
 
-func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap.Flag, uidValidity uint32, gx gmailFields, err error) {
+func (s *Store) fetchRaw(ctx context.Context, mailbox string, uid imap.UID) (raw []byte, flags []imap.Flag, uidValidity uint32, gx gmailFields, err error) {
 	c, err := s.connected()
 	if err != nil {
 		return nil, nil, 0, gmailFields{}, err
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
+	sel, err := s.selectBox(ctx, c, mailbox) // registra anche l'epoca (Piano 16, R3)
 	if err != nil {
-		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap select %s: %w", mailbox, err)
+		return nil, nil, 0, gmailFields{}, err
 	}
-	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 8, R3
 
 	section := &imap.FetchItemBodySection{Peek: true} // BODY.PEEK[] = messaggio intero, senza \Seen
 	gm := s.gmailOn()                                 // X-GM-* del messaggio solo se il server li annuncia (Piano 8)
@@ -196,8 +195,10 @@ func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap
 		GmailThreadID: gm,
 		GmailLabels:   gm,
 	})
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	bufs, err := cmd.Collect()
 	if err != nil {
+		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap fetch body in %s: %w", mailbox, err)
 	}
 	var buf *imapclient.FetchMessageBuffer
@@ -208,12 +209,17 @@ func (s *Store) fetchRaw(mailbox string, uid imap.UID) (raw []byte, flags []imap
 		}
 	}
 	if buf == nil {
-		return nil, nil, 0, gmailFields{}, fmt.Errorf("%w: uid %d in %s", ErrMessageNotFound, uid, mailbox)
+		err = fmt.Errorf("%w: uid %d in %s", ErrMessageNotFound, uid, mailbox)
+		step.End(s.traceRole(mailbox), 0, 0, err)
+		return nil, nil, 0, gmailFields{}, err
 	}
 	raw = buf.FindBodySection(section)
 	if raw == nil {
-		return nil, nil, 0, gmailFields{}, fmt.Errorf("%w: uid %d in %s, corpo assente nella risposta", ErrMessageNotFound, uid, mailbox)
+		err = fmt.Errorf("%w: uid %d in %s, corpo assente nella risposta", ErrMessageNotFound, uid, mailbox)
+		step.End(s.traceRole(mailbox), 0, 0, err)
+		return nil, nil, 0, gmailFields{}, err
 	}
+	step.End(s.traceRole(mailbox), 1, len(raw), nil)
 	gx = gmailFields{msgID: buf.GmailMsgID, threadID: buf.GmailThreadID, labels: buf.GmailLabels}
 	return raw, buf.Flags, sel.UIDValidity, gx, nil
 }

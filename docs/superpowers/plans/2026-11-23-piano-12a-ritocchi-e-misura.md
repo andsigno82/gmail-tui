@@ -1467,16 +1467,16 @@ Expected: PASS.
 
 **Files:**
 - Create: `internal/mail/imap/steps.go`, `internal/mail/imap/steps_test.go`
-- Modify: `internal/mail/imap/imap.go` (campo `roles` nello `Store`; `Connect`; `listMessages`; `selectAndSearch`; `fetchRefs`), `internal/mail/imap/dial.go`, `capabilities.go`, `conversation.go`, `search.go`, `fetch.go`, `mailboxes.go`, `trash.go`, `unseen.go`, `watch.go`
+- Modify: `internal/mail/imap/imap.go` (campo `roles` nello `Store`; `Connect`; `listMessages`; `selectAndSearch`; `fetchRefs`), `internal/mail/imap/dial.go`, `capabilities.go`, `conversation.go`, `search.go`, `fetch.go`, `mailboxes.go`, `trash.go`, `unseen.go`, `watch.go`; `restore.go` e `draft.go` (aggiunti in esecuzione)
 - Test: Modify `internal/mail/imap/watch_refs_test.go` (righe 31 e 46)
 
 **Produces:** ogni comando del percorso di lettura emette un evento `step` con il nome dell'operazione e il ruolo della cartella, mai il suo nome (D12-T3). Senza traccia installata nessun costo.
 
 **Interfaces:**
 - Consumes: `trace.BeginStep`, `trace.WithOp`, le costanti `trace.Step*` (Task 4).
-- Produces: campo `Store.roles map[string]string`; metodi `(s *Store) noteRoles(boxes []mail.Mailbox)`, `traceRole(mailbox string) string`, `selectBox(ctx, c, mailbox) (*imap.SelectData, error)`, `uidSearch(ctx, c, mailbox, crit, opts) (*imap.SearchData, error)`, `gmailRefs(ctx, c, mailbox, uids) ([]msg.MessageRef, error)`, `fetchRefs(ctx, mailbox, uids) ([]msg.MessageRef, error)`, `fetchRaw(ctx, mailbox, uid) (...)`, `threadSummaries(ctx, c, allMail, threads)`, `baselineState(ctx, c)`, `recheckNewMail(ctx, c, ch, st)`, `highestUID(ctx, c, mailbox)`; funzioni `listMailboxes(ctx, c)`, `listData(ctx, c, status)`; `dialSession(ctx, o, op, options)`.
+- Produces: campo `Store.roles map[string]string`; metodi `(s *Store) noteRoles(boxes []mail.Mailbox)`, `traceRole(mailbox string) string`, `selectBox(ctx, c, mailbox) (*imap.SelectData, error)`, `uidSearch(ctx, c, mailbox, crit, opts) (*imap.SearchData, error)`, `gmailRefs(ctx, c, mailbox, uids) ([]msg.MessageRef, error)`, `fetchRefs(ctx, mailbox, uids) ([]msg.MessageRef, error)`, `fetchRaw(ctx, mailbox, uid) (...)`, `threadSummaries(ctx, c, allMail, threads)`, `baselineState(ctx, c)`, `recheckNewMail(ctx, c, ch, st)`, `highestUID(ctx, c, mailbox)`; funzioni `listMailboxes(ctx, c)`, `listData(ctx, c, status)`, `draftsBoxOf(ctx, c)`; `dialSession(ctx, o, op, options)`.
 
-- [ ] **Step 1: scrivere i test** in `internal/mail/imap/steps_test.go`:
+- [x] **Step 1: scrivere i test** in `internal/mail/imap/steps_test.go`:
 
 ```go
 package imap
@@ -1622,12 +1622,12 @@ func TestWatchBaselineEmitsSteps(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: vedere rosso.**
+- [x] **Step 2: vedere rosso.**
 
 Run: `go test ./internal/mail/imap/ -run 'TestTraceRole|EmitsOneStepPerCommand|TestWatchBaselineEmitsSteps' -count=1`
 Expected: FAIL per errore di compilazione (`s.noteRoles undefined`, `s.traceRole undefined`). Con il solo `steps.go` (prima parte dello Step 3) compilano, ma i passi sono ancora zero: `passi = [], voglio [Connect tcp Connect login ...]` e `passi = [], voglio che inizino con Watch select inbox, Watch search inbox`.
 
-- [ ] **Step 3: creare `internal/mail/imap/steps.go`.**
+- [x] **Step 3: creare `internal/mail/imap/steps.go`.**
 
 ```go
 package imap
@@ -1708,7 +1708,7 @@ func (s *Store) uidSearch(ctx context.Context, c *imapclient.Client, mailbox str
 }
 ```
 
-- [ ] **Step 4: cablare i chiamanti.** Ogni punto sotto mostra il codice nuovo; il resto delle funzioni non cambia.
+- [x] **Step 4: cablare i chiamanti.** Ogni punto sotto mostra il codice nuovo; il resto delle funzioni non cambia.
 
 **`imap.go`.** Nello struct `Store`, dopo il campo `clock`:
 
@@ -1991,6 +1991,8 @@ func listData(ctx context.Context, c *imapclient.Client, status *imap.StatusOpti
 
 **`trash.go`.** In `trashMove`: `boxes, err := listMailboxes(ctx, c)`.
 
+**`restore.go` e `draft.go`.** Stessa chiamata (`listMailboxes(ctx, c)`), rispettivamente in `Restore` e in `draftsBoxOf`. `draftsBoxOf` non aveva `ctx`: la firma diventa `draftsBoxOf(ctx context.Context, c *imapclient.Client)`, con le due chiamate in `SaveDraft` e `DeleteDraft` aggiornate. Questi due file non erano nell'elenco della prima stesura: li ha trovati il compilatore.
+
 **`unseen.go`.** In `unreadCounts`: `listData(ctx, c, withStatus)`.
 
 **`dial.go`.** `dialSession` prende `op` e misura il login; `dialConn` misura `tcp` e `tls` (import `internal/trace`):
@@ -2155,12 +2157,12 @@ I due chiamanti di `recheckNewMail` (in `idleRound` e in `reconnect`) passano `c
 
 **`watch_refs_test.go`.** Riga 31: `last, err := store.highestUID(t.Context(), c, "INBOX")`. Riga 46: `if err := store.recheckNewMail(t.Context(), c, ch, st); err != nil {`.
 
-- [ ] **Step 5: vedere verde.**
+- [x] **Step 5: vedere verde.**
 
 Run: `go test ./internal/mail/imap/ -count=1 -v`
 Expected: PASS, `TestListConversationsEmitsOneStepPerCommand` con la sequenza attesa.
 
-- [ ] **Step 6: controllo che nessun SELECT o SEARCH del percorso di lettura sia rimasto fuori.**
+- [x] **Step 6: controllo che nessun SELECT o SEARCH del percorso di lettura sia rimasto fuori.**
 
 Run: `grep -nE "c\.(Select|UIDSearch)\(" internal/mail/imap/*.go | grep -v _test.go`
 Expected: solo questi file, e nessun altro.
@@ -2170,7 +2172,7 @@ Expected: solo questi file, e nessun altro.
 
 Se compare una riga in `conversation.go`, `fetch.go`, `imap.go`, `mailboxes.go` o `watch.go`, un comando del percorso di lettura è rimasto fuori dalla traccia.
 
-- [ ] **Step 7: gate**, poi commit `feat(imap): misura dei passi IMAP nel percorso di lettura (Piano 12a, Task 5)`.
+- [x] **Step 7: gate**, poi commit `feat(imap): misura dei passi IMAP nel percorso di lettura (Piano 12a, Task 5)`.
 
 ## Task 6: "Importanti" tra le cartelle speciali
 

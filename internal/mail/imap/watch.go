@@ -35,6 +35,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 const (
@@ -115,6 +116,7 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	ctx = trace.WithOp(ctx, "Watch") // i comandi del feed si misurano come passi del Watch (Piano 12a, Task 5)
 	c, err := s.connected()
 	if err != nil {
 		return nil, err
@@ -130,7 +132,7 @@ func (s *Store) Watch(ctx context.Context) (<-chan mail.Change, error) {
 	// l'idle loop: qui il watch-goroutine non esiste ancora (niente idling
 	// possibile), acquire può solo attendere ops in flight.
 	release := s.acquire(ctx)
-	st, err := s.baselineState(c)
+	st, err := s.baselineState(ctx, c)
 	release()
 	if err != nil {
 		return nil, err
@@ -209,8 +211,8 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 	// Piano 7, Task 1: un'op su un'altra cartella (ListMessages, ApplyLabel) lascia
 	// quella mailbox selezionata sulla connessione. Senza questa SELECT l'IDLE
 	// osserverebbe la cartella sbagliata e la posta nuova in INBOX non arriverebbe.
-	if _, err := c.Select(st.mailbox, nil).Wait(); err != nil {
-		return fmt.Errorf("imap select %s prima di idle: %w", st.mailbox, err)
+	if _, err := s.selectBox(ctx, c, st.mailbox); err != nil {
+		return err
 	}
 
 	idle, err := c.Idle()
@@ -269,7 +271,7 @@ func (s *Store) idleRound(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 	// riconnessione. Nessun acquire qui (Piano 3, Task 1): siamo DENTRO il
 	// round — idling=true È il hold della connessione da parte del watch —
 	// e acquire attenderebbe !idling: deadlock per definizione.
-	if err := s.recheckNewMail(c, ch, st); err != nil {
+	if err := s.recheckNewMail(ctx, c, ch, st); err != nil {
 		return err
 	}
 
@@ -368,7 +370,7 @@ func (s *Store) reconnect(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 		// non detiene nulla mentre attende: il round parte quando le ops in
 		// flight hanno finito.
 		release := s.acquire(ctx)
-		err = s.recheckNewMail(c, ch, st)
+		err = s.recheckNewMail(ctx, c, ch, st)
 		release()
 		if err != nil {
 			continue // connessione ancora instabile: riprova
@@ -382,17 +384,17 @@ func (s *Store) reconnect(ctx context.Context, ch chan<- mail.Change, wakes <-ch
 // e la baseline viene rifatta in silenzio (eventi persi durante il cambio
 // d'epoca: il consumer re-lista al prossimo Change); altrimenti emette
 // ChangeNewMail con i nuovi ID e avanza la baseline.
-func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *watchState) error {
-	sel, err := c.Select(st.mailbox, nil).Wait()
+func (s *Store) recheckNewMail(ctx context.Context, c *imapclient.Client, ch chan<- mail.Change, st *watchState) error {
+	// Piano 16, Task 13, R3: gli ID degli eventi escono da questa SELECT (selectBox registra l'epoca).
+	sel, err := s.selectBox(ctx, c, st.mailbox)
 	if err != nil {
-		return fmt.Errorf("imap select %s: %w", st.mailbox, err)
+		return err
 	}
-	s.noteEpoch(st.mailbox, sel.UIDValidity) // Piano 16, Task 13, R3: gli ID degli eventi escono da questa SELECT
 	if sel.UIDValidity != st.uidValid {
 		// Nuova epoca della mailbox: ri-baseline senza eventi (gli UID
 		// vecchi e nuovi non sono confrontabili).
 		st.uidValid = sel.UIDValidity
-		last, err := highestUID(c)
+		last, err := s.highestUID(ctx, c, st.mailbox)
 		if err != nil {
 			return err
 		}
@@ -402,7 +404,7 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 
 	var set imap.UIDSet
 	set.AddRange(st.lastUID+1, 0) // 0 = "*" ⇒ "UID (last+1):*"
-	data, err := c.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{set}}, nil).Wait()
+	data, err := s.uidSearch(ctx, c, st.mailbox, &imap.SearchCriteria{UID: []imap.UIDSet{set}}, nil)
 	if err != nil {
 		return fmt.Errorf("imap uid search %s: %w", st.mailbox, err)
 	}
@@ -421,7 +423,7 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 	// sullo stesso intervallo). Errore di ricerca: si conta come se fossero tutti
 	// non letti (nessuna notifica persa).
 	unread := len(newUIDs)
-	if u, err := c.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{set}, NotFlag: []imap.Flag{imap.FlagSeen}}, nil).Wait(); err == nil {
+	if u, err := s.uidSearch(ctx, c, st.mailbox, &imap.SearchCriteria{UID: []imap.UIDSet{set}, NotFlag: []imap.Flag{imap.FlagSeen}}, nil); err == nil {
 		unread = 0
 		for _, uid := range u.AllUIDs() {
 			if uid > st.lastUID {
@@ -443,7 +445,9 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 	if len(hdr) > watchHeaderLimit {
 		hdr = hdr[len(hdr)-watchHeaderLimit:]
 	}
-	fetch := s.fetchRefs
+	fetch := func(mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
+		return s.fetchRefs(ctx, mailbox, uids)
+	}
 	if s.headersFn != nil {
 		fetch = s.headersFn
 	}
@@ -457,13 +461,12 @@ func (s *Store) recheckNewMail(c *imapclient.Client, ch chan<- mail.Change, st *
 
 // baselineState seleziona INBOX e ne ricava lo stato iniziale: UIDVALIDITY e
 // UID più alto esistente (0 se vuota).
-func (s *Store) baselineState(c *imapclient.Client) (*watchState, error) {
-	sel, err := c.Select("INBOX", nil).Wait()
+func (s *Store) baselineState(ctx context.Context, c *imapclient.Client) (*watchState, error) {
+	sel, err := s.selectBox(ctx, c, "INBOX") // Piano 16, Task 13, R3: anche la SELECT del Watch registra l'epoca
 	if err != nil {
-		return nil, fmt.Errorf("imap select INBOX: %w", err)
+		return nil, err
 	}
-	s.noteEpoch("INBOX", sel.UIDValidity) // Piano 16, Task 13, R3: anche la SELECT del Watch
-	last, err := highestUID(c)
+	last, err := s.highestUID(ctx, c, "INBOX")
 	if err != nil {
 		return nil, err
 	}
@@ -472,8 +475,8 @@ func (s *Store) baselineState(c *imapclient.Client) (*watchState, error) {
 
 // highestUID ritorna l'UID più alto della mailbox selezionata (UIDSearch
 // match-all: la lista è ascendente, l'ultimo è il massimo; 0 se vuota).
-func highestUID(c *imapclient.Client) (imap.UID, error) {
-	data, err := c.UIDSearch(&imap.SearchCriteria{}, nil).Wait()
+func (s *Store) highestUID(ctx context.Context, c *imapclient.Client, mailbox string) (imap.UID, error) {
+	data, err := s.uidSearch(ctx, c, mailbox, &imap.SearchCriteria{}, nil)
 	if err != nil {
 		return 0, fmt.Errorf("imap uid search: %w", err)
 	}
