@@ -37,12 +37,13 @@ func mailboxSubjects(t *testing.T, store *Store, mailbox string) []string {
 
 // TestListMailboxesRolesOrderAndNoselect: ruoli SPECIAL-USE mappati, il
 // contenitore \Noselect "[Gmail]" scartato, ordine INBOX, speciali nell'ordine
-// fisso (Speciali, Inviati, Bozze, Tutti, Spam, Cestino), poi le label in
+// fisso (Importanti, Speciali, Inviati, Bozze, Tutti, Spam, Cestino), poi le label in
 // ordine alfabetico.
 func TestListMailboxesRolesOrderAndNoselect(t *testing.T) {
 	ts := startTestServerCaps(t, gmailCaps)
 	ts.listAs("[Gmail]", imap.MailboxAttrNoSelect)
 	ts.createSpecialMailbox("[Gmail]/Trash", imap.MailboxAttrTrash)
+	ts.createSpecialMailbox("[Gmail]/Important", imap.MailboxAttrImportant) // Piano 12a, Task 6
 	ts.createSpecialMailbox("[Gmail]/Sent Mail", imap.MailboxAttrSent)
 	ts.createSpecialMailbox("[Gmail]/Drafts", imap.MailboxAttrDrafts)
 	ts.createSpecialMailbox("[Gmail]/All Mail", imap.MailboxAttrAll)
@@ -58,6 +59,7 @@ func TestListMailboxesRolesOrderAndNoselect(t *testing.T) {
 	}
 	want := []mail.Mailbox{
 		{Name: "INBOX", Role: "inbox", Delimiter: "/"},
+		{Name: "[Gmail]/Important", Role: "important", Delimiter: "/"},
 		{Name: "[Gmail]/Starred", Role: "flagged", Delimiter: "/"},
 		{Name: "[Gmail]/Sent Mail", Role: "sent", Delimiter: "/"},
 		{Name: "[Gmail]/Drafts", Role: "drafts", Delimiter: "/"},

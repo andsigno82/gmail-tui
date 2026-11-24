@@ -318,6 +318,7 @@ func TestStatusBarShowsFolderTag(t *testing.T) {
 func TestFolderNames(t *testing.T) {
 	cases := map[string]mail.Mailbox{
 		"Posta in arrivo": {Name: "INBOX", Role: "inbox"},
+		"Importanti":      {Name: "[Gmail]/Important", Role: "important"}, // Piano 12a, Task 6
 		"Inviati":         {Name: "[Gmail]/Sent", Role: "sent"},
 		"Cestino":         {Name: "[Gmail]/Trash", Role: "trash"},
 		"Bozze":           {Name: "[Gmail]/Drafts", Role: "drafts"},

@@ -18,11 +18,13 @@ import (
 )
 
 // specialRoles associa gli attributi SPECIAL-USE ai ruoli, nell'ordine di
-// presentazione (Piano 7, Task 1: Speciali, Inviati, Bozze, Tutti, Spam, Cestino).
+// presentazione (Piano 7, Task 1: Speciali, Inviati, Bozze, Tutti, Spam, Cestino;
+// Piano 12a, Task 6: Importanti prima di tutti, come in Gmail).
 var specialRoles = []struct {
 	attr imap.MailboxAttr
 	role string
 }{
+	{imap.MailboxAttrImportant, "important"},
 	{imap.MailboxAttrFlagged, "flagged"},
 	{imap.MailboxAttrSent, "sent"},
 	{imap.MailboxAttrDrafts, "drafts"},

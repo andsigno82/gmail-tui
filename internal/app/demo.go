@@ -112,6 +112,7 @@ func DemoStore() *mail.Mock {
 	// navigazione fra cartelle; il cestino resta quello Gmail di default.
 	mk.Mailboxes = []mail.Mailbox{
 		{Name: "INBOX", Role: "inbox"},
+		{Name: "[Gmail]/Importanti", Role: "important"}, // Piano 12a, Task 6
 		{Name: "[Gmail]/Inviati", Role: "sent"},
 		{Name: "[Gmail]/Drafts", Role: "drafts"}, // Piano 9, Task 13: cartella Bozze
 		{Name: "[Gmail]/Trash", Role: "trash"},

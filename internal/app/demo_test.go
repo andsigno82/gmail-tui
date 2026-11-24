@@ -321,6 +321,10 @@ func TestDemoStoreFolders(t *testing.T) {
 	if roles["[Gmail]/Inviati"] != "sent" {
 		t.Errorf("cartelle = %+v, voglio [Gmail]/Inviati con ruolo sent", boxes)
 	}
+	// Piano 12a, Task 6: anche Importanti è una cartella del seed.
+	if roles["[Gmail]/Importanti"] != "important" {
+		t.Errorf("cartelle = %+v, voglio [Gmail]/Importanti con ruolo important", boxes)
+	}
 	if _, ok := roles["Work"]; !ok {
 		t.Errorf("cartelle = %+v, voglio la label Work", boxes)
 	}

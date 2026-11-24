@@ -15,6 +15,10 @@ func nomi(b mail.Mailbox) string {
 	switch b.Role {
 	case "inbox":
 		return "Posta in arrivo"
+	case "important":
+		return "Importanti"
+	case "flagged":
+		return "Speciali"
 	case "sent":
 		return "Inviati"
 	case "drafts":
@@ -101,10 +105,12 @@ func TestBuildOrdine(t *testing.T) {
 		{Name: "Beta/x", Delimiter: "/"},
 		{Name: "INBOX", Role: "inbox", Delimiter: "/"},
 		{Name: "[Gmail]/Sent Mail", Role: "sent", Delimiter: "/"},
+		{Name: "[Gmail]/Important", Role: "important", Delimiter: "/"}, // Piano 12a, Task 6
+		{Name: "[Gmail]/Starred", Role: "flagged", Delimiter: "/"},     // Piano 12a, Task 6
 	}
 	out, rows := Render(Build(boxes, nomi), 0, nil, st)
 
-	want := []string{"INBOX", "[Gmail]/Sent Mail", "[Gmail]/Drafts", "alfa", "Beta/x", "Zeta"}
+	want := []string{"INBOX", "[Gmail]/Important", "[Gmail]/Starred", "[Gmail]/Sent Mail", "[Gmail]/Drafts", "alfa", "Beta/x", "Zeta"}
 	if got := rowNames(rows); strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("ordine: got %v, want %v", got, want)
 	}

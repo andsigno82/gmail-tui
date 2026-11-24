@@ -2185,7 +2185,7 @@ Se compare una riga in `conversation.go`, `fetch.go`, `imap.go`, `mailboxes.go` 
 **Interfaces:**
 - Produces: nuovo valore `"important"` per `mail.Mailbox.Role`. Nessun metodo cambia.
 
-- [ ] **Step 1: scrivere i test (modifiche ai test esistenti).**
+- [x] **Step 1: scrivere i test (modifiche ai test esistenti).**
 
 In `internal/mail/imap/mailboxes_test.go`, `TestListMailboxesRolesOrderAndNoselect`: dopo `ts.createSpecialMailbox("[Gmail]/Trash", imap.MailboxAttrTrash)` aggiungere
 
@@ -2249,12 +2249,12 @@ In `internal/app/demo_test.go`, `TestDemoStoreFolders`: dopo il controllo di `[G
 
 In `internal/trace/tracestore/snapshot_test.go`, riga 140: aggiungere `"important": true` al map `roles`.
 
-- [ ] **Step 2: vedere rosso.**
+- [x] **Step 2: vedere rosso.**
 
 Run: `go test ./internal/mail/imap/ ./internal/ui/foldertree/ ./internal/app/ ./internal/trace/... -run 'TestListMailboxesRolesOrderAndNoselect|TestBuildOrdine|TestFolderNames|TestDemoStoreFolders' -count=1`
 Expected: FAIL. `ListMailboxes[1] = {Name:[Gmail]/Starred ...}, voglio {Name:[Gmail]/Important Role:important}`; `ordine: got [INBOX [Gmail]/Sent Mail [Gmail]/Drafts [Gmail]/Important [Gmail]/Starred] ...`; `folderName(...) = "[Gmail]/Important", voglio "Importanti"`; `cartelle = ..., voglio [Gmail]/Importanti con ruolo important`.
 
-- [ ] **Step 3: implementare.**
+- [x] **Step 3: implementare.**
 
 In `internal/mail/imap/mailboxes.go`:
 
@@ -2332,12 +2332,12 @@ In `internal/app/demo.go`, riga 114, dopo `{Name: "INBOX", Role: "inbox"},`:
 
 In `internal/trace/tracestore/store.go`, commento del pacchetto (riga 5): l'elenco dei ruoli diventa `(inbox/important/sent/drafts/all/trash/junk/flagged/label)`.
 
-- [ ] **Step 4: vedere verde.**
+- [x] **Step 4: vedere verde.**
 
 Run: `go test ./internal/mail/... ./internal/ui/foldertree/ ./internal/app/ ./internal/trace/... ./internal/mcpserver/ -count=1`
 Expected: PASS. Il server MCP riporta il ruolo `"important"` così com'è: nessun test suo cambia.
 
-- [ ] **Step 5: gate**, poi commit `feat(mail): Importanti tra le cartelle speciali, dopo Posta in arrivo (Piano 12a, Task 6)`.
+- [x] **Step 5: gate**, poi commit `feat(mail): Importanti tra le cartelle speciali, dopo Posta in arrivo (Piano 12a, Task 6)`.
 
 ## Task 7: documenti
 

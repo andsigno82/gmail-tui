@@ -31,7 +31,7 @@ type Page struct {
 type Mailbox struct {
 	Name string // nome IMAP (es. "[Gmail]/Trash"): è il valore per Query.Label
 	// Role viene dagli attributi SPECIAL-USE (RFC 6154), mai dal nome localizzato.
-	// Valori: "" (label) | "inbox" | "sent" | "drafts" | "trash" | "junk" | "all" | "flagged"
+	// Valori: "" (label) | "inbox" | "important" | "sent" | "drafts" | "trash" | "junk" | "all" | "flagged"
 	Role string
 	// Delimiter è il separatore della gerarchia dal LIST IMAP ("/" per Gmail);
 	// vuoto se non noto (Piano 15, Task 2, D15-T9: serve all'albero cartelle).
@@ -155,8 +155,8 @@ type MailStore interface {
 	Send(ctx context.Context, m msg.Outgoing) error
 
 	// ListMailboxes restituisce cartelle e label con il ruolo SPECIAL-USE.
-	// Ordine: INBOX, poi le speciali (flagged, sent, drafts, all, junk, trash),
-	// poi le label in ordine alfabetico. Le mailbox \Noselect (contenitori come
+	// Ordine: INBOX, poi le speciali (important, flagged, sent, drafts, all, junk,
+	// trash), poi le label in ordine alfabetico. Le mailbox \Noselect (contenitori come
 	// "[Gmail]") sono escluse.
 	ListMailboxes(ctx context.Context) ([]Mailbox, error)
 
