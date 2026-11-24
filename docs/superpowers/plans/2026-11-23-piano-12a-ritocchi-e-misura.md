@@ -1152,14 +1152,14 @@ Expected: nessuna riga.
 
 **Files:**
 - Modify: `internal/trace/trace.go` (struct `Event` e suo commento, righe 32–72; `WithSpan`, righe 254–267), `internal/trace/summary.go` (tipo `group`, riga 70; variabili, riga 91–100; `switch`, riga 128; sezione Avvio, righe 202–217; dopo la tabella delle operazioni, riga 230), `internal/trace/tracestore/store.go` (`begin`, righe 143–146)
-- Test: Create `internal/trace/step_test.go`; Modify `internal/trace/summary_test.go`, `internal/mail/imap/gate_trace_test.go` (righe 24 e 48)
+- Test: Create `internal/trace/step_test.go`; Modify `internal/trace/summary_test.go`, `internal/mail/imap/gate_trace_test.go` (righe 24 e 48), `internal/trace/trace_test.go` (righe 41 e 78, aggiunte in esecuzione)
 
 **Produces:** un nuovo tipo di evento di traccia, `step` (operazione, passo, ruolo, durata, conteggio, byte, esito), con `StepTimer` per misurarlo; `gmail-tui trace` stampa la tabella "Passi IMAP" e mette i passi del Connect nella cronologia dell'avvio. I file di traccia vecchi funzionano come prima.
 
 **Interfaces:**
 - Produces: campo `Event.Step string` (JSON `step`); costanti `trace.StepTCP`, `trace.StepTLS`, `trace.StepLogin`, `trace.StepList`, `trace.StepSelect`, `trace.StepSearch`, `trace.StepFetch`; `trace.WithOp(ctx, op) context.Context`; `trace.OpFrom(ctx) string`; `trace.WithSpan(ctx, op string) (context.Context, *Span)` (firma cambiata); tipo `trace.StepTimer` con `trace.BeginStep(ctx, step) StepTimer` e metodo `(StepTimer) End(role string, n, bytes int, err error)`.
 
-- [ ] **Step 1: scrivere i test.** Create `internal/trace/step_test.go`:
+- [x] **Step 1: scrivere i test.** Create `internal/trace/step_test.go`:
 
 ```go
 package trace
@@ -1268,7 +1268,7 @@ func TestSummarizeSezionePassi(t *testing.T) {
 	}
 	// Cronologia dell'avvio: i passi del Connect, in ordine di tempo.
 	i, j, k := strings.Index(s, "Connect tcp"), strings.Index(s, "Connect tls"), strings.Index(s, "Connect login")
-	if i < 0 || j < 0 || k < 0 || !(i < j && j < k) {
+	if i < 0 || j < 0 || k < 0 || i >= j || j >= k {
 		t.Errorf("i passi del Connect non sono in ordine nell'avvio:\n%s", s)
 	}
 }
@@ -1283,12 +1283,12 @@ E in `TestSummarizeRiepilogo` (stesso file), prima della chiusura della funzione
 	}
 ```
 
-- [ ] **Step 2: vedere rosso.**
+- [x] **Step 2: vedere rosso.**
 
 Run: `go test ./internal/trace/ -count=1`
 Expected: FAIL per errore di compilazione (`undefined: StepSelect`, `not enough arguments in call to WithSpan`, `undefined: BeginStep` in questo pacchetto). Tolto quello, `TestSummarizeSezionePassi` fallisce con `riepilogo senza la tabella dei passi`.
 
-- [ ] **Step 3: implementare in `internal/trace/trace.go`.** Nella struct `Event`, dopo `Op`:
+- [x] **Step 3: implementare in `internal/trace/trace.go`.** Nella struct `Event`, dopo `Op`:
 
 ```go
 	Step      string `json:"step,omitempty"`
@@ -1395,9 +1395,9 @@ In `internal/trace/tracestore/store.go`, in `begin`:
 	ctx, sp := trace.WithSpan(ctx, op)
 ```
 
-In `internal/mail/imap/gate_trace_test.go`, righe 24 e 48, la chiamata diventa `trace.WithSpan(context.Background(), "ListConversations")`.
+In `internal/mail/imap/gate_trace_test.go`, righe 24 e 48, e in `internal/trace/trace_test.go`, righe 41 e 78 (queste ultime aggiunte in esecuzione), la chiamata diventa `trace.WithSpan(context.Background(), "ListConversations")`.
 
-- [ ] **Step 4: implementare in `internal/trace/summary.go`.** Dopo il tipo `group`:
+- [x] **Step 4: implementare in `internal/trace/summary.go`.** Dopo il tipo `group`:
 
 ```go
 // stepGroup raccoglie le misure di un passo (operazione, passo e ruolo uguali).
@@ -1456,12 +1456,12 @@ Subito dopo il blocco `if len(storeOrder) > 0 { ... }` della tabella delle opera
 	}
 ```
 
-- [ ] **Step 5: vedere verde.**
+- [x] **Step 5: vedere verde.**
 
 Run: `go test ./internal/trace/... ./internal/mail/imap/ -count=1`
 Expected: PASS.
 
-- [ ] **Step 6: gate**, poi commit `feat(trace): evento step per i passi IMAP e tabella nel riepilogo (Piano 12a, Task 4)`.
+- [x] **Step 6: gate**, poi commit `feat(trace): evento step per i passi IMAP e tabella nel riepilogo (Piano 12a, Task 4)`.
 
 ## Task 5: i passi misurati nello store IMAP
 

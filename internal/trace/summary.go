@@ -73,6 +73,12 @@ type group struct {
 	errs                                        int
 }
 
+// stepGroup raccoglie le misure di un passo (operazione, passo e ruolo uguali).
+type stepGroup struct {
+	label, role string
+	dur         []int64
+}
+
 // frame e un messaggio Bubble Tea con Update+View, per la classifica dei lenti.
 type frame struct {
 	label, screen string
@@ -98,6 +104,9 @@ func Summarize(r io.Reader, w io.Writer) error {
 		phases                     []Event
 		firstStore                 = map[string]Event{}
 		viewBytesAll               []int64
+		steps                      = map[string]*stepGroup{}
+		stepOrder                  []string
+		connect                    []Event // passi del Connect, per la cronologia dell'avvio
 	)
 	get := func(m map[string]*group, order *[]string, k string) *group {
 		g, ok := m[k]
@@ -141,6 +150,18 @@ func Summarize(r io.Reader, w io.Writer) error {
 			}
 			if _, ok := firstStore[e.Op]; !ok {
 				firstStore[e.Op] = e
+			}
+		case "step":
+			key := e.Op + "\x00" + e.Step + "\x00" + e.Role
+			g, ok := steps[key]
+			if !ok {
+				g = &stepGroup{label: e.Op + " " + e.Step, role: e.Role}
+				steps[key] = g
+				stepOrder = append(stepOrder, key)
+			}
+			g.dur = append(g.dur, e.Dur)
+			if e.Op == "Connect" {
+				connect = append(connect, e)
 			}
 		case "msg":
 			label := e.Op
@@ -207,6 +228,10 @@ func Summarize(r io.Reader, w io.Writer) error {
 			start = append(start, e)
 		}
 	}
+	for _, e := range connect {
+		e.Op = "Connect " + e.Step + " (passo)"
+		start = append(start, e)
+	}
 	start = append(start, phases...)
 	if len(start) > 0 {
 		sort.SliceStable(start, func(i, j int) bool { return start[i].T < start[j].T })
@@ -225,6 +250,17 @@ func Summarize(r io.Reader, w io.Writer) error {
 			fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n", k, len(g.dur),
 				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)),
 				ms(median(g.wait)), ms(percentile(g.wait, 95)), ms(maxOf(g.wait)), g.errs)
+		}
+		_ = tw.Flush()
+	}
+
+	if len(stepOrder) > 0 {
+		fmt.Fprintln(w, "\nPassi IMAP (ms; un comando per passo, per ruolo della cartella)")
+		fmt.Fprintln(tw, "operazione passo\truolo\tn\tmediana\tp95\tmax")
+		for _, k := range stepOrder {
+			g := steps[k]
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", g.label, g.role, len(g.dur),
+				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)))
 		}
 		_ = tw.Flush()
 	}

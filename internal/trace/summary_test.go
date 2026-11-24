@@ -73,6 +73,10 @@ func TestSummarizeRiepilogo(t *testing.T) {
 	if !strings.Contains(s, "14.6") {
 		t.Errorf("byte medi per View attesi 14.6 KiB:\n%s", s)
 	}
+	// Un file senza passi non ha la tabella dei passi (Piano 12a, Task 4).
+	if strings.Contains(s, "Passi IMAP") {
+		t.Errorf("file senza eventi step con la tabella dei passi:\n%s", s)
+	}
 }
 
 func TestSummarizeToleraRigheRotteEFileVuoto(t *testing.T) {
@@ -132,5 +136,51 @@ func TestSummarizeFrameLentiLimitatiADieci(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "30.0 ms") || strings.Contains(out.String(), " 5.0 ms") {
 		t.Errorf("i frame lenti devono andare da 30 a 21 ms:\n%s", out.String())
+	}
+}
+
+// righeCon ritorna le righe del riepilogo che iniziano con prefisso.
+func righeCon(s, prefisso string) []string {
+	var out []string
+	for riga := range strings.SplitSeq(s, "\n") {
+		if strings.HasPrefix(riga, prefisso) {
+			out = append(out, riga)
+		}
+	}
+	return out
+}
+
+// Piano 12a, Task 4: la tabella dei passi IMAP, una riga per operazione, passo e
+// ruolo; i passi del Connect finiscono nella cronologia dell'avvio.
+func TestSummarizeSezionePassi(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 250_000, K: "step", Op: "Connect", Step: "tls", Dur: 150_000},
+		Event{T: 1_250_000, K: "step", Op: "Connect", Step: "login", Dur: 1_000_000},
+		Event{T: 1_300_000, K: "store", Op: "Connect", Dur: 1_300_000},
+		Event{T: 1_600_000, K: "step", Op: "ListConversations", Step: "select", Role: "inbox", Dur: 900_000},
+		Event{T: 2_100_000, K: "step", Op: "ListConversations", Step: "search", Role: "inbox", Dur: 500_000},
+		Event{T: 2_900_000, K: "step", Op: "ListConversations", Step: "select", Role: "all", Dur: 800_000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "Passi IMAP") {
+		t.Errorf("riepilogo senza la tabella dei passi:\n%s", s)
+	}
+	// Una riga per operazione, passo e ruolo: due "select" (inbox e all).
+	if got := righeCon(s, "ListConversations select"); len(got) != 2 {
+		t.Errorf("righe di \"ListConversations select\" = %d, attese 2:\n%s", len(got), s)
+	}
+	if got := righeCon(s, "ListConversations search"); len(got) != 1 || !strings.Contains(got[0], "inbox") || !strings.Contains(got[0], "500.0") {
+		t.Errorf("riga di search attesa con inbox e 500.0:\n%s", s)
+	}
+	// Cronologia dell'avvio: i passi del Connect, in ordine di tempo.
+	i, j, k := strings.Index(s, "Connect tcp"), strings.Index(s, "Connect tls"), strings.Index(s, "Connect login")
+	if i < 0 || j < 0 || k < 0 || i >= j || j >= k {
+		t.Errorf("i passi del Connect non sono in ordine nell'avvio:\n%s", s)
 	}
 }

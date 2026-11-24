@@ -141,7 +141,7 @@ type call struct {
 }
 
 func begin(ctx context.Context, op string) (context.Context, *call) {
-	ctx, sp := trace.WithSpan(ctx)
+	ctx, sp := trace.WithSpan(ctx, op) // il nome dell'operazione serve anche ai passi (Piano 12a, Task 4)
 	return ctx, &call{t: trace.Begin(), sp: sp, ev: trace.Event{K: "store", Op: op}}
 }
 
