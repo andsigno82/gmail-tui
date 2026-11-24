@@ -102,7 +102,7 @@ go build ./... && go vet ./... && go test -race -count=1 ./... && golangci-lint 
 **Interfaces:**
 - Produces (pacchetto `smtp`, non esportate): `needsEncoding(s string) bool`; `textPart(body string) (cte string, data []byte, err error)`; `corpo` ritorna `(ct, cte string, data []byte, err error)` con `cte` vuoto solo per i multipart.
 
-- [ ] **Step 1: scrivere i test** in `internal/mail/smtp/encoding_test.go`.
+- [x] **Step 1: scrivere i test** in `internal/mail/smtp/encoding_test.go`.
 
 ```go
 package smtp
@@ -286,12 +286,12 @@ func TestBuildDraftRoundTripsQuotedPrintable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: vedere rosso.**
+- [x] **Step 2: vedere rosso.**
 
 Run: `go test ./internal/mail/smtp/ -run 'TestBuildMIME|TestBuildDraft' -count=1`
 Expected: FAIL. `TestBuildMIMEAsciiStaysSevenBit` non trova `Content-Transfer-Encoding: 7bit`; `...AccentsGoQuotedPrintable` trova i byte non ASCII; `...LongLineGoQuotedPrintable` trova la riga di 1500 byte; `...MarkdownPartsChooseOwnEncoding` e `...AttachmentTextPartDeclaresEncoding` leggono `Content-Transfer-Encoding` vuoto; `TestBuildDraftRoundTripsQuotedPrintable` non trova l'intestazione. I test già esistenti del pacchetto restano verdi.
 
-- [ ] **Step 3: implementare.** Creare `internal/mail/smtp/encoding.go`:
+- [x] **Step 3: implementare.** Creare `internal/mail/smtp/encoding.go`:
 
 ```go
 package smtp
@@ -447,7 +447,7 @@ Sempre in `mime.go`, in `buildMIMEWith` (righe 89–115), `corpo` ritorna quattr
 
 Nel commento di `buildMIME` (righe 26–47) sostituire il punto "Senza allegati" con: `Senza allegati: Content-Type: text/plain; charset=utf-8, Content-Transfer-Encoding: 7bit o quoted-printable (Piano 12a, Task 1), corpo con LF→CRLF (gli eventuali CRLF esistenti restano tali).`
 
-- [ ] **Step 4: aggiungere il test della funzione pura**, in coda a `encoding_test.go`:
+- [x] **Step 4: aggiungere il test della funzione pura**, in coda a `encoding_test.go`:
 
 ```go
 // TestNeedsEncoding: la soglia e i casi limite della scelta 7bit / quoted-printable.
@@ -474,12 +474,12 @@ func TestNeedsEncoding(t *testing.T) {
 }
 ```
 
-- [ ] **Step 5: vedere verde.**
+- [x] **Step 5: vedere verde.**
 
 Run: `go test ./internal/mail/smtp/ -count=1 -v`
 Expected: PASS, compresi i test già esistenti (le parti lette con `multipart.Reader.NextPart` arrivano già decodificate).
 
-- [ ] **Step 6: gate**, poi commit `feat(smtp): codifica di trasferimento delle parti di testo (Piano 12a, Task 1)`.
+- [x] **Step 6: gate**, poi commit `feat(smtp): codifica di trasferimento delle parti di testo (Piano 12a, Task 1)`.
 
 ## Task 2: niente righe senza dati dal FETCH
 
