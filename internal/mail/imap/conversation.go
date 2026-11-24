@@ -323,12 +323,13 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 	refs := make([]msg.MessageRef, 0, len(uids))
 	for i := len(uids) - 1; i >= 0; i-- {
 		buf := byUID[uids[i]]
-		ref := toRef(mailbox, uids[i], buf)
-		if buf != nil {
-			ref.GmailID = buf.GmailMsgID
-			ref.ThreadID = buf.GmailThreadID
-			ref.Labels = msg.UserLabels(buf.GmailLabels)
+		if buf == nil {
+			continue // espunto fra SEARCH e FETCH: nessuna riga senza dati (Piano 12a, Task 2)
 		}
+		ref := toRef(mailbox, uids[i], buf)
+		ref.GmailID = buf.GmailMsgID
+		ref.ThreadID = buf.GmailThreadID
+		ref.Labels = msg.UserLabels(buf.GmailLabels)
 		refs = append(refs, ref)
 	}
 	return refs, nil

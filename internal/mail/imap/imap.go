@@ -418,7 +418,9 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 
 // fetchRefs è il passo 3-5 condiviso da ListMessages e Search: UIDFetch
 // ENVELOPE+FLAGS+INTERNALDATE degli uid (nella mailbox già selezionata) e
-// mapping in msg.MessageRef, dal più nuovo al più vecchio.
+// mapping in msg.MessageRef, dal più nuovo al più vecchio. Piano 12a, Task 2: gli
+// uid che il FETCH non restituisce (messaggio espunto fra SEARCH e FETCH) si
+// saltano, mai una riga senza dati.
 func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
@@ -449,9 +451,13 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 
 	refs := make([]msg.MessageRef, 0, len(uids))
 	for i := len(uids) - 1; i >= 0; i-- { // dal più nuovo al più vecchio
-		ref := toRef(mailbox, uids[i], byUID[uids[i]])
+		buf := byUID[uids[i]]
+		if buf == nil {
+			continue
+		}
+		ref := toRef(mailbox, uids[i], buf)
 		if gm {
-			setGmailFields(&ref, byUID[uids[i]])
+			setGmailFields(&ref, buf)
 		}
 		refs = append(refs, ref)
 	}
@@ -472,15 +478,13 @@ func pageWindow(n, offset, limit int) (start, end int) {
 	return start, end
 }
 
-// toRef mappa un buffer di fetch in msg.MessageRef.
+// toRef mappa un buffer di fetch in msg.MessageRef. buf è sempre presente: gli uid
+// senza dati si saltano prima di chiamarla (Piano 12a, Task 2).
 func toRef(mailbox string, uid imap.UID, buf *imapclient.FetchMessageBuffer) msg.MessageRef {
 	ref := msg.MessageRef{
 		ID:        msg.NewID(mailbox, uint32(uid)),
 		Unread:    true, // Unread = assenza di \Seen
 		ThreadLen: 1,    // ENVELOPE non espone la lunghezza del thread
-	}
-	if buf == nil {
-		return ref
 	}
 	if buf.Envelope != nil {
 		ref.Subject = buf.Envelope.Subject

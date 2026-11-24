@@ -493,7 +493,7 @@ Expected: PASS, compresi i test già esistenti (le parti lette con `multipart.Re
 - Consumes: `scriptedIMAP` (`gmail_scripted_test.go`), `scriptedGmailServerOpts` (`conversation_test.go`).
 - Modifies (solo test): `gmailServerOpts` guadagna `vanished map[string]bool`.
 
-- [ ] **Step 1: estendere il server scriptato** in `conversation_test.go`. Sostituire il tipo:
+- [x] **Step 1: estendere il server scriptato** in `conversation_test.go`. Sostituire il tipo:
 
 ```go
 // gmailServerOpts sono le varianti del server scriptato (Piano 16, Task 8).
@@ -514,7 +514,7 @@ Nei due rami `UID FETCH` di `scriptedGmailServerOpts`, subito dopo `if asked != 
 					}
 ```
 
-- [ ] **Step 2: scrivere i test** in `internal/mail/imap/ghost_test.go`:
+- [x] **Step 2: scrivere i test** in `internal/mail/imap/ghost_test.go`:
 
 ```go
 package imap
@@ -594,12 +594,12 @@ func TestListMessagesSkipsMessageMissingFromFetch(t *testing.T) {
 }
 ```
 
-- [ ] **Step 3: vedere rosso.**
+- [x] **Step 3: vedere rosso.**
 
 Run: `go test ./internal/mail/imap/ -run 'SkipsMessageMissingFromFetch' -count=1`
 Expected: FAIL. `conversazioni = 3, voglio 2` (la riga dell'uid 2 è senza oggetto né thread) e `ListMessages: <nil>, 3 refs, voglio 2`.
 
-- [ ] **Step 4: implementare.** In `internal/mail/imap/imap.go` sostituire il ciclo finale di `fetchRefs` (righe 450–458):
+- [x] **Step 4: implementare.** In `internal/mail/imap/imap.go` sostituire il ciclo finale di `fetchRefs` (righe 450–458):
 
 ```go
 	refs := make([]msg.MessageRef, 0, len(uids))
@@ -652,12 +652,12 @@ In `internal/mail/imap/conversation.go` sostituire il ciclo finale di `gmailRefs
 	return refs, nil
 ```
 
-- [ ] **Step 5: vedere verde.**
+- [x] **Step 5: vedere verde.**
 
 Run: `go test ./internal/mail/imap/ -count=1`
 Expected: PASS. La scansione per conversazioni chiede il blocco successivo finché la pagina non si riempie: lo fa già oggi, non si tocca.
 
-- [ ] **Step 6: gate**, poi commit `fix(imap): niente righe vuote per i messaggi spariti fra SEARCH e FETCH (Piano 12a, Task 2)`.
+- [x] **Step 6: gate**, poi commit `fix(imap): niente righe vuote per i messaggi spariti fra SEARCH e FETCH (Piano 12a, Task 2)`.
 
 ## Task 3: Connect interrompibile, con il TLS provato
 

@@ -83,6 +83,9 @@ func scriptedGmailServer(t *testing.T, boxes map[string][]gmailFetch) string {
 type gmailServerOpts struct {
 	epochs map[string]uint32 // UIDVALIDITY annunciata dalla SELECT per mailbox (0/assente = nessuna)
 	trash  bool              // LIST con \Trash e capability MOVE
+	// vanished elenca "BOX:uid" che il SEARCH riporta ma il FETCH non restituisce:
+	// il messaggio e stato espunto fra i due comandi (Piano 12a, Task 2).
+	vanished map[string]bool
 }
 
 func scriptedGmailServerOpts(t *testing.T, boxes map[string][]gmailFetch, o gmailServerOpts) string {
@@ -131,6 +134,9 @@ func scriptedGmailServerOpts(t *testing.T, boxes map[string][]gmailFetch, o gmai
 					if asked != nil && !asked[m.uid] {
 						continue
 					}
+					if o.vanished[box+":"+fmt.Sprint(m.uid)] {
+						continue
+					}
 					body := "Subject: s\r\n\r\nciao"
 					flags := ""
 					if m.read {
@@ -145,6 +151,9 @@ func scriptedGmailServerOpts(t *testing.T, boxes map[string][]gmailFetch, o gmai
 			var lines []string
 			for _, m := range boxes[box] {
 				if asked != nil && !asked[m.uid] {
+					continue
+				}
+				if o.vanished[box+":"+fmt.Sprint(m.uid)] {
 					continue
 				}
 				flags := ""
