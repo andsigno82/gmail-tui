@@ -30,9 +30,13 @@ import (
 //     Subject (Q-encoded SOLO se non-ASCII), Date (RFC1123Z di now),
 //     Message-ID <hex16@dominio-di-From>, MIME-Version: 1.0.
 //   - Bcc MAI negli header: è un destinatario solo RCPT (vedi Sender.Send).
-//   - Senza allegati: Content-Type: text/plain; charset=utf-8, corpo con
-//     LF→CRLF (gli eventuali CRLF esistenti restano tali).
-//   - Con allegati: multipart/mixed; prima parte text/plain, poi una parte
+//   - Senza allegati: Content-Type: text/plain; charset=utf-8,
+//     Content-Transfer-Encoding: 7bit o quoted-printable (Piano 12a, Task 1).
+//     In 7bit il corpo esce com'è, con LF→CRLF (gli eventuali CRLF esistenti
+//     restano tali); in quoted-printable è codificato.
+//   - Con allegati: multipart/mixed, che non porta una
+//     Content-Transfer-Encoding propria; prima parte text/plain con la sua
+//     codifica, poi una parte
 //     per file: Content-Type da mime.TypeByExtension (fallback
 //     application/octet-stream), Content-Disposition: attachment;
 //     filename="<base del path>", Content-Transfer-Encoding: base64 con
@@ -87,13 +91,16 @@ func buildMIMEWith(m msg.Outgoing, now time.Time, withBcc bool) ([]byte, error) 
 	writeHeader("MIME-Version", "1.0")
 
 	// Corpo (Piano 7.2, Task 5): text/plain, o multipart/alternative con HTML.
-	ct, data, err := corpo(m, body)
+	ct, cte, data, err := corpo(m, body)
 	if err != nil {
 		return nil, err
 	}
 
 	if len(m.Attachments) == 0 {
 		writeHeader("Content-Type", ct)
+		if cte != "" {
+			writeHeader("Content-Transfer-Encoding", cte)
+		}
 		buf.WriteString("\r\n")
 		buf.Write(data)
 		return buf.Bytes(), nil
@@ -103,9 +110,12 @@ func buildMIMEWith(m msg.Outgoing, now time.Time, withBcc bool) ([]byte, error) 
 	writeHeader("Content-Type", "multipart/mixed; boundary="+mw.Boundary())
 	buf.WriteString("\r\n")
 
-	// Prima parte: il corpo text/plain.
+	// Prima parte: il corpo, con la sua codifica (Piano 12a, Task 1).
 	h := textproto.MIMEHeader{}
 	h.Set("Content-Type", ct)
+	if cte != "" {
+		h.Set("Content-Transfer-Encoding", cte)
+	}
 	p, err := mw.CreatePart(h)
 	if err != nil {
 		return nil, fmt.Errorf("mime: parte testo: %w", err)
@@ -193,41 +203,62 @@ func (e rawHTMLEscaper) renderHTMLBlock(w util.BufWriter, source []byte, n ast.N
 	return ast.WalkContinue, nil
 }
 
-// corpo costruisce Content-Type e bytes della parte corpo. Senza Markdown è
-// text/plain con il corpo CRLF così com'è (invariato). Con Markdown è
+// corpo costruisce Content-Type, Content-Transfer-Encoding e bytes della parte
+// corpo. Senza Markdown è text/plain: il corpo esce com'è in 7bit, codificato in
+// quoted-printable altrimenti. Con Markdown è
 // multipart/alternative: text/plain = markdown sorgente, text/html = documento
 // minimo con il rendering GFM (meta charset utf-8, nessuno stile o script esterno).
-func corpo(m msg.Outgoing, body string) (string, []byte, error) {
+// Piano 12a, Task 1: ogni parte di testo porta la sua codifica (textPart); cte è
+// vuoto solo quando ct è un multipart, che non la porta (RFC 2045, sezione 6.4).
+func corpo(m msg.Outgoing, body string) (ct, cte string, data []byte, err error) {
 	const plain = "text/plain; charset=utf-8"
 	if !m.Markdown {
-		return plain, []byte(body), nil
+		cte, data, err = textPart(body)
+		if err != nil {
+			return "", "", nil, err
+		}
+		return plain, cte, data, nil
 	}
 	var rendered bytes.Buffer
 	if err := mdRenderer.Convert([]byte(m.BodyText), &rendered); err != nil {
-		return "", nil, fmt.Errorf("mime: markdown: %w", err)
+		return "", "", nil, fmt.Errorf("mime: markdown: %w", err)
 	}
 	page := toCRLF(htmlPage(rendered.String()))
 
+	type parte struct {
+		contentType, cte string
+		data             []byte
+	}
+	cteTesto, dataTesto, err := textPart(body)
+	if err != nil {
+		return "", "", nil, err
+	}
+	cteHTML, dataHTML, err := textPart(page)
+	if err != nil {
+		return "", "", nil, err
+	}
+
 	var alt bytes.Buffer
 	aw := multipart.NewWriter(&alt)
-	for _, part := range []struct{ contentType, data string }{
-		{plain, body},
-		{"text/html; charset=utf-8", page},
+	for _, p := range []parte{
+		{plain, cteTesto, dataTesto},
+		{"text/html; charset=utf-8", cteHTML, dataHTML},
 	} {
 		h := textproto.MIMEHeader{}
-		h.Set("Content-Type", part.contentType)
+		h.Set("Content-Type", p.contentType)
+		h.Set("Content-Transfer-Encoding", p.cte)
 		w, err := aw.CreatePart(h)
 		if err != nil {
-			return "", nil, fmt.Errorf("mime: parte %s: %w", part.contentType, err)
+			return "", "", nil, fmt.Errorf("mime: parte %s: %w", p.contentType, err)
 		}
-		if _, err := w.Write([]byte(part.data)); err != nil {
-			return "", nil, fmt.Errorf("mime: parte %s: %w", part.contentType, err)
+		if _, err := w.Write(p.data); err != nil {
+			return "", "", nil, fmt.Errorf("mime: parte %s: %w", p.contentType, err)
 		}
 	}
 	if err := aw.Close(); err != nil {
-		return "", nil, fmt.Errorf("mime: chiusura alternative: %w", err)
+		return "", "", nil, fmt.Errorf("mime: chiusura alternative: %w", err)
 	}
-	return "multipart/alternative; boundary=" + aw.Boundary(), alt.Bytes(), nil
+	return "multipart/alternative; boundary=" + aw.Boundary(), "", alt.Bytes(), nil
 }
 
 // htmlPage incapsula il frammento renderizzato in un documento HTML minimo.

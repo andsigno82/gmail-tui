@@ -73,6 +73,10 @@ func TestSummarizeRiepilogo(t *testing.T) {
 	if !strings.Contains(s, "14.6") {
 		t.Errorf("byte medi per View attesi 14.6 KiB:\n%s", s)
 	}
+	// Un file senza passi non ha la tabella dei passi (Piano 12a, Task 4).
+	if strings.Contains(s, "Passi IMAP") {
+		t.Errorf("file senza eventi step con la tabella dei passi:\n%s", s)
+	}
 }
 
 func TestSummarizeToleraRigheRotteEFileVuoto(t *testing.T) {
@@ -132,5 +136,145 @@ func TestSummarizeFrameLentiLimitatiADieci(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "30.0 ms") || strings.Contains(out.String(), " 5.0 ms") {
 		t.Errorf("i frame lenti devono andare da 30 a 21 ms:\n%s", out.String())
+	}
+}
+
+// righeCon ritorna le righe del riepilogo che iniziano con prefisso.
+func righeCon(s, prefisso string) []string {
+	var out []string
+	for riga := range strings.SplitSeq(s, "\n") {
+		if strings.HasPrefix(riga, prefisso) {
+			out = append(out, riga)
+		}
+	}
+	return out
+}
+
+// campiRiga ritorna i campi dell'unica riga del riepilogo che inizia con prefisso
+// (nil se la riga non e' una sola).
+func campiRiga(s, prefisso string) []string {
+	righe := righeCon(s, prefisso)
+	if len(righe) != 1 {
+		return nil
+	}
+	return strings.Fields(righe[0])
+}
+
+// Piano 12a, Task 4: la tabella dei passi IMAP, una riga per operazione, passo e
+// ruolo, con il conteggio dei passi falliti. Della cronologia dell'avvio fanno
+// parte solo i passi fino al primo Connect riuscito, qui il primo.
+func TestSummarizeSezionePassi(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 250_000, K: "step", Op: "Connect", Step: "tls", Dur: 150_000},
+		Event{T: 1_250_000, K: "step", Op: "Connect", Step: "login", Dur: 1_000_000},
+		Event{T: 1_300_000, K: "store", Op: "Connect", Dur: 1_300_000},
+		Event{T: 1_600_000, K: "step", Op: "ListConversations", Step: "select", Role: "inbox", Dur: 900_000},
+		Event{T: 2_100_000, K: "step", Op: "ListConversations", Step: "search", Role: "inbox", Dur: 500_000},
+		Event{T: 2_900_000, K: "step", Op: "ListConversations", Step: "select", Role: "all", Dur: 800_000},
+		// Un secondo Connect, piu' tardi, con il login fallito: sta nella tabella, non nell'avvio.
+		Event{T: 9_000_000, K: "step", Op: "Connect", Step: "tcp", Dur: 120_000},
+		Event{T: 9_200_000, K: "step", Op: "Connect", Step: "login", Dur: 900_000, Err: true},
+		Event{T: 9_250_000, K: "store", Op: "Connect", Dur: 1_200_000, Err: true},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if !strings.Contains(s, "Passi IMAP") {
+		t.Errorf("riepilogo senza la tabella dei passi:\n%s", s)
+	}
+	// Una riga per operazione, passo e ruolo: due "select" (inbox e all).
+	if got := righeCon(s, "ListConversations select"); len(got) != 2 {
+		t.Errorf("righe di \"ListConversations select\" = %d, attese 2:\n%s", len(got), s)
+	}
+	if got := righeCon(s, "ListConversations search"); len(got) != 1 || !strings.Contains(got[0], "inbox") || !strings.Contains(got[0], "500.0") {
+		t.Errorf("riga di search attesa con inbox e 500.0:\n%s", s)
+	}
+	// Le righe della tabella contano tutti i Connect (due) e i passi falliti (uno, il
+	// login del secondo). Campi: operazione, passo, n, mediana, p95, max, err.
+	if got := campiRiga(s, "Connect tcp"); got == nil || got[2] != "2" || got[len(got)-1] != "0" {
+		t.Errorf("riga di Connect tcp attesa con n = 2 e err = 0: %v\n%s", got, s)
+	}
+	if got := campiRiga(s, "Connect login"); got == nil || got[2] != "2" || got[len(got)-1] != "1" {
+		t.Errorf("riga di Connect login attesa con n = 2 e err = 1: %v\n%s", got, s)
+	}
+	// Cronologia dell'avvio: solo i passi del PRIMO Connect, in ordine di tempo. Il
+	// suffisso "(passo)" esiste solo li': la tabella stampa le stesse etichette senza.
+	i := strings.Index(s, "Connect tcp (passo)")
+	j := strings.Index(s, "Connect tls (passo)")
+	k := strings.Index(s, "Connect login (passo)")
+	if i < 0 || j < 0 || k < 0 || i >= j || j >= k {
+		t.Errorf("i passi del primo Connect non sono in ordine nell'avvio:\n%s", s)
+	}
+	if n := strings.Count(s, "(passo)"); n != 3 {
+		t.Errorf("righe \"(passo)\" nella cronologia = %d, attese 3 (solo il primo Connect):\n%s", n, s)
+	}
+	// Ogni passo porta la sua durata: il login, durato un secondo, si legge li'.
+	if righe := righeCon(s, "  +1.25 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "1000.0 ms") {
+		t.Errorf("riga del login nell'avvio attesa con 1000.0 ms: %q\n%s", righe, s)
+	}
+}
+
+// Piano 12a, revisione finale: se il primo Connect fallisce e un `R` riesce, l'avvio
+// arriva fino al Connect riuscito, con le durate: il tempo del login buono non si
+// perde. Un Connect ancora dopo sta solo nella tabella.
+func TestSummarizeAvvioFinoAlPrimoConnectRiuscito(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 9_100_000, K: "step", Op: "Connect", Step: "login", Dur: 9_000_000, Err: true},
+		Event{T: 9_100_000, K: "store", Op: "Connect", Dur: 9_100_000, Err: true},
+		Event{T: 20_100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 80_000},
+		Event{T: 21_250_000, K: "step", Op: "Connect", Step: "login", Dur: 1_000_000},
+		Event{T: 21_300_000, K: "store", Op: "Connect", Dur: 1_200_000},
+		Event{T: 90_000_000, K: "step", Op: "Connect", Step: "tcp", Dur: 120_000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if n := strings.Count(s, "(passo)"); n != 4 {
+		t.Errorf("righe \"(passo)\" nella cronologia = %d, attese 4 (i due Connect fino al primo riuscito):\n%s", n, s)
+	}
+	if righe := righeCon(s, "  +9.10 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "9000.0 ms") || !strings.Contains(righe[0], "ERR") {
+		t.Errorf("riga del login fallito attesa con 9000.0 ms e ERR: %q\n%s", righe, s)
+	}
+	if righe := righeCon(s, "  +21.25 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "1000.0 ms") || strings.Contains(righe[0], "ERR") {
+		t.Errorf("riga del login riuscito attesa con 1000.0 ms e senza ERR: %q\n%s", righe, s)
+	}
+	// Il primo Connect e caduto, il secondo ha collegato l'app: due righe distinte.
+	if righe := righeCon(s, "  +9.10 s  store Connect (fallito)"); len(righe) != 1 {
+		t.Errorf("riga del primo Connect, fallito, attesa nell'avvio:\n%s", s)
+	}
+	if righe := righeCon(s, "  +21.30 s  store Connect (fine)"); len(righe) != 1 {
+		t.Errorf("riga della fine del primo Connect riuscito attesa nell'avvio:\n%s", s)
+	}
+}
+
+// Piano 12a, ricontrollo della fix wave: se la traccia finisce durante il primo
+// Connect (l'app chiusa mentre aspettava il login, quindi senza evento store di
+// Connect), i suoi passi stanno comunque nell'avvio. Valgono tutti: un Connect non
+// finito non lascia passi di un Connect successivo.
+func TestSummarizeAvvioSenzaFineDelConnect(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 250_000, K: "step", Op: "Connect", Step: "tls", Dur: 150_000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	i, j := strings.Index(s, "Connect tcp (passo)"), strings.Index(s, "Connect tls (passo)")
+	if i < 0 || j < 0 || i >= j {
+		t.Errorf("i passi del Connect non finito non sono in ordine nell'avvio:\n%s", s)
+	}
+	if strings.Contains(s, "store Connect (fine)") {
+		t.Errorf("un Connect senza fine compare come finito:\n%s", s)
 	}
 }

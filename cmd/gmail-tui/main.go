@@ -355,16 +355,20 @@ func selectStore(cfg config.Config, password string, c *cache.Cache) (store mail
 // Task 5): preset Gmail (host fisso), TLS, Connect + ListMessages limit 1.
 // Il wizard applica il budget di 90s al ctx prima di chiamarla (cfr.
 // wizard.connectTimeout, Piano 16, Q16-7): nessun hang possibile oltre il budget.
+// Lo store della sonda passa dalla traccia come gli altri e viene chiuso (Piano 12a,
+// revisione finale): senza, i suoi passi arrivavano senza nome d'operazione.
 func testConnection(ctx context.Context, address, password string) error {
 	st := imap.NewStore(imap.Options{
 		Addr:     imapAddr,
 		Username: address,
 		Password: password,
 	})
-	if err := st.Connect(ctx); err != nil {
+	defer func() { _ = st.Close() }()
+	traced := tracestore.Wrap(st)
+	if err := traced.Connect(ctx); err != nil {
 		return err
 	}
-	_, err := st.ListMessages(ctx, msg.Query{}, mail.Page{Limit: 1})
+	_, err := traced.ListMessages(ctx, msg.Query{}, mail.Page{Limit: 1})
 	return err
 }
 

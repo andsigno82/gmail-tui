@@ -2,6 +2,7 @@ package imap
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"sync"
 	"time"
@@ -25,6 +26,11 @@ type Options struct {
 	Password string
 	Cache    *cache.Cache // può essere nil (no cache)
 	Insecure bool         // true solo nei test: connessione in chiaro, nessun TLS
+
+	// TLSConfig sostituisce la configurazione TLS di default del dial (Piano 12a,
+	// Task 3): nil in produzione; nei test porta la CA del certificato autofirmato.
+	// Nome del server e ALPN "imap" si riempiono comunque in dialConn se vuoti.
+	TLSConfig *tls.Config
 }
 
 // Store è il mail.MailStore su IMAP (Gmail). Semantica Gmail via IMAP:
@@ -54,6 +60,10 @@ type Store struct {
 	// clock (Piano 16, Task 8) e l'orologio delle istantanee (SavedAt): nil in
 	// produzione (time.Now), iniettabile nei test.
 	clock func() time.Time
+
+	// roles (Piano 12a, Task 5) mappa nome di mailbox -> ruolo dell'ultimo LIST: serve
+	// alla traccia dei passi (traceRole). Protetta da mu.
+	roles map[string]string
 
 	// gate arbitra l'uso della connessione: go-imap beta.9 non permette di
 	// inviare comandi mentre l'IDLE gira (il server chiude la connessione
@@ -232,11 +242,27 @@ func NewStore(o Options) *Store {
 	return s
 }
 
-// Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed
-// effettua il login. Se esiste già un client (doppio Connect, o il path di
-// riconnessione di Watch dopo un errore di rete) viene chiuso PRIMA di
-// diallare: così un secondo Connect non leaka la connessione precedente.
+// connectBudget è quanto può durare una Connect quando il chiamante non fissa una
+// scadenza: lo stesso budget dell'avvio (Piano 12a, D12-T5). Serve alle riconnessioni
+// di Watch e di UnreadCounts e a gmail-tui fetch, che passano un ctx senza scadenza:
+// senza, un server che manda il greeting e tace sul LOGIN le tiene appese per sempre,
+// con in mano Store.mu (ogni altra operazione resterebbe in attesa). var: i test lo
+// accorciano (Piano 12a, revisione finale).
+var connectBudget = 90 * time.Second
+
+// Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed effettua
+// il login, rispettando ctx per tutto il dial (dialSession, Piano 12a, Task 3): alla
+// scadenza la connessione si chiude e l'errore è quello del ctx. Un ctx senza scadenza
+// riceve connectBudget; una scadenza fissata dal chiamante resta la sua. Se esiste
+// già un client (doppio Connect, o il path di riconnessione di Watch dopo un errore di
+// rete) viene chiuso PRIMA di diallare: così un secondo Connect non leaka la
+// connessione precedente.
 func (s *Store) Connect(ctx context.Context) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, connectBudget)
+		defer cancel()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -250,17 +276,9 @@ func (s *Store) Connect(ctx context.Context) error {
 		s.client = nil
 	}
 
-	dial := imapclient.DialTLS
-	if s.opts.Insecure {
-		dial = imapclient.DialInsecure
-	}
-	c, err := dial(s.opts.Addr, s.dialOptions())
+	c, err := dialSession(ctx, s.opts, "Connect", s.dialOptions())
 	if err != nil {
-		return fmt.Errorf("imap dial %s: %w", s.opts.Addr, err)
-	}
-	if err := c.Login(s.opts.Username, s.opts.Password).Wait(); err != nil {
-		_ = c.Close()
-		return fmt.Errorf("imap login %s: %w", s.opts.Username, err)
+		return err
 	}
 	s.gate.reset()                       // riese dopo Close: il gate torna operativo
 	s.gmail = c.Caps().Has(capGmailExt1) // Piano 8, Task 6
@@ -353,7 +371,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 		// Piano 14, Wave 4 review (punto 2): post-filtro best-effort come Search (contratto
 		// mail.MailStore), prima della paginazione. Il gate è già detenuto:
 		// filterWithAttachment usa fetchMessage(heldGate=true).
-		refs, err := s.fetchRefs(mailbox, uids)
+		refs, err := s.fetchRefs(ctx, mailbox, uids)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -380,7 +398,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 	if start >= end {
 		return nil, uidValidity, nil
 	}
-	refs, err := s.fetchRefs(mailbox, uids[start:end])
+	refs, err := s.fetchRefs(ctx, mailbox, uids[start:end])
 	return refs, uidValidity, err
 }
 
@@ -388,7 +406,7 @@ func (s *Store) listMessages(ctx context.Context, q msg.Query, pg mail.Page) ([]
 // Select della mailbox di q (q.Label o "INBOX" se vuota: la label seleziona
 // la mailbox, non è un criterio SEARCH) e UIDSearch con i criteri tradotti
 // da searchCriteria(q). Ritorna gli UID matchanti in ordine ascendente e la
-// UIDVALIDITY della SELECT (gia registrata con noteEpoch: Piano 16, Task 8, R3).
+// UIDVALIDITY della SELECT (registrata da selectBox: Piano 16, Task 8, R3).
 func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []imap.UID, uint32, error) {
 	if err := ctx.Err(); err != nil {
 		return "", nil, 0, err
@@ -402,14 +420,13 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 	if q.Label != "" {
 		mailbox = q.Label
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
+	// Piano 16, Task 8, R3: l'epoca si registra prima di ogni riga (selectBox).
+	sel, err := s.selectBox(ctx, c, mailbox)
 	if err != nil {
-		return "", nil, 0, fmt.Errorf("imap select %s: %w", mailbox, err)
+		return "", nil, 0, err
 	}
-	// Piano 16, Task 8, R3: l'epoca si registra prima di ogni riga.
-	s.noteEpoch(mailbox, sel.UIDValidity)
 
-	data, err := c.UIDSearch(searchCriteria(q), nil).Wait()
+	data, err := s.uidSearch(ctx, c, mailbox, searchCriteria(q), nil)
 	if err != nil {
 		return "", nil, 0, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
 	}
@@ -418,8 +435,11 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 
 // fetchRefs è il passo 3-5 condiviso da ListMessages e Search: UIDFetch
 // ENVELOPE+FLAGS+INTERNALDATE degli uid (nella mailbox già selezionata) e
-// mapping in msg.MessageRef, dal più nuovo al più vecchio.
-func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
+// mapping in msg.MessageRef, dal più nuovo al più vecchio. Piano 12a, Task 2: gli
+// uid che il FETCH non restituisce (messaggio espunto fra SEARCH e FETCH) si
+// saltano. Un buffer presente ma senza ENVELOPE dà ancora una riga con il solo
+// ID e i flag: non è il caso di un messaggio espunto.
+func (s *Store) fetchRefs(ctx context.Context, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
 	}
@@ -428,8 +448,9 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 		return nil, err
 	}
 
-	gm := s.gmailOn() // Piano 8, Task 8: X-GM-* solo se il server li annuncia
-	cmd := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
+	gm := s.gmailOn()                             // Piano 8, Task 8: X-GM-* solo se il server li annuncia
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5: prima del comando
+	bufs, err := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,
 		Envelope:      true,
 		Flags:         true,
@@ -437,11 +458,12 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 		GmailMsgID:    gm,
 		GmailThreadID: gm,
 		GmailLabels:   gm,
-	})
-	bufs, err := cmd.Collect()
+	}).Collect()
 	if err != nil {
+		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, fmt.Errorf("imap fetch envelope in %s: %w", mailbox, err)
 	}
+	step.End(s.traceRole(mailbox), len(bufs), 0, nil)
 	byUID := make(map[imap.UID]*imapclient.FetchMessageBuffer, len(bufs))
 	for _, b := range bufs {
 		byUID[b.UID] = b
@@ -449,9 +471,13 @@ func (s *Store) fetchRefs(mailbox string, uids []imap.UID) ([]msg.MessageRef, er
 
 	refs := make([]msg.MessageRef, 0, len(uids))
 	for i := len(uids) - 1; i >= 0; i-- { // dal più nuovo al più vecchio
-		ref := toRef(mailbox, uids[i], byUID[uids[i]])
+		buf := byUID[uids[i]]
+		if buf == nil {
+			continue
+		}
+		ref := toRef(mailbox, uids[i], buf)
 		if gm {
-			setGmailFields(&ref, byUID[uids[i]])
+			setGmailFields(&ref, buf)
 		}
 		refs = append(refs, ref)
 	}
@@ -472,15 +498,13 @@ func pageWindow(n, offset, limit int) (start, end int) {
 	return start, end
 }
 
-// toRef mappa un buffer di fetch in msg.MessageRef.
+// toRef mappa un buffer di fetch in msg.MessageRef. buf è sempre presente: gli uid
+// senza dati si saltano prima di chiamarla (Piano 12a, Task 2).
 func toRef(mailbox string, uid imap.UID, buf *imapclient.FetchMessageBuffer) msg.MessageRef {
 	ref := msg.MessageRef{
 		ID:        msg.NewID(mailbox, uint32(uid)),
 		Unread:    true, // Unread = assenza di \Seen
 		ThreadLen: 1,    // ENVELOPE non espone la lunghezza del thread
-	}
-	if buf == nil {
-		return ref
 	}
 	if buf.Envelope != nil {
 		ref.Subject = buf.Envelope.Subject

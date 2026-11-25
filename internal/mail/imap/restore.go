@@ -31,7 +31,7 @@ func (s *Store) Restore(ctx context.Context, ids []msg.MessageID, dest string) (
 	if err != nil {
 		return nil, err
 	}
-	boxes, err := listMailboxes(c)
+	boxes, err := listMailboxes(ctx, c)
 	if err != nil {
 		return nil, err
 	}

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- **Important folder** — `[Gmail]/Important` (`\Important`) is listed with the special folders, right after Inbox, as "Importanti". Before, it appeared nested under a "[Gmail]" branch among the labels.
+- **Trace steps** — with `GMAIL_TUI_TRACE=1` each IMAP command of the list, thread and body read path is a `step` event (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`), together with the steps of `Watch` and the LIST sent by the other operations (unread counts, trash, restore, drafts). The STORE, MOVE and APPEND of mutations are not traced, and of the unread counts only the LIST is. `gmail-tui trace` adds a "Passi IMAP" table (count, median, p95, max and failed runs per operation, step and folder role) and lists the steps of the first Connect in the startup timeline, each with its duration.
 - **Local cache and snapshots (Piano 16)** — the list of the last folder appears at once at startup, from a local snapshot of its first page, while Gmail connects; the status bar shows `aggiornamento…` with the age of the data. Opening a conversation seen before shows it at once too. Snapshot data is read-only until the fresh list arrives: archive, trash, star, labels, selection, reply, forward and attachment actions are refused with a toast. If the connection fails, the snapshot stays on screen, read-only. The last 200 opened messages are kept (least recently used dropped first). The cache is not encrypted; its folder is mode 0700 and its file mode 0600. It is bound to the account address (stored as a hash) and emptied when the account changes. Demo mode and the MCP server use no cache. See Local cache in the README.
 - **Timing trace** — `GMAIL_TUI_TRACE=1` writes a JSONL trace of timings (mail operations with IMAP gate wait, `Update`/`View` per message, startup phases, body rendering) to the user cache directory, mode 0600; `gmail-tui trace <file>` prints a summary. Only operation names, durations, counts and sizes are recorded: no addresses, subjects, bodies, label names, URLs or typed text. See Troubleshooting in the README.
 - **Rich rendering and layout (Piano 15)** — the HTML body is drawn as blocks: links styled as buttons are bordered boxes with the destination host, tables fall back to text when too wide, quotes have coloured bars, lists are bulleted or numbered, and images show as `[img: alt]` placeholders (never downloaded). A link whose text shows another domain is marked `⚠` with a wavy red underline and asks for confirmation (`s` opens, `Esc` cancels). Attachments are clickable chips: PDF, PNG, JPEG, GIF and plain text open from a private temporary folder removed on exit; other types stay on `:save`. The folder picker shows a tree with nested labels and unread counts for Inbox and labels. The settings, label and folder windows float over the view with a shadow. The status bar is split into segments, and the inbox shows a splash until the first list arrives. The demo mode has a rich newsletter, unread counts and a nested label.
@@ -32,7 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - **Sender name** — the `name` setting is shown in the From header as `Name <address>` (RFC 2047 when not ASCII).
 - **Config keys** — `layout` and `preview_mark_read`, with the defaults `single` and `delay`.
 
-- **Inbox paging** — the list loads 50 messages at a time; moving the cursor to the last row loads the next 50. Search results are not paginated.
+- **Inbox paging** — the list loads 50 conversations at a time (50 messages on servers without the Gmail extensions); moving the cursor to the last row loads the next 50. Search results are not paginated.
 - **Folders and labels** — `m` opens a picker with the Gmail folders (by IMAP SPECIAL-USE role, so localized names work) and labels; choosing a folder clears the active search.
 - **Trash** — `#` moves the message to the Trash after confirmation (`s`); from a thread it returns to the list. Refused on servers without MOVE or UIDPLUS.
 - **Recipient validation** — the composer blocks the send confirmation for a missing or malformed recipient; `gmail-tui send` exits 1 on the same errors.
@@ -42,6 +44,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- **Connect honours its deadline** — when the 90 s budget expires, the dial and the login are interrupted and the connection is closed. Before, they kept running in the background: until the read timeouts, or forever when the server had sent its greeting and then stayed silent. The same applies to the connection test of the wizard and `gmail-tui doctor`. A caller that sets no deadline gets the same 90 s, so the reconnects after a dropped connection or an unread-count stall, and `gmail-tui fetch`, cannot stay hung on a silent login.
 - `a`, `#` and `v` on a list row act on the whole conversation in the current folder. Archive and Trash never touch All Mail.
 - Opening a conversation downloads the bodies of the expanded messages only.
 - The message cache moves to schema v3 (Gmail IDs and labels are now stored for every fetched message): cached message entries are downloaded again on the first start after the upgrade.
@@ -58,6 +61,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- **Outgoing message encoding** — the text parts of sent messages, drafts and `gmail-tui send` declare `Content-Transfer-Encoding`: `7bit` for plain ASCII with lines up to 998 bytes, `quoted-printable` otherwise (accents, longer lines: most HTML parts). Before, no encoding was declared and those messages broke RFC 5322.
+- **Ghost rows** — a message expunged between the IMAP search and the fetch no longer leaves an empty row in the list.
 - The conversation message count `(N)` is never truncated in the list, even with long participant names.
 - Text on colored bars (status bar, OK and error messages, selected row, demo banner) had 1.0–3.5:1 contrast in some themes. The text color is now computed per theme and variant to reach WCAG AA (4.5:1), falling back to black or white.
 

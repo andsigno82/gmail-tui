@@ -73,6 +73,13 @@ type group struct {
 	errs                                        int
 }
 
+// stepGroup raccoglie le misure di un passo (operazione, passo e ruolo uguali).
+type stepGroup struct {
+	label, role string
+	dur         []int64
+	errs        int // passi finiti con errore (un timeout, un comando rifiutato)
+}
+
 // frame e un messaggio Bubble Tea con Update+View, per la classifica dei lenti.
 type frame struct {
 	label, screen string
@@ -97,7 +104,11 @@ func Summarize(r io.Reader, w io.Writer) error {
 		frames                     []frame
 		phases                     []Event
 		firstStore                 = map[string]Event{}
+		firstStoreOk               = map[string]Event{} // il primo evento riuscito di ogni operazione
 		viewBytesAll               []int64
+		steps                      = map[string]*stepGroup{}
+		stepOrder                  []string
+		connect                    []Event // passi del Connect, per la cronologia dell'avvio
 	)
 	get := func(m map[string]*group, order *[]string, k string) *group {
 		g, ok := m[k]
@@ -141,6 +152,26 @@ func Summarize(r io.Reader, w io.Writer) error {
 			}
 			if _, ok := firstStore[e.Op]; !ok {
 				firstStore[e.Op] = e
+			}
+			if !e.Err {
+				if _, ok := firstStoreOk[e.Op]; !ok {
+					firstStoreOk[e.Op] = e
+				}
+			}
+		case "step":
+			key := e.Op + "\x00" + e.Step + "\x00" + e.Role
+			g, ok := steps[key]
+			if !ok {
+				g = &stepGroup{label: e.Op + " " + e.Step, role: e.Role}
+				steps[key] = g
+				stepOrder = append(stepOrder, key)
+			}
+			g.dur = append(g.dur, e.Dur)
+			if e.Err {
+				g.errs++
+			}
+			if e.Op == "Connect" {
+				connect = append(connect, e)
 			}
 		case "msg":
 			label := e.Op
@@ -199,13 +230,41 @@ func Summarize(r io.Reader, w io.Writer) error {
 	}
 	fmt.Fprintln(w)
 
-	// Avvio: fasi esplicite piu il primo Connect e il primo ListConversations.
+	// Avvio: fasi esplicite piu i passi e la fine del primo Connect riuscito, e il primo
+	// ListConversations.
 	var start []Event
-	for _, op := range []string{"Connect", "ListConversations"} {
-		if e, ok := firstStore[op]; ok {
-			e.Op = "store " + op + " (fine)"
+	// Solo i passi fino alla fine del primo Connect RIUSCITO: la cronologia e quella
+	// dell'avvio. Se i tentativi prima sono falliti (per esempio dopo `R`), i loro passi
+	// restano, con la durata e l'esito: il tempo del login buono non si perde. Un
+	// Connect ancora dopo sta solo nella tabella, con le sue misure. Se nessun Connect e
+	// riuscito (traccia finita durante il dial, o sempre fallito) valgono tutti.
+	fine := lastT
+	if e, ok := firstStoreOk["Connect"]; ok {
+		fine = e.T
+	}
+	for _, e := range connect {
+		if e.T <= fine {
+			e.Op = "Connect " + e.Step + " (passo)  " + ms(e.Dur) + " ms"
+			if e.Err {
+				e.Op += "  ERR"
+			}
 			start = append(start, e)
 		}
+	}
+	if e, ok := firstStore["Connect"]; ok && e.Err {
+		e.Op = "store Connect (fallito)"
+		start = append(start, e)
+	}
+	if e, ok := firstStoreOk["Connect"]; ok {
+		e.Op = "store Connect (fine)"
+		start = append(start, e)
+	}
+	if e, ok := firstStore["ListConversations"]; ok {
+		e.Op = "store ListConversations (fine)"
+		if e.Err {
+			e.Op = "store ListConversations (fallito)"
+		}
+		start = append(start, e)
 	}
 	start = append(start, phases...)
 	if len(start) > 0 {
@@ -225,6 +284,17 @@ func Summarize(r io.Reader, w io.Writer) error {
 			fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\t%s\t%s\t%s\t%d\n", k, len(g.dur),
 				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)),
 				ms(median(g.wait)), ms(percentile(g.wait, 95)), ms(maxOf(g.wait)), g.errs)
+		}
+		_ = tw.Flush()
+	}
+
+	if len(stepOrder) > 0 {
+		fmt.Fprintln(w, "\nPassi IMAP (ms; un comando per passo, per ruolo della cartella)")
+		fmt.Fprintln(tw, "operazione passo\truolo\tn\tmediana\tp95\tmax\terr")
+		for _, k := range stepOrder {
+			g := steps[k]
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%d\n", g.label, g.role, len(g.dur),
+				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)), g.errs)
 		}
 		_ = tw.Flush()
 	}

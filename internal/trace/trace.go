@@ -30,7 +30,7 @@ import (
 const EnvVar = "GMAIL_TUI_TRACE"
 
 // Event e una riga del file. Tutti i tempi sono in microsecondi; i campi a zero
-// si omettono. K distingue il tipo: meta | store | msg | phase | body.
+// si omettono. K distingue il tipo: meta | store | step | msg | phase | body | cache.
 //
 //   - store: Op = metodo di MailStore, Dur totale, Wait attesa del gate IMAP
 //     (esecuzione = Dur - Wait), N conteggio (ref/righe/id), Bytes corpo, Role.
@@ -44,12 +44,16 @@ const EnvVar = "GMAIL_TUI_TRACE"
 //     dell'istantanea mostrata, in Dur); N = righe/ref; Bytes = byte del corpo;
 //     Role = solo il ruolo della cartella. Mai ID, nomi, oggetti o indirizzi.
 //     Si emettono con CacheLookup e SnapshotAge.
+//   - step: Piano 12a, Task 4. Op = operazione di appartenenza, Step = passo (una
+//     delle costanti Step*), Dur, N = messaggi o UID del comando, Bytes = byte dei
+//     corpi scaricati, Role = ruolo della cartella, Err. Si emette con StepTimer.
 //
 // T e l'istante di FINE dell'evento, in microsecondi dall'avvio della traccia.
 type Event struct {
 	T         int64  `json:"t"`
 	K         string `json:"k"`
 	Op        string `json:"op,omitempty"`
+	Step      string `json:"step,omitempty"`
 	Dur       int64  `json:"dur_us,omitempty"`
 	Wait      int64  `json:"wait_us,omitempty"`
 	Upd       int64  `json:"upd_us,omitempty"`
@@ -203,6 +207,19 @@ const (
 	ModeAge   = "age"   // eta dell'istantanea mostrata (Dur)
 )
 
+// Passi misurati dalla traccia (Piano 12a, Task 4): campo Step dell'evento
+// K == "step", Op = operazione di appartenenza. Solo nomi fissi: mai mailbox, UID
+// o nomi di label (il ruolo della cartella va in Role).
+const (
+	StepTCP    = "tcp"    // Connect: DNS e TCP
+	StepTLS    = "tls"    // Connect: handshake TLS
+	StepLogin  = "login"  // Connect: attesa del greeting e LOGIN
+	StepList   = "list"   // LIST delle cartelle
+	StepSelect = "select" // SELECT di una mailbox
+	StepSearch = "search" // UID SEARCH
+	StepFetch  = "fetch"  // UID FETCH (intestazioni o corpi)
+)
+
 // CacheLookup emette l'esito di una lettura dalla cache: op e uno degli Op
 // sopra, mode hit | miss | epoch, role solo il ruolo della cartella ("" se non
 // si applica), n righe/ref, bytes byte del corpo. Piano 16, Task 7.
@@ -251,13 +268,33 @@ type Span struct{ wait atomic.Int64 } // nanosecondi
 
 type spanKey struct{}
 
-// WithSpan crea uno Span nel ctx; con la traccia spenta ritorna (ctx, nil).
-func WithSpan(ctx context.Context) (context.Context, *Span) {
+// opKey e la chiave del ctx col nome dell'operazione in corso.
+type opKey struct{}
+
+// WithOp mette il nome dell'operazione nel ctx: i passi (BeginStep) lo riportano
+// in Op. Serve a chi misura comandi fuori da una chiamata passata dal wrapper
+// della traccia (il Watch, l'apertura della sessione). Senza traccia e il ctx stesso.
+func WithOp(ctx context.Context, op string) context.Context {
+	if !Enabled() {
+		return ctx
+	}
+	return context.WithValue(ctx, opKey{}, op)
+}
+
+// OpFrom e il nome dell'operazione in corso, dal ctx ("" se assente).
+func OpFrom(ctx context.Context) string {
+	op, _ := ctx.Value(opKey{}).(string)
+	return op
+}
+
+// WithSpan crea uno Span nel ctx e vi associa il nome dell'operazione, che i passi
+// leggono con OpFrom; con la traccia spenta ritorna (ctx, nil).
+func WithSpan(ctx context.Context, op string) (context.Context, *Span) {
 	if !Enabled() {
 		return ctx, nil
 	}
 	sp := &Span{}
-	return context.WithValue(ctx, spanKey{}, sp), sp
+	return context.WithValue(WithOp(ctx, op), spanKey{}, sp), sp
 }
 
 // SpanFrom recupera lo Span del ctx (nil se assente).
@@ -279,4 +316,31 @@ func (s *Span) Wait() time.Duration {
 		return 0
 	}
 	return time.Duration(s.wait.Load())
+}
+
+// StepTimer misura un passo di un'operazione (un comando IMAP): BeginStep lo apre,
+// End emette l'evento "step". Senza traccia e un valore zero e End non fa nulla.
+type StepTimer struct {
+	t0 time.Time
+	ev Event
+}
+
+// BeginStep apre la misura del passo step dell'operazione in corso (nome dal ctx).
+func BeginStep(ctx context.Context, step string) StepTimer {
+	if !Enabled() {
+		return StepTimer{}
+	}
+	return StepTimer{t0: time.Now(), ev: Event{K: "step", Op: OpFrom(ctx), Step: step}}
+}
+
+// End chiude il passo: role e il ruolo della cartella ("" se non si applica), n il
+// conteggio (messaggi o UID), bytes quelli scaricati, err l'esito (solo il booleano).
+func (t StepTimer) End(role string, n, bytes int, err error) {
+	if t.t0.IsZero() {
+		return
+	}
+	t.ev.Role, t.ev.N, t.ev.Bytes = role, n, bytes
+	t.ev.Err = err != nil
+	t.ev.Dur = time.Since(t.t0).Microseconds()
+	Emit(t.ev)
 }

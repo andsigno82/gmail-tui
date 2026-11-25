@@ -38,7 +38,7 @@ func TestDisabilitatoNonEmetteNulla(t *testing.T) {
 	tm := Begin()
 	tm.End(Event{K: "store", Op: "X"}) // nessun panic, nessun effetto
 	Emit(Event{K: "phase", Op: "x"})
-	if ctx, sp := WithSpan(context.Background()); sp != nil || SpanFrom(ctx) != nil {
+	if ctx, sp := WithSpan(context.Background(), "X"); sp != nil || SpanFrom(ctx) != nil {
 		t.Fatal("senza traccia WithSpan non deve creare span")
 	}
 }
@@ -75,7 +75,7 @@ func TestSpanAccumulaAttesaGate(t *testing.T) {
 	var buf bytes.Buffer
 	Install(New(&buf, ""))
 	defer Uninstall()
-	ctx, sp := WithSpan(context.Background())
+	ctx, sp := WithSpan(context.Background(), "X")
 	if sp == nil || SpanFrom(ctx) != sp {
 		t.Fatal("span non nel contesto")
 	}

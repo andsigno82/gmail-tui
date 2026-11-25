@@ -265,23 +265,27 @@ func ordina(n *node) {
 	}
 }
 
-// rangoSpeciale fissa l'ordine delle speciali (come Gmail); ruoli sconosciuti in fondo.
+// rangoSpeciale fissa l'ordine delle speciali (come Gmail: Importanti, Speciali,
+// Inviati, Bozze, Tutti, Spam, Cestino); ruoli sconosciuti in fondo.
+// Piano 12a, Task 6: "important" per primo.
 func rangoSpeciale(role string) int {
 	switch role {
-	case "flagged":
+	case "important":
 		return 0
-	case "sent":
+	case "flagged":
 		return 1
-	case "drafts":
+	case "sent":
 		return 2
-	case "all":
+	case "drafts":
 		return 3
-	case "junk":
+	case "all":
 		return 4
-	case "trash":
+	case "junk":
 		return 5
+	case "trash":
+		return 6
 	}
-	return 6
+	return 7
 }
 
 // isInbox riconosce la posta in arrivo come in app (canonicalFolder).

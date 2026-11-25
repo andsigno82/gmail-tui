@@ -30,7 +30,7 @@ func (s *Store) SaveDraft(ctx context.Context, raw []byte, replace []msg.Message
 	if err != nil {
 		return "", err
 	}
-	box, err := draftsBoxOf(c)
+	box, err := draftsBoxOf(ctx, c)
 	if err != nil {
 		return "", err
 	}
@@ -81,7 +81,7 @@ func (s *Store) DeleteDraft(ctx context.Context, ids []msg.MessageID) error {
 	if len(ids) == 0 {
 		return nil
 	}
-	box, err := draftsBoxOf(c)
+	box, err := draftsBoxOf(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -95,8 +95,8 @@ func (s *Store) DeleteDraft(ctx context.Context, ids []msg.MessageID) error {
 }
 
 // draftsBoxOf restituisce il nome della cartella con ruolo drafts (chiamare sotto gate).
-func draftsBoxOf(c *imapclient.Client) (string, error) {
-	boxes, err := listMailboxes(c)
+func draftsBoxOf(ctx context.Context, c *imapclient.Client) (string, error) {
+	boxes, err := listMailboxes(ctx, c)
 	if err != nil {
 		return "", err
 	}

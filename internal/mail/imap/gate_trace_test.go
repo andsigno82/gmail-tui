@@ -21,7 +21,7 @@ func TestAttesaDelGateNelloSpan(t *testing.T) {
 	s := NewStore(Options{Addr: "127.0.0.1:1", Username: "u", Password: "p"})
 	release := s.gate.acquire() // un'altra op tiene la connessione
 
-	ctx, sp := trace.WithSpan(context.Background())
+	ctx, sp := trace.WithSpan(context.Background(), "ListConversations")
 	done := make(chan struct{})
 	go func() {
 		// ListMessages acquisisce il gate prima di tutto: attende il rilascio.
@@ -45,7 +45,7 @@ func TestSenzaTracciaAcquireNonMisura(t *testing.T) {
 	s := NewStore(Options{Addr: "127.0.0.1:1", Username: "u", Password: "p"})
 	release := s.acquire(context.Background())
 	release()
-	ctx, sp := trace.WithSpan(context.Background())
+	ctx, sp := trace.WithSpan(context.Background(), "ListConversations")
 	s.acquire(ctx)()
 	if sp != nil || trace.SpanFrom(ctx) != nil {
 		t.Fatal("senza traccia non deve esistere uno span")

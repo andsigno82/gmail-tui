@@ -55,7 +55,7 @@ func (s *Store) trashMove(ctx context.Context, ids []msg.MessageID, out *[]msg.M
 		return nil
 	}
 
-	boxes, err := listMailboxes(c)
+	boxes, err := listMailboxes(ctx, c)
 	if err != nil {
 		return err
 	}

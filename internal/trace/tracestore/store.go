@@ -2,7 +2,8 @@
 // chiamata per la traccia dei tempi (Piano 16): durata totale e, per lo store
 // IMAP, l'attesa del gate (Span nel ctx, cfr. imap.Store.acquire), con conteggi
 // e byte. PRIVACY: nessun nome di label o cartella, id, indirizzo, oggetto o
-// testo di errore: solo il ruolo (inbox/sent/drafts/all/trash/junk/flagged/label).
+// testo di errore: solo il ruolo (inbox/important/sent/drafts/all/trash/junk/flagged/label;
+// important dal Piano 12a, Task 6).
 package tracestore
 
 import (
@@ -141,7 +142,7 @@ type call struct {
 }
 
 func begin(ctx context.Context, op string) (context.Context, *call) {
-	ctx, sp := trace.WithSpan(ctx)
+	ctx, sp := trace.WithSpan(ctx, op) // il nome dell'operazione serve anche ai passi (Piano 12a, Task 4)
 	return ctx, &call{t: trace.Begin(), sp: sp, ev: trace.Event{K: "store", Op: op}}
 }
 

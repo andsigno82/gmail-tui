@@ -31,6 +31,8 @@ func folderName(b mail.Mailbox) string {
 	switch b.Role {
 	case "inbox":
 		return "Posta in arrivo"
+	case "important": // Piano 12a, Task 6
+		return "Importanti"
 	case "sent":
 		return "Inviati"
 	case "drafts":

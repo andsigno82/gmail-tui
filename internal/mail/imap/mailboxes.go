@@ -14,14 +14,17 @@ import (
 	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 // specialRoles associa gli attributi SPECIAL-USE ai ruoli, nell'ordine di
-// presentazione (Piano 7, Task 1: Speciali, Inviati, Bozze, Tutti, Spam, Cestino).
+// presentazione (Piano 7, Task 1: Speciali, Inviati, Bozze, Tutti, Spam, Cestino;
+// Piano 12a, Task 6: Importanti prima di tutti, come in Gmail).
 var specialRoles = []struct {
 	attr imap.MailboxAttr
 	role string
 }{
+	{imap.MailboxAttrImportant, "important"},
 	{imap.MailboxAttrFlagged, "flagged"},
 	{imap.MailboxAttrSent, "sent"},
 	{imap.MailboxAttrDrafts, "drafts"},
@@ -41,13 +44,19 @@ func (s *Store) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
 	if err != nil {
 		return nil, err
 	}
-	return listMailboxes(c)
+	boxes, err := listMailboxes(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	s.noteRoles(boxes) // Piano 12a, Task 5: i ruoli servono alla traccia dei passi
+	return boxes, nil
 }
 
 // listMailboxes è il corpo di ListMailboxes SENZA gate: il gate non è rientrante
-// (cfr. idleGate), quindi chi è già sotto gate (Trash) lo chiama direttamente.
-func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
-	data, err := listData(c, nil)
+// (cfr. idleGate), quindi chi è già sotto gate (Trash, Restore, le bozze) lo chiama
+// direttamente. Il ctx serve alla misura del passo "list" (Piano 12a, Task 5).
+func listMailboxes(ctx context.Context, c *imapclient.Client) ([]mail.Mailbox, error) {
+	data, err := listData(ctx, c, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -71,11 +80,17 @@ func listMailboxes(c *imapclient.Client) ([]mail.Mailbox, error) {
 // listData è il LIST "*" con RETURN (SPECIAL-USE), SENZA gate. status != nil
 // aggiunge RETURN (STATUS ...) (LIST-STATUS, RFC 5819: solo se il server lo
 // annuncia; Piano 15, Task 11). Condiviso da listMailboxes e unreadCounts.
-func listData(c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
+// Il passo "list" si misura sempre, anche dentro cestino, ripristino, bozze e
+// UnreadCounts: è lo stesso comando (Piano 12a, Task 5, D12-T3). Il LIST di una
+// sola mailbox con cui ensureMailbox crea una label non passa di qui e non si misura.
+func listData(ctx context.Context, c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
+	step := trace.BeginStep(ctx, trace.StepList) // Piano 12a, Task 5
 	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true, ReturnStatus: status}).Collect()
 	if err != nil {
+		step.End("", 0, 0, err)
 		return nil, fmt.Errorf("imap list: %w", err)
 	}
+	step.End("", len(data), 0, nil)
 	return data, nil
 }
 

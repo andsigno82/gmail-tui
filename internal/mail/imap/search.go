@@ -45,7 +45,7 @@ func (s *Store) Search(ctx context.Context, q msg.Query) ([]msg.MessageRef, erro
 	if err != nil {
 		return nil, err
 	}
-	refs, err := s.fetchRefs(mailbox, uids)
+	refs, err := s.fetchRefs(ctx, mailbox, uids)
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
+	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
 const (
@@ -82,13 +83,12 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 	if err != nil {
 		return nil, err
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
+	// Piano 16, Task 8, R3: l'epoca si registra PRIMA di costruire le righe (selectBox).
+	sel, err := s.selectBox(ctx, c, mailbox)
 	if err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+		return nil, err
 	}
-	// Piano 16, Task 8, R3: l'epoca si registra PRIMA di costruire le righe.
-	s.noteEpoch(mailbox, sel.UIDValidity)
-	data, err := c.UIDSearch(crit, nil).Wait()
+	data, err := s.uidSearch(ctx, c, mailbox, crit, nil)
 	if err != nil {
 		return nil, fmt.Errorf("imap uid search in %s: %w", mailbox, err)
 	}
@@ -115,7 +115,7 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 		}
 		chunk := uids[lo : i+1]
 		scanned += len(chunk)
-		refs, err := gmailRefs(c, mailbox, chunk)
+		refs, err := s.gmailRefs(ctx, c, mailbox, chunk)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +159,7 @@ func (s *Store) ListConversations(ctx context.Context, q msg.Query, pg mail.Page
 			threads = append(threads, r.ThreadID)
 		}
 	}
-	sums, err := s.threadSummaries(c, allMail, threads)
+	sums, err := s.threadSummaries(ctx, c, allMail, threads)
 	if err != nil {
 		return nil, err
 	}
@@ -198,16 +198,15 @@ func (s *Store) ThreadMessages(ctx context.Context, threadID uint64) ([]msg.Mess
 	if err != nil {
 		return nil, err
 	}
-	sel, err := c.Select(allMail, nil).Wait()
+	sel, err := s.selectBox(ctx, c, allMail) // Piano 16, Task 8, R3: registra anche l'epoca
 	if err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", allMail, err)
+		return nil, err
 	}
-	s.noteEpoch(allMail, sel.UIDValidity) // Piano 16, Task 8, R3
-	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil).Wait()
+	data, err := s.uidSearch(ctx, c, allMail, &imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("imap thread search: %w", err)
 	}
-	refs, err := gmailRefs(c, allMail, data.AllUIDs())
+	refs, err := s.gmailRefs(ctx, c, allMail, data.AllUIDs())
 	if err != nil {
 		return nil, err
 	}
@@ -237,12 +236,10 @@ func (s *Store) ConversationMembers(ctx context.Context, mailbox string, threadI
 	if err != nil {
 		return nil, err
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
-	if err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	if _, err := s.selectBox(ctx, c, mailbox); err != nil { // Piano 16, Task 13, R3: ogni SELECT che produce ID registra l'epoca
+		return nil, err
 	}
-	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 13, R3: ogni SELECT che produce ID
-	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil).Wait()
+	data, err := s.uidSearch(ctx, c, mailbox, &imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{ThreadID: threadID}}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("imap thread members search: %w", err)
 	}
@@ -300,10 +297,13 @@ func (s *Store) allMailName(ctx context.Context) (string, error) {
 
 // gmailRefs scarica ENVELOPE, FLAGS, INTERNALDATE e X-GM-* per gli UID della
 // mailbox già selezionata, dal più recente al più vecchio. Gate già detenuto.
-func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
+// Misura il passo "fetch": il passo si apre PRIMA del comando, perché aperto dopo
+// misurerebbe zero (Piano 12a, Task 5).
+func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
 	}
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	bufs, err := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,
 		Envelope:      true,
@@ -314,8 +314,10 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 		GmailLabels:   true,
 	}).Collect()
 	if err != nil {
+		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, fmt.Errorf("imap fetch gmail in %s: %w", mailbox, err)
 	}
+	step.End(s.traceRole(mailbox), len(bufs), 0, nil)
 	byUID := make(map[imap.UID]*imapclient.FetchMessageBuffer, len(bufs))
 	for _, b := range bufs {
 		byUID[b.UID] = b
@@ -323,12 +325,11 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 	refs := make([]msg.MessageRef, 0, len(uids))
 	for i := len(uids) - 1; i >= 0; i-- {
 		buf := byUID[uids[i]]
-		ref := toRef(mailbox, uids[i], buf)
-		if buf != nil {
-			ref.GmailID = buf.GmailMsgID
-			ref.ThreadID = buf.GmailThreadID
-			ref.Labels = msg.UserLabels(buf.GmailLabels)
+		if buf == nil {
+			continue // espunto fra SEARCH e FETCH: nessuna riga senza dati (Piano 12a, Task 2)
 		}
+		ref := toRef(mailbox, uids[i], buf)
+		setGmailFields(&ref, buf)
 		refs = append(refs, ref)
 	}
 	return refs, nil
@@ -336,16 +337,15 @@ func gmailRefs(c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.Mes
 
 // threadSummaries calcola Count, Participants, Unread e Labels per thread su
 // All Mail, con SEARCH OR di threadPerSearch thread alla volta. Gate detenuto.
-func (s *Store) threadSummaries(c *imapclient.Client, allMail string, threads []uint64) (map[uint64]threadSummary, error) {
+// Il ctx serve alla misura dei passi "select", "search" e "fetch" (Piano 12a, Task 5).
+func (s *Store) threadSummaries(ctx context.Context, c *imapclient.Client, allMail string, threads []uint64) (map[uint64]threadSummary, error) {
 	out := make(map[uint64]threadSummary, len(threads))
 	if len(threads) == 0 {
 		return out, nil
 	}
-	sel, err := c.Select(allMail, nil).Wait()
-	if err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", allMail, err)
+	if _, err := s.selectBox(ctx, c, allMail); err != nil { // Piano 16, Task 8, R3: anche i thread salvati su Tutti i messaggi
+		return nil, err
 	}
-	s.noteEpoch(allMail, sel.UIDValidity) // Piano 16, Task 8, R3: anche i thread salvati su Tutti i messaggi
 
 	groups := make(map[uint64][]msg.MessageRef)
 	for start := 0; start < len(threads); start += threadPerSearch {
@@ -354,11 +354,11 @@ func (s *Store) threadSummaries(c *imapclient.Client, allMail string, threads []
 			end = len(threads)
 		}
 		group := threads[start:end]
-		data, err := c.UIDSearch(threadCriteria(group), nil).Wait()
+		data, err := s.uidSearch(ctx, c, allMail, threadCriteria(group), nil)
 		if err != nil {
 			return nil, fmt.Errorf("imap thread summary search: %w", err)
 		}
-		refs, err := gmailRefs(c, allMail, data.AllUIDs())
+		refs, err := s.gmailRefs(ctx, c, allMail, data.AllUIDs())
 		if err != nil {
 			return nil, err
 		}
@@ -469,16 +469,14 @@ func (s *Store) searchRaw(ctx context.Context, q msg.Query) ([]msg.MessageRef, e
 	if err != nil {
 		return nil, err
 	}
-	sel, err := c.Select(mailbox, nil).Wait()
-	if err != nil {
-		return nil, fmt.Errorf("imap select %s: %w", mailbox, err)
+	if _, err := s.selectBox(ctx, c, mailbox); err != nil { // Piano 16, Task 8, R3: registra anche l'epoca
+		return nil, err
 	}
-	s.noteEpoch(mailbox, sel.UIDValidity) // Piano 16, Task 8, R3
-	data, err := c.UIDSearch(&imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{Raw: q.Raw}}, nil).Wait()
+	data, err := s.uidSearch(ctx, c, mailbox, &imap.SearchCriteria{Gmail: &imap.SearchCriteriaGmail{Raw: q.Raw}}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("imap raw search in %s: %w", mailbox, err)
 	}
-	return gmailRefs(c, mailbox, data.AllUIDs())
+	return s.gmailRefs(ctx, c, mailbox, data.AllUIDs())
 }
 
 // pageRefs pagina un elenco già dal più recente al più vecchio (Offset e
@@ -499,10 +497,9 @@ func pageRefs(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
 }
 
 // setGmailFields copia ID Gmail e label utente dal buffer di FETCH nel riferimento.
+// buf è sempre presente: gli UID senza dati si saltano prima di chiamarla (Piano 12a,
+// Task 2).
 func setGmailFields(ref *msg.MessageRef, buf *imapclient.FetchMessageBuffer) {
-	if buf == nil {
-		return
-	}
 	ref.GmailID = buf.GmailMsgID
 	ref.ThreadID = buf.GmailThreadID
 	ref.Labels = msg.UserLabels(buf.GmailLabels)

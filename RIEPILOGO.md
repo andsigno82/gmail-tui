@@ -147,7 +147,7 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Raffinamento successivo (962011f): retry senza Connect concorrenti
   (`connectFailed` spento al dispatch, `pending` risale)
 
-### Piano 7 — Uso quotidiano (branch `feat/piano-7`, non ancora mergiato)
+### Piano 7 — Uso quotidiano (branch `feat/piano-7`, mergiato)
 - `MailStore` + `ListMailboxes` (ruoli SPECIAL-USE) e `Trash` (UID MOVE; rifiuta
   i server senza MOVE né UIDPLUS: mai EXPUNGE generico); Mock filtra per mailbox
 - Fix Watch: `Select(INBOX)` prima di ogni IDLE (prima, dopo un'op su un'altra
@@ -274,6 +274,46 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   cache reale (TestBackendFactory l'aveva migrata allo schema 4)
 - Da provare su account reale: sezione Piano 16 di `docs/smoke-checklist.md`
 
+### Piano 12a — Ritocchi e misura (2026-11-24)
+- Il Piano 12 è diviso in due (D12-S1): 12a, ritocchi e misura; 12b, prestazioni,
+  con una spec propria dopo una traccia reale
+- Codifica di trasferimento delle parti di testo (D12-S2): `7bit` se ASCII puro con
+  righe fino a 998 byte, altrimenti `quoted-printable` con la libreria standard
+- Scelte tecniche (D12-T1…T6): `7bit` dichiarato sempre; "Importanti" senza
+  contatore; nella traccia si misurano i comandi del percorso di lettura, i passi
+  del Watch e il LIST di `listData` (anche dentro cestino, ripristino, bozze e
+  conteggio dei non letti); non le mutazioni, né STATUS e SEARCH dei non letti, né
+  `AllMailIDs`; `Options.TLSConfig` solo nei test; budget di Connect a 90 s; nessuna
+  spec separata
+- `Connect` e la sonda di doctor e del wizard rispettano il contesto per tutto il
+  dial e il login: alla scadenza la connessione si chiude. Prima il login restava
+  appeso senza scadenza se il server taceva dopo il greeting. Un contesto senza
+  scadenza riceve comunque 90 s: anche le riconnessioni del Watch e dei conteggi
+  dei non letti, e `gmail-tui fetch`, non restano appese. Primo test del dial TLS
+- "Importanti" tra le cartelle speciali, dopo Posta in arrivo (`\Important`)
+- Niente righe vuote per i messaggi spariti tra SEARCH e FETCH
+- Traccia per passo IMAP: evento `step` (tcp, tls, login, list, select, search,
+  fetch) e tabella "Passi IMAP" in `gmail-tui trace`; la cronologia d'avvio elenca
+  i passi fino al primo Connect riuscito, con le durate
+- File nuovi: `internal/mail/smtp/encoding.go`, `internal/mail/imap/dial.go`,
+  `internal/mail/imap/steps.go`
+- Esecuzione mista: Task 1 e 2 con subagent (implementatore e revisore); Task 3-7 in
+  sessione, per un limite d'uso dello strumento. Ogni task ha poi avuto la revisione
+  indipendente (subagent), che ha trovato due bug veri (nel Task 3 `Connect` poteva
+  riportare successo su una connessione chiusa; nel Task 5 il passo `fetch` della
+  lista misurava zero), un test che non verificava nulla nel Task 4 e quattro frasi
+  false nei documenti: prima ondata di correzioni, in sessione. Il ricontrollo di
+  quella ondata e la revisione finale dell'intero branch (25 novembre, subagent)
+  hanno trovato un terzo bug vero (le riconnessioni chiamavano `Connect` senza
+  scadenza: il login poteva restare appeso), frasi ancora inesatte su cosa copre la
+  traccia e una cronologia d'avvio che perdeva i passi di un Connect non riuscito:
+  seconda ondata, in sessione, poi il merge
+- Misura che ha motivato il piano (traccia del 23 novembre): rete veloce
+  (un comando verso Gmail in 62–64 ms), Connect a 29 s, prima lista a 61 s di
+  esecuzione, refresh dopo un'operazione a 15–20 s
+- Da provare su account reale: sezioni "Piano 12a" e "Timing trace, steps" di
+  `docs/smoke-checklist.md`
+
 ## Processo
 
 Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
@@ -297,9 +337,16 @@ review finale whole-branch → merge su main. Ledger di progresso in
    in `.goreleaser.yaml` (serve PAT `TAP_GITHUB_TOKEN`); FUNDING
 9. Ripeti lo smoke con credenziali reali seguendo `docs/smoke-checklist.md`
    (il primo test reale ha già trovato e corretto il bug connect)
+10. **Piano 12a**: gli smoke di `docs/smoke-checklist.md` ("Importanti", messaggio
+    con accenti e riga lunga in "Show original", nessuna riga vuota)
+11. **La misura per il Piano 12b**: una sessione con `GMAIL_TUI_TRACE=1` e la
+    tabella "Passi IMAP" incollata in chat
 
-## Roadmap v1.1 (già documentata in ROADMAP.md)
+## Roadmap (già documentata in ROADMAP.md)
 
-- Invio multipart/alternative (md → HTML) — oggi il body va come text/plain
-- Completamento CLI send-only, validazione destinatari
-- Backend Gmail API dietro `MailStore` (l'astrazione esiste già)
+- Prossimo passo: Piano 12b, prestazioni (niente rilista dopo `s` o `v`, meno
+  comandi nella lista, ricerca paginata), da scrivere dopo la misura sul conto reale
+- Release: serve un tag (per esempio `v0.2.0`) per pubblicare quanto è in `main`
+  dopo `v0.1.0`
+- Completamento CLI send-only
+- Più avanti: backend Gmail API e multi-account dietro `MailStore`

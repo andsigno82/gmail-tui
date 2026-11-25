@@ -137,7 +137,7 @@ func TestCacheEventsCarryNoPersonalData(t *testing.T) {
 			t.Errorf("la traccia contiene %q:\n%s", secret, out)
 		}
 	}
-	roles := map[string]bool{"inbox": true, "sent": true, "drafts": true, "all": true, "trash": true, "junk": true, "flagged": true, "label": true, "": true}
+	roles := map[string]bool{"inbox": true, "important": true, "sent": true, "drafts": true, "all": true, "trash": true, "junk": true, "flagged": true, "label": true, "": true}
 	cache := cacheEvents(t, &buf)
 	if len(cache) != 5 {
 		t.Fatalf("eventi cache = %d, attesi 5", len(cache))
