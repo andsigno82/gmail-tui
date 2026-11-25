@@ -124,6 +124,54 @@ func TestConnectStopsAtContextCancel(t *testing.T) {
 	}
 }
 
+// TestConnectSenzaScadenzaHaUnBudget (Piano 12a, revisione finale): le riconnessioni
+// di Watch e di UnreadCounts, e gmail-tui fetch, chiamano Connect con un ctx senza
+// scadenza. Anche loro devono tornare se il server tace sul login: Connect si dà il
+// budget di 90 s dell'avvio (accorciato qui). Per vederlo rosso: togliere il budget
+// in Connect. La scadenza che il chiamante fissa resta la sua: non si accorcia e non
+// si allunga.
+func TestConnectSenzaScadenzaHaUnBudget(t *testing.T) {
+	old := connectBudget
+	t.Cleanup(func() { connectBudget = old })
+
+	t.Run("senza scadenza vale il budget", func(t *testing.T) {
+		connectBudget = 300 * time.Millisecond
+		addr, closed := silentServer(t, "* OK ready\r\n")
+		s := NewStore(Options{Addr: addr, Username: "u", Password: "p", Insecure: true})
+		done := make(chan error, 1)
+		go func() { done <- s.Connect(t.Context()) }()
+		var err error
+		select {
+		case err = <-done:
+		case <-time.After(3 * time.Second):
+			t.Fatal("Connect non e tornata entro 3 s: senza scadenza il login resta appeso")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("err = %v, voglio context.DeadlineExceeded (il budget di Connect)", err)
+		}
+		select {
+		case <-closed:
+		case <-time.After(2 * time.Second):
+			t.Error("la connessione e rimasta aperta dopo il budget")
+		}
+		if _, err := s.connected(); !errors.Is(err, mail.ErrNotConnected) {
+			t.Errorf("dopo una Connect scaduta connected() = %v, voglio ErrNotConnected", err)
+		}
+	})
+
+	t.Run("la scadenza del chiamante vince", func(t *testing.T) {
+		connectBudget = time.Nanosecond
+		ts := startTestServer(t)
+		s := NewStore(Options{Addr: ts.addr(), Username: "tester", Password: "secret", Insecure: true})
+		t.Cleanup(func() { _ = s.Close() })
+		ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+		defer cancel()
+		if err := s.Connect(ctx); err != nil {
+			t.Errorf("Connect con una scadenza sua del chiamante: %v (il budget non deve accorciarla)", err)
+		}
+	})
+}
+
 // TestConnectStopsDuringTLSHandshake: il ctx scade mentre l'handshake TLS non
 // procede (il server accetta la connessione e non risponde).
 func TestConnectStopsDuringTLSHandshake(t *testing.T) {
@@ -271,7 +319,9 @@ func TestDialSessionNonRestituisceUnClientChiuso(t *testing.T) {
 		t.Run(c.nome, func(t *testing.T) {
 			ts := startTestServer(t)
 			o := Options{Addr: ts.addr(), Username: "tester", Password: "secret", Insecure: true}
-			base, cancel := context.WithCancel(t.Context())
+			// Scadenza lontana: Connect lascia suo questo ctx. Senza, lo ricava dal suo
+			// budget, e i controlli di Err() di dialSession non passano piu da qui.
+			base, cancel := context.WithTimeout(t.Context(), time.Hour)
 			defer cancel()
 			// passaggi: Connect controlla il ctx all'ingresso, dialSession no. La chiamata
 			// che annulla e il controllo dopo il login.

@@ -242,13 +242,27 @@ func NewStore(o Options) *Store {
 	return s
 }
 
+// connectBudget è quanto può durare una Connect quando il chiamante non fissa una
+// scadenza: lo stesso budget dell'avvio (Piano 12a, D12-T5). Serve alle riconnessioni
+// di Watch e di UnreadCounts e a gmail-tui fetch, che passano un ctx senza scadenza:
+// senza, un server che manda il greeting e tace sul LOGIN le tiene appese per sempre,
+// con in mano Store.mu (ogni altra operazione resterebbe in attesa). var: i test lo
+// accorciano (Piano 12a, revisione finale).
+var connectBudget = 90 * time.Second
+
 // Connect apre la connessione (TLS, o in chiaro se Options.Insecure) ed effettua
 // il login, rispettando ctx per tutto il dial (dialSession, Piano 12a, Task 3): alla
-// scadenza la connessione si chiude e l'errore è quello del ctx. Se esiste già un
-// client (doppio Connect, o il path di riconnessione di Watch dopo un errore di
+// scadenza la connessione si chiude e l'errore è quello del ctx. Un ctx senza scadenza
+// riceve connectBudget; una scadenza fissata dal chiamante resta la sua. Se esiste
+// già un client (doppio Connect, o il path di riconnessione di Watch dopo un errore di
 // rete) viene chiuso PRIMA di diallare: così un secondo Connect non leaka la
 // connessione precedente.
 func (s *Store) Connect(ctx context.Context) error {
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, connectBudget)
+		defer cancel()
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
