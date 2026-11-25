@@ -74,11 +74,13 @@ func TestTraceRoleNeverUsesMailboxName(t *testing.T) {
 	s.noteRoles([]mail.Mailbox{
 		{Name: "INBOX", Role: "inbox"},
 		{Name: "[Gmail]/Tutti i messaggi", Role: "all"},
+		{Name: "[Gmail]/Important", Role: "important"}, // Piano 12a, Task 6
 		{Name: "Lavoro"},
 	})
 	cases := map[string]string{
 		"": "inbox", "INBOX": "inbox",
 		"[Gmail]/Tutti i messaggi": "all",
+		"[Gmail]/Important":        "important",
 		"Lavoro":                   "label",
 		"MaiVista":                 "label",
 	}
