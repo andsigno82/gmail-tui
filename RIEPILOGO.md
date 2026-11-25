@@ -307,7 +307,8 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   hanno trovato un terzo bug vero (le riconnessioni chiamavano `Connect` senza
   scadenza: il login poteva restare appeso), frasi ancora inesatte su cosa copre la
   traccia e una cronologia d'avvio che perdeva i passi di un Connect non riuscito:
-  seconda ondata, in sessione, poi il merge
+  seconda ondata, in sessione, senza ricontrollo indipendente (revisioni alleggerite
+  su richiesta di Andrea), poi il merge (`23ed44d`, 25 novembre)
 - Misura che ha motivato il piano (traccia del 23 novembre): rete veloce
   (un comando verso Gmail in 62–64 ms), Connect a 29 s, prima lista a 61 s di
   esecuzione, refresh dopo un'operazione a 15–20 s
@@ -316,10 +317,13 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 
 ## Processo
 
-Ogni piano: spec → piano TDD task-per-task → esecuzione **subagent-driven**
-(implementer + reviewer indipendenti per task, fix wave sulle review) →
-review finale whole-branch → merge su main. Ledger di progresso in
-`.superpowers/sdd/`. Trovi tutto in `docs/superpowers/{specs,plans}/`.
+Ogni piano: piano TDD task-per-task in `docs/superpowers/plans/` → implementazione
+con i test scritti prima → **una** revisione indipendente dell'intero branch →
+correzioni → merge su main. Le revisioni sono alleggerite dal 25 novembre 2026,
+per decisione di Andrea (per il 12a ce ne sono state nove, le ultime due da 1,4 e
+12,5 milioni di token): niente revisione per task e niente ricontrollo di un'ondata
+di correzioni, se le correzioni hanno un test che senza di loro resta rosso. Ledger
+di progresso in `.superpowers/sdd/`. Trovi tutto in `docs/superpowers/{specs,plans}/`.
 
 ## Passi manuali rimasti (solo tu puoi)
 

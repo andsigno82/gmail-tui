@@ -230,10 +230,12 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 
 ## Development workflow
 
-Each feature followed: spec (`docs/superpowers/specs/`) → task-by-task TDD
-plan (`docs/superpowers/plans/`) → implementation with an independent review
-per task → whole-branch review → merge to `main`. For non-trivial work, write
-or update a plan there first. `.superpowers/sdd/` holds the local progress
+Each feature follows: spec (`docs/superpowers/specs/`, when the design is new) →
+task-by-task TDD plan (`docs/superpowers/plans/`) → implementation → **one**
+independent review of the whole branch → fixes → merge to `main`. Reviews stay
+light (Andrea's decision, 25 November 2026): no review per task and no re-review of
+a fix wave, unless a fix has no test that fails without it. For non-trivial work,
+write or update a plan there first. `.superpowers/sdd/` holds the local progress
 ledger and is gitignored.
 
 Email content is untrusted input: after any dependency bump run

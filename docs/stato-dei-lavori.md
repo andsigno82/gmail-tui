@@ -1,8 +1,8 @@
 # gmail-tui: stato dei lavori
 
-24 novembre 2026 · Andrea Signorile
+25 novembre 2026 · Andrea Signorile
 
-Tutti i piani da 7 a 16 sono in `main` e pubblicati su GitHub. Il Piano 12a, ritocchi e misura, è sul branch `feat/piano-12a`, in attesa del merge. Restano gli smoke test sull'account reale, il Piano 12b e alcuni rischi noti da verificare.
+Tutti i piani da 7 a 16 sono in `main` e pubblicati su GitHub. Anche il Piano 12a, ritocchi e misura, è in `main` dal 25 novembre (`23ed44d`). Restano gli smoke test sull'account reale, il Piano 12b e alcuni rischi noti da verificare.
 
 ## Fatto
 
@@ -10,7 +10,7 @@ Ogni piano ha seguito lo stesso percorso: piano TDD scritto prima in `docs/super
 
 | Data | Piano | Cosa è cambiato | Commit su main |
 | --- | --- | --- | --- |
-| 24 nov | 12a, ritocchi e misura | Codifica delle parti di testo in uscita, niente righe fantasma, Connect interrompibile alla scadenza (con il TLS provato dai test), Importanti tra le cartelle speciali, traccia per passo IMAP; ROADMAP allineata a `v0.1.0` | `feat/piano-12a` |
+| 25 nov | 12a, ritocchi e misura | Codifica delle parti di testo in uscita, niente righe fantasma, Connect interrompibile alla scadenza e con un budget di 90 s anche nelle riconnessioni (con il TLS provato dai test), Importanti tra le cartelle speciali, traccia per passo IMAP con le durate nella cronologia d'avvio; ROADMAP allineata a `v0.1.0` | `23ed44d` |
 | 23 nov | 16, cache locale | Lista e conversazioni subito dall'istantanea locale, in sola lettura finché Gmail non conferma; ultimi 200 messaggi aperti in cache; Connect, wizard e doctor a 90 s | `99679a3` |
 | 23 nov | Prestazioni e traccia | Meno rendering e copie nel percorso dei tasti; traccia dei tempi con `GMAIL_TUI_TRACE=1` e comando `gmail-tui trace` | `e7718ce` |
 | 23 nov | 15, beautify | Bottoni, tabelle, citazioni ed elenchi resi nel terminale; avviso phishing sui link; albero cartelle con non letti; finestre con ombra; barra di stato a segmenti; splash | `6429097` |
@@ -39,8 +39,8 @@ Queste scelte sono tue e restano ferme finché non le cambi tu. Il dettaglio di 
 | Allegati | Si aprono solo PDF, PNG, JPEG, GIF e testo, da una cartella privata pulita all'uscita | Piano 15 |
 | Cache | Corpi degli ultimi 200 messaggi aperti, scartando i meno usati (non FIFO); anche istantanee di lista e thread; nessuna cifratura | Piano 16 |
 | Dati provvisori | Azioni rifiutate con toast finché la lista non è confermata; si mostra l'età dei dati | Piano 16 |
-| Timeout | Connect a 90 s nell'app, nel wizard e nel doctor | Piano 16 |
-| Lavoro con agenti | Opus pianifica, Sonnet per i compiti rischiosi, Haiku per quelli meccanici; il coordinatore orchestra; merge e push solo con il tuo ok | Processo |
+| Timeout | Connect a 90 s nell'app, nel wizard e nel doctor; dal 12a anche in ogni Connect chiamata senza scadenza (le riconnessioni, `gmail-tui fetch`) | Piano 16, Piano 12a |
+| Lavoro con agenti | Opus pianifica, Sonnet per i compiti rischiosi, Haiku per quelli meccanici; il coordinatore orchestra; merge e push solo con il tuo ok. Dal 25 novembre le revisioni sono più leggere: una sola revisione indipendente per branch, prima del merge | Processo |
 | Piano 12 | Due piani: 12a ritocchi e misura, 12b prestazioni con una spec propria dopo una traccia reale | Piano 12a |
 | Codifica in uscita | `7bit` se il testo è ASCII puro con righe fino a 998 byte, altrimenti `quoted-printable` | Piano 12a |
 
@@ -62,7 +62,7 @@ Nessun piano dall'8 in poi è stato provato sul tuo account Gmail con i passi de
 
 ## Da fare: Piano 12b
 
-Il Piano 12 è diviso in due (decisione del 23 novembre). Il **12a**, ritocchi e misura, è implementato sul branch `feat/piano-12a`, piano in `docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md`. Resta il **12b**, prestazioni, che avrà una spec propria dopo la traccia reale con i passi per comando:
+Il Piano 12 è diviso in due (decisione del 23 novembre). Il **12a**, ritocchi e misura, è in `main`, piano in `docs/superpowers/plans/2026-11-23-piano-12a-ritocchi-e-misura.md`. Resta il **12b**, prestazioni, che avrà una spec propria dopo la traccia reale con i passi per comando:
 
 1. Niente rilista dopo `s` o `v`: solo i flag cambiati, con CONDSTORE
 2. Meno comandi nella lista: oggi ogni lista rilancia il LIST di tutte le cartelle e ogni operazione rifà la SELECT
@@ -91,5 +91,7 @@ Nessuno di questi è un problema di sicurezza: R1-R4 e la guardia degli ID blocc
 | Cache reale già allo schema 4 | Un vecchio test l'ha migrata il 23 novembre alle 14:58; dati intatti, test ora isolati | Chiuso |
 | Cambio reale di UIDVALIDITY | Coperto dai test, mai visto su Gmail vero | Da osservare |
 | `\r` isolato nel corpo di un messaggio in uscita | Resta com'è, come prima del Piano 12a: esce dichiarato `7bit` | Cosmetico, accettato |
+| Stallo possibile in `Close` e `Connect` | Tengono `Store.mu` mentre chiudono il client; se un aggiornamento push del server aspetta lo stesso mutex in quel momento, l'app si blocca. Finestra minuscola, mai vista | Preesistente al 12a (trovato nella revisione finale), da riprodurre con un test |
+| `Caps()` dentro `Connect` gira fuori dal contesto | Al massimo i 30 s di go-imap, e solo se il server non annuncia le capability | Non capita su Gmail, accettato |
 
 Un Connect lento su Gmail resta il limite principale: la cache rende l'avvio immediato, ma le azioni aspettano comunque il server.
