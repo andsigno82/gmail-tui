@@ -108,8 +108,8 @@ paginata: piano proprio, scritto dopo una traccia reale presa con 12a.
 - **CONDSTORE** (`CHANGEDSINCE`, `HIGHESTMODSEQ`, supportati da go-imap v2): rileggere solo i messaggi cambiati invece di rilistare fino a 500 righe a ogni refresh. Elimina il tetto 500 e il compromesso D5 (coda tenuta dopo stella/letto).
 - **Paginazione della ricerca:** oggi `Search` fa FETCH di tutti i risultati. Paginarla come la lista (o con ESEARCH, se Gmail lo annuncia).
 - **Trash su più cartelle:** oggi può fermarsi a metà lasciando spostato solo il primo gruppo. Riportare quali messaggi sono stati spostati invece di un errore generico.
-- **`[Gmail]/Importanti`** (`\Important`) oggi appare come label normale: mapparlo come ruolo.
-- **Codifica MIME del corpo:** aggiungere `Content-Transfer-Encoding` e il limite di 998 caratteri per riga (RFC 5322) a `text/plain` e `text/html`. Oggi le parti di testo non dichiarano CTE (`internal/mail/smtp/mime.go`), quindi vale il default MIME 7bit, e nessun limite di riga è applicato.
+- **`[Gmail]/Importanti`** (`\Important`) appariva come label normale: mappato come ruolo nel 12a.
+- **Codifica MIME del corpo:** aggiungere `Content-Transfer-Encoding` e il limite di 998 caratteri per riga (RFC 5322) a `text/plain` e `text/html`. Prima del 12a le parti di testo non dichiaravano CTE (`internal/mail/smtp/mime.go`), quindi valeva il default MIME 7bit, e nessun limite di riga era applicato. Corretto nel 12a.
 
 ## Piano 13 — Account
 

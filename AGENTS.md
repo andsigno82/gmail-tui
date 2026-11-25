@@ -100,8 +100,9 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
 - Time-dependent UI (relative dates, double-click) uses injectable clocks
   (`clock func() time.Time`); never call `time.Now` directly in testable paths.
 - **TLS dial**: `Options.TLSConfig` (test-only) carries the CA of a self-signed
-  certificate, as the SMTP tests do. Never add `InsecureSkipVerify` to production
-  code.
+  certificate, as `dial_test.go` does; the SMTP STARTTLS test skips verification
+  instead (`InsecureSkipVerify`, in test code only). Never add `InsecureSkipVerify`
+  to production code.
 - Adding a theme needs no test changes: `TestEveryEmbeddedThemeValid` validates
   every file in `internal/theme/themes/`.
 
@@ -217,7 +218,8 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   `internal/mail/smtp/encoding.go`): `7bit`, or `quoted-printable` when the text
   has a byte above 127, a NUL or a line above 998 bytes. The standard
   `quotedprintable` writer does the encoding; to read the header back in a test
-  use `NextRawPart` (`NextPart` hides it on quoted-printable parts).
+  use `NextRawPart` of `mime/multipart` (`NextPart` hides it on quoted-printable
+  parts).
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the
   source of the pinned version, not against docs or memory (e.g. `DialInsecure`,
   `UIDExpunge`). bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.

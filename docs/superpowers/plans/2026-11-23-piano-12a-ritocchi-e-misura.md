@@ -2381,7 +2381,7 @@ In cima a `### Fixed`:
 ```markdown
 ## Piano 12a — fixes (real account, run by hand)
 
-Run on a real Gmail account; nothing here is covered by tests.
+Run on a real Gmail account. These behaviours have unit tests, but none of them has ever been tried on a real account.
 
 - [ ] `m`: "Importanti" is the second entry, right after Inbox, with the other special folders and no `[Gmail]` branch above it. Opening it lists the messages Gmail marks as important. It shows no unread count.
 - [ ] Compose a message with accented letters and a line longer than 1000 characters (paste a long URL), send it to yourself. In Gmail web, "Show original": the text part has `Content-Transfer-Encoding: quoted-printable`, no line above 998 characters, and the message reads correctly in Gmail and in another client.
@@ -2395,10 +2395,10 @@ Run on a real Gmail account; nothing here is covered by tests.
 This is the measurement the Piano 12b design is built on. Do it first and paste the summary in the chat.
 
 - [ ] `GMAIL_TUI_TRACE=1 gmail-tui`: start, wait for the list, open 2 conversations (one with several messages), press `v` on a row, switch to another folder with `m`, quit.
-- [ ] `gmail-tui trace <path>`: the summary has the "Passi IMAP" table, with rows for `Connect tcp`, `Connect tls` and `Connect login`, and `list`, `select`, `search` and `fetch` for `ListConversations`, `ThreadMessages` and `FetchMessage`.
-- [ ] Startup timeline: it lists the three Connect steps. Note the time of `Connect login` (the 28.9 s of the 23 November trace were all inside Connect).
+- [ ] `gmail-tui trace <path>`: the summary has the "Passi IMAP" table, with rows for `Connect tcp`, `Connect tls` and `Connect login`, and `list`, `select`, `search` and `fetch` for `ListConversations` and `ThreadMessages`, `select` and `fetch` for `FetchMessage`. The unread counts and `AllMailIDs` are not broken down.
+- [ ] Startup timeline: it lists the three Connect steps. Note the time of `Connect login`: in the trace of 23 November the whole Connect took 28.9 s, and that trace could not tell how much of it was the login.
 - [ ] First `ListConversations`: note the slowest step, and whether it is in `inbox` or in `all`.
-- [ ] Privacy: `grep -ciE "inbox|all mail|\[Gmail\]" <path>` prints 0.
+- [ ] Privacy: `grep -ciE '\[Gmail\]|Tutti i messaggi|all mail' <path>` prints 0 (no folder name), and `grep -oE '"role":"[^"]*"' <path> | sort -u` lists only these roles: `inbox`, `important`, `sent`, `drafts`, `all`, `trash`, `junk`, `flagged`, `label`.
 - [ ] Paste the "Passi IMAP" table and the startup timeline in the chat: they decide the order of Piano 12b.
 ```
 

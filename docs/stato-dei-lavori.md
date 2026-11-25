@@ -46,7 +46,7 @@ Queste scelte sono tue e restano ferme finché non le cambi tu. Il dettaglio di 
 
 ## Da fare: smoke test sull'account reale
 
-Nessun piano dall'8 in poi è stato provato sul tuo account Gmail: i test girano su server finti in memoria. I passi sono in `docs/smoke-checklist.md`, una sezione per piano.
+Nessun piano dall'8 in poi è stato provato sul tuo account Gmail con i passi della checklist: i test girano su server finti in memoria. L'unica sessione reale finora è la traccia dei tempi del 23 novembre. I passi sono in `docs/smoke-checklist.md`, una sezione per piano.
 
 - [ ] **Piano 8, conversazioni**: thread raggruppati, ricerca con sintassi Gmail, label applicate e tolte
 - [ ] **Piano 9, scrittura**: bozza salvata con flag `\Draft`, Ccn assente dalle intestazioni anche nelle bozze, annulla invio
@@ -55,11 +55,10 @@ Nessun piano dall'8 in poi è stato provato sul tuo account Gmail: i test girano
 - [ ] **Piano 14, server MCP**: un agente legge cartelle e messaggi, nessuno strumento di scrittura disponibile
 - [ ] **Piano 15, rendering su Ghostty**: sottolineature dei link, conferma ⚠ sui link a rischio, albero cartelle, splash
 - [ ] **Piano 12a**: "Importanti" dopo Posta in arrivo; un messaggio con accenti e una riga lunga in "Show original"; nessuna riga vuota dopo una cancellazione da Gmail web (passi in `docs/smoke-checklist.md`)
-- [ ] **Piano 12b, la misura**: una sessione con `GMAIL_TUI_TRACE=1` e la tabella "Passi IMAP" incollata in chat: decide l'ordine del 12b
+- [ ] **Piano 12b, la misura**: una sessione con `GMAIL_TUI_TRACE=1` per confrontare con la misura di prima (prima lista a 106 s); la tabella "Passi IMAP" incollata in chat decide l'ordine del 12b
 - [ ] **Piano 16, cache**: seconda apertura con lista immediata, toast di rifiuto durante l'aggiornamento, Connect fallito in sola lettura
 - [ ] **Piano 16, dopo `R` o dopo il wizard**: archivia e cestina restano rifiutati finché non torna la lista fresca (fino a circa 77 s). Va deciso se è accettabile
 - [ ] **Piano 16, ricerca o cambio cartella prima di Connect**: compare il toast "store non connesso". Va deciso se il messaggio va bene
-- [ ] **Traccia dei tempi**: un avvio con `GMAIL_TUI_TRACE=1` per confrontare con la misura di prima (prima lista a 106 s)
 
 ## Da fare: Piano 12b
 

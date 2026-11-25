@@ -253,7 +253,7 @@ Without the variable nothing is measured and no file is written. With it, the ap
 gmail-tui trace ~/Library/Caches/gmail-tui/trace-20261123-101500.jsonl
 ```
 
-The summary, short enough to paste into an issue or a chat, has: the startup timeline (first screen, connect, first list); per mail operation count, median, p95 and max in milliseconds, with the **gate wait** (time queued behind another operation or an IDLE exit on the single IMAP connection) apart from the rest; per Bubble Tea message the `Update` and `View` times and the average bytes of the rendered screen; the 10 slowest frames; and the body rendering phases (`FromHTML`, `render`, sync or async). A **Passi IMAP** table follows: one row per operation, IMAP command (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`) and folder role, which tells which command is slow on a real account; the startup timeline also lists the Connect steps.
+The summary, short enough to paste into an issue or a chat, has: the startup timeline (first screen, connect, first list); per mail operation count, median, p95 and max in milliseconds, with the **gate wait** (time queued behind another operation or an IDLE exit on the single IMAP connection) apart from the rest; per Bubble Tea message the `Update` and `View` times and the average bytes of the rendered screen; the 10 slowest frames; and the body rendering phases (`FromHTML`, `render`, sync or async). A **Passi IMAP** table follows: one row per operation, IMAP command (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`) and folder role, with a count of the steps that failed, which tells which command is slow on a real account; the startup timeline also lists the steps of the first Connect. The table covers the list, thread and body read path: the unread counts and `AllMailIDs` are not broken down.
 
 Event format (all times in microseconds, `t` = end of the event since start): `{"t":..,"k":"store","op":"ListConversations","dur_us":..,"wait_us":..,"n":..,"role":"inbox"}`; kinds are `meta`, `store`, `step`, `cache`, `msg`, `phase` and `body`.
 
@@ -261,8 +261,9 @@ Event format (all times in microseconds, `t` = end of the event since start): `{
 
 ## Roadmap
 
-- **v1.1** — delivered: paging, folders and labels picker, trash, recipient validation, markdown → HTML multipart sending, settings menu, two-column layout, readable colors on colored bars. Planned: CLI send-only completion
-- **Later** — Gmail conversations (`X-GM-THRID`/`X-GM-RAW`, needs a go-imap patch), optional Gmail API backend behind the existing `MailStore` abstraction
+- **Unreleased** — delivered on `main`, not in a release yet: everything from paging to Gmail conversations, drafts, bulk actions, the read-only MCP server, rich rendering, the local cache and the timing trace (full list in the file)
+- **Next** — CLI send-only completion; incremental sync and performance (Piano 12b)
+- **Later** — optional Gmail API backend and multi-account, behind the existing `MailStore` abstraction
 
 See [ROADMAP.md](ROADMAP.md).
 

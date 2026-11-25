@@ -106,8 +106,9 @@ but is not in a release yet.
   lines.
 - **Important folder** — "Importanti" sits with the special folders, right after
   Inbox.
-- **Trace steps** — each IMAP command of the read path is measured (`tcp`, `tls`,
-  `login`, `list`, `select`, `search`, `fetch`) and summarized by `gmail-tui trace`.
+- **Trace steps** — each IMAP command of the list, thread and body read path is
+  measured (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`) and summarized
+  by `gmail-tui trace`; the unread counts and `AllMailIDs` are not broken down.
 - **Connect deadline** — when the 90 s budget expires, the dial and the login are
   interrupted and the connection closed.
 
