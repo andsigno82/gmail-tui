@@ -1138,10 +1138,12 @@ func TestConnectStopsDuringTLSHandshake(t *testing.T) {
 }
 ```
 
+Dopo la revisione indipendente (25 novembre) si è aggiunto `TestDialSessionNonRestituisceUnClientChiuso` in `dial_test.go`: se il contesto finisce fra il controllo finale e il distacco della chiusura automatica, `dialSession` non deve restituire il client. La correzione controlla il valore di ritorno di `stop()`.
+
 - [x] **Step 6: vedere verde e controllare che i dial di imapclient non ci siano più.**
 
 Run: `go test ./internal/mail/imap/ -count=1 -v`
-Expected: PASS. I tre casi di scadenza tornano in pochi centesimi di secondo.
+Expected: PASS. I casi di scadenza sono quattro (i due di `TestConnectStopsAtContextDeadline`, `TestCapabilitiesStopsAtContextDeadline` e `TestConnectStopsDuringTLSHandshake`): ognuno dura circa 0,30 s, il contesto del test.
 
 Run: `grep -rn "imapclient.Dial" internal cmd --include="*.go"`
 Expected: nessuna riga.

@@ -21,8 +21,10 @@ import (
 	"github.com/andsigno82/gmail-tui/internal/trace"
 )
 
-// dialTimeout e il tempo massimo di TCP e dell'handshake TLS: lo stesso default di
-// imapclient (30 s). Il ctx del chiamante puo essere piu corto.
+// dialTimeout e il tempo massimo di ciascuna delle due fasi del dial, il TCP e
+// l'handshake TLS: 30 s per fase (caso peggiore 60 s, entro i budget di 90 s). Il
+// dial di imapclient dava 30 s alle due fasi insieme. Il ctx del chiamante puo essere
+// piu corto.
 const dialTimeout = 30 * time.Second
 
 // dialSession apre la connessione (TLS, o in chiaro se o.Insecure) e fa il login.
@@ -46,12 +48,22 @@ func dialSession(ctx context.Context, o Options, op string, options *imapclient.
 	if cerr != nil {
 		err = cerr
 	}
-	step.End("", 0, 0, err)
 	if err != nil {
+		stop() // anche sul percorso d'errore la chiusura automatica si stacca
+		step.End("", 0, 0, err)
 		_ = c.Close()
 		return nil, fmt.Errorf("imap login %s: %w", o.Username, err)
 	}
-	stop() // da qui la connessione vive con lo Store: il ctx del chiamante non la chiude
+	// Il ctx puo finire fra il controllo qui sopra e stop(). Se stop() torna false la
+	// chiusura automatica e gia partita: la connessione sta per chiudersi e il client
+	// non si restituisce come buono (Piano 12a, revisione del Task 3).
+	if !stop() {
+		cerr := ctx.Err()
+		step.End("", 0, 0, cerr)
+		_ = c.Close()
+		return nil, fmt.Errorf("imap login %s: %w", o.Username, cerr)
+	}
+	step.End("", 0, 0, nil)
 	return c, nil
 }
 

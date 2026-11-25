@@ -4,6 +4,7 @@ package imap
 // tutto il dial e il login; il dial TLS implicito e provato davvero.
 
 import (
+	"bufio"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -15,8 +16,12 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/emersion/go-imap/v2/imapclient"
 
 	"github.com/andsigno82/gmail-tui/internal/mail"
 	"github.com/andsigno82/gmail-tui/internal/msg"
@@ -211,11 +216,122 @@ func TestConnectOverTLS(t *testing.T) {
 func TestConnectTLSRejectsUntrustedCertificate(t *testing.T) {
 	addr, _ := tlsScriptedServer(t)
 	s := NewStore(Options{Addr: addr, Username: "u", Password: "p"})
-	if err := s.Connect(t.Context()); err == nil {
+	err := s.Connect(t.Context())
+	var nonFidato x509.UnknownAuthorityError
+	if !errors.As(err, &nonFidato) {
 		_ = s.Close()
-		t.Fatal("Connect accettato con un certificato non fidato")
+		t.Fatalf("err = %v, voglio un certificato non fidato (x509.UnknownAuthorityError)", err)
 	}
 	if _, err := s.connected(); !errors.Is(err, mail.ErrNotConnected) {
 		t.Errorf("connected() = %v, voglio ErrNotConnected", err)
+	}
+}
+
+// serverCheAccettaIlLogin risponde al greeting e a ogni comando con OK, poi avvisa
+// quando il client chiude la connessione (chiudendo closed).
+func serverCheAccettaIlLogin(t *testing.T) (addr string, closed <-chan struct{}) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		fmt.Fprint(conn, "* OK [CAPABILITY IMAP4rev1] ready\r\n")
+		r := bufio.NewReader(conn)
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				return // EOF: il client ha chiuso
+			}
+			tag, _, _ := strings.Cut(strings.TrimSpace(line), " ")
+			fmt.Fprintf(conn, "%s OK done\r\n", tag)
+		}
+	}()
+	return ln.Addr().String(), done
+}
+
+// ctxCheScadeAlControllo e un contesto il cui Err() riesce le prime "passaggi" volte;
+// alla chiamata successiva annulla il contesto e aspetta che la connessione sia stata
+// davvero chiusa, rispondendo ancora nil al controllo che l'ha chiamato. Riproduce cosi
+// il caso in cui il contesto finisce fra il controllo di dialSession e il distacco
+// della chiusura automatica, e la chiusura arriva prima (Piano 12a, revisione del
+// Task 3). Senza l'attesa la chiusura parte dopo e restituire il client sarebbe giusto.
+type ctxCheScadeAlControllo struct {
+	context.Context
+	cancel    context.CancelFunc
+	chiuso    <-chan struct{}
+	passaggi  int // chiamate a Err() che passano prima di quella che annulla
+	controlli atomic.Int64
+}
+
+// Err puo essere chiamata anche dalla propagazione dell'annullamento (un altro
+// goroutine): per questo il contatore e atomico. L'ordine resta determinato: la
+// propagazione parte solo dall'annullamento, che avviene dentro la chiamata che
+// chiude la connessione.
+func (c *ctxCheScadeAlControllo) Err() error {
+	n := c.controlli.Add(1)
+	switch {
+	case n <= int64(c.passaggi):
+		return nil
+	case n == int64(c.passaggi)+1:
+		c.cancel()
+		select {
+		case <-c.chiuso:
+		case <-time.After(5 * time.Second):
+		}
+		return nil
+	default:
+		return context.Canceled
+	}
+}
+
+// TestDialSessionNonRestituisceUnClientChiuso: se il contesto chiude la connessione
+// fra il controllo e il distacco della chiusura automatica, il client non si
+// restituisce come buono. Per vederlo rosso: ignorare il valore di ritorno di stop().
+// La prima chiamata a Err() e quella dell'ingresso di Connect (o di dialSession, nel
+// primo caso): passa; la seconda e il controllo dopo il login, e chiude la connessione.
+func TestDialSessionNonRestituisceUnClientChiuso(t *testing.T) {
+	casi := []struct {
+		nome       string
+		attraverso bool // true: si passa da Store.Connect
+	}{
+		{"dialSession diretto", false},
+		{"attraverso Connect", true},
+	}
+	for _, c := range casi {
+		t.Run(c.nome, func(t *testing.T) {
+			addr, chiuso := serverCheAccettaIlLogin(t)
+			o := Options{Addr: addr, Username: "u", Password: "p", Insecure: true}
+			base, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// passaggi: dialSession controlla il ctx una volta, Connect due volte (ingresso e dialSession).
+			passaggi := 1
+			if !c.attraverso {
+				passaggi = 0
+			}
+			ctx := &ctxCheScadeAlControllo{Context: base, cancel: cancel, chiuso: chiuso, passaggi: passaggi}
+			if !c.attraverso {
+				client, err := dialSession(ctx, o, "Connect", &imapclient.Options{})
+				if !errors.Is(err, context.Canceled) || client != nil {
+					t.Errorf("dialSession = (client presente: %v, %v), voglio (nil, context.Canceled)", client != nil, err)
+				}
+				return
+			}
+			s := NewStore(o)
+			if err := s.Connect(ctx); !errors.Is(err, context.Canceled) {
+				t.Errorf("Connect = %v, voglio context.Canceled", err)
+			}
+			if _, err := s.connected(); !errors.Is(err, mail.ErrNotConnected) {
+				t.Errorf("connected() = %v, voglio ErrNotConnected", err)
+			}
+		})
 	}
 }
