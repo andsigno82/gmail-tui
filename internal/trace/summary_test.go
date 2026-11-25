@@ -162,7 +162,7 @@ func campiRiga(s, prefisso string) []string {
 
 // Piano 12a, Task 4: la tabella dei passi IMAP, una riga per operazione, passo e
 // ruolo, con il conteggio dei passi falliti. Della cronologia dell'avvio fanno
-// parte solo i passi del PRIMO Connect.
+// parte solo i passi fino al primo Connect riuscito, qui il primo.
 func TestSummarizeSezionePassi(t *testing.T) {
 	in := jsonl(
 		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
@@ -211,5 +211,70 @@ func TestSummarizeSezionePassi(t *testing.T) {
 	}
 	if n := strings.Count(s, "(passo)"); n != 3 {
 		t.Errorf("righe \"(passo)\" nella cronologia = %d, attese 3 (solo il primo Connect):\n%s", n, s)
+	}
+	// Ogni passo porta la sua durata: il login, durato un secondo, si legge li'.
+	if righe := righeCon(s, "  +1.25 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "1000.0 ms") {
+		t.Errorf("riga del login nell'avvio attesa con 1000.0 ms: %q\n%s", righe, s)
+	}
+}
+
+// Piano 12a, revisione finale: se il primo Connect fallisce e un `R` riesce, l'avvio
+// arriva fino al Connect riuscito, con le durate: il tempo del login buono non si
+// perde. Un Connect ancora dopo sta solo nella tabella.
+func TestSummarizeAvvioFinoAlPrimoConnectRiuscito(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 9_100_000, K: "step", Op: "Connect", Step: "login", Dur: 9_000_000, Err: true},
+		Event{T: 9_100_000, K: "store", Op: "Connect", Dur: 9_100_000, Err: true},
+		Event{T: 20_100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 80_000},
+		Event{T: 21_250_000, K: "step", Op: "Connect", Step: "login", Dur: 1_000_000},
+		Event{T: 21_300_000, K: "store", Op: "Connect", Dur: 1_200_000},
+		Event{T: 90_000_000, K: "step", Op: "Connect", Step: "tcp", Dur: 120_000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	if n := strings.Count(s, "(passo)"); n != 4 {
+		t.Errorf("righe \"(passo)\" nella cronologia = %d, attese 4 (i due Connect fino al primo riuscito):\n%s", n, s)
+	}
+	if righe := righeCon(s, "  +9.10 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "9000.0 ms") || !strings.Contains(righe[0], "ERR") {
+		t.Errorf("riga del login fallito attesa con 9000.0 ms e ERR: %q\n%s", righe, s)
+	}
+	if righe := righeCon(s, "  +21.25 s  Connect login (passo)"); len(righe) != 1 || !strings.Contains(righe[0], "1000.0 ms") || strings.Contains(righe[0], "ERR") {
+		t.Errorf("riga del login riuscito attesa con 1000.0 ms e senza ERR: %q\n%s", righe, s)
+	}
+	// Il primo Connect e caduto, il secondo ha collegato l'app: due righe distinte.
+	if righe := righeCon(s, "  +9.10 s  store Connect (fallito)"); len(righe) != 1 {
+		t.Errorf("riga del primo Connect, fallito, attesa nell'avvio:\n%s", s)
+	}
+	if righe := righeCon(s, "  +21.30 s  store Connect (fine)"); len(righe) != 1 {
+		t.Errorf("riga della fine del primo Connect riuscito attesa nell'avvio:\n%s", s)
+	}
+}
+
+// Piano 12a, ricontrollo della fix wave: se la traccia finisce durante il primo
+// Connect (l'app chiusa mentre aspettava il login, quindi senza evento store di
+// Connect), i suoi passi stanno comunque nell'avvio. Valgono tutti: un Connect non
+// finito non lascia passi di un Connect successivo.
+func TestSummarizeAvvioSenzaFineDelConnect(t *testing.T) {
+	in := jsonl(
+		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
+		Event{T: 100_000, K: "step", Op: "Connect", Step: "tcp", Dur: 100_000},
+		Event{T: 250_000, K: "step", Op: "Connect", Step: "tls", Dur: 150_000},
+	)
+	var out strings.Builder
+	if err := Summarize(strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	s := out.String()
+	i, j := strings.Index(s, "Connect tcp (passo)"), strings.Index(s, "Connect tls (passo)")
+	if i < 0 || j < 0 || i >= j {
+		t.Errorf("i passi del Connect non finito non sono in ordine nell'avvio:\n%s", s)
+	}
+	if strings.Contains(s, "store Connect (fine)") {
+		t.Errorf("un Connect senza fine compare come finito:\n%s", s)
 	}
 }

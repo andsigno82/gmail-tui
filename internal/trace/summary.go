@@ -104,6 +104,7 @@ func Summarize(r io.Reader, w io.Writer) error {
 		frames                     []frame
 		phases                     []Event
 		firstStore                 = map[string]Event{}
+		firstStoreOk               = map[string]Event{} // il primo evento riuscito di ogni operazione
 		viewBytesAll               []int64
 		steps                      = map[string]*stepGroup{}
 		stepOrder                  []string
@@ -151,6 +152,11 @@ func Summarize(r io.Reader, w io.Writer) error {
 			}
 			if _, ok := firstStore[e.Op]; !ok {
 				firstStore[e.Op] = e
+			}
+			if !e.Err {
+				if _, ok := firstStoreOk[e.Op]; !ok {
+					firstStoreOk[e.Op] = e
+				}
 			}
 		case "step":
 			key := e.Op + "\x00" + e.Step + "\x00" + e.Role
@@ -224,23 +230,41 @@ func Summarize(r io.Reader, w io.Writer) error {
 	}
 	fmt.Fprintln(w)
 
-	// Avvio: fasi esplicite piu il primo Connect e il primo ListConversations.
+	// Avvio: fasi esplicite piu i passi e la fine del primo Connect riuscito, e il primo
+	// ListConversations.
 	var start []Event
-	for _, op := range []string{"Connect", "ListConversations"} {
-		if e, ok := firstStore[op]; ok {
-			e.Op = "store " + op + " (fine)"
+	// Solo i passi fino alla fine del primo Connect RIUSCITO: la cronologia e quella
+	// dell'avvio. Se i tentativi prima sono falliti (per esempio dopo `R`), i loro passi
+	// restano, con la durata e l'esito: il tempo del login buono non si perde. Un
+	// Connect ancora dopo sta solo nella tabella, con le sue misure. Se nessun Connect e
+	// riuscito (traccia finita durante il dial, o sempre fallito) valgono tutti.
+	fine := lastT
+	if e, ok := firstStoreOk["Connect"]; ok {
+		fine = e.T
+	}
+	for _, e := range connect {
+		if e.T <= fine {
+			e.Op = "Connect " + e.Step + " (passo)  " + ms(e.Dur) + " ms"
+			if e.Err {
+				e.Op += "  ERR"
+			}
 			start = append(start, e)
 		}
 	}
-	// Solo i passi del PRIMO Connect: la cronologia e quella dell'avvio. Un Connect
-	// rifallito (per esempio dopo `R`) sta nella tabella dei passi, con le sue misure.
-	if primo, ok := firstStore["Connect"]; ok {
-		for _, e := range connect {
-			if e.T <= primo.T {
-				e.Op = "Connect " + e.Step + " (passo)"
-				start = append(start, e)
-			}
+	if e, ok := firstStore["Connect"]; ok && e.Err {
+		e.Op = "store Connect (fallito)"
+		start = append(start, e)
+	}
+	if e, ok := firstStoreOk["Connect"]; ok {
+		e.Op = "store Connect (fine)"
+		start = append(start, e)
+	}
+	if e, ok := firstStore["ListConversations"]; ok {
+		e.Op = "store ListConversations (fine)"
+		if e.Err {
+			e.Op = "store ListConversations (fallito)"
 		}
+		start = append(start, e)
 	}
 	start = append(start, phases...)
 	if len(start) > 0 {
