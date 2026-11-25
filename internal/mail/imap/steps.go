@@ -47,8 +47,10 @@ func (s *Store) traceRole(mailbox string) string {
 }
 
 // selectBox e la SELECT del percorso di lettura: misura il passo "select" (N = i
-// messaggi della mailbox) e registra l'epoca (Piano 16, R3), come facevano i
-// chiamanti. Gate gia detenuto.
+// messaggi della mailbox) e registra l'epoca (Piano 16, R3), come facevano i chiamanti
+// di lista, thread e corpi. Fa eccezione la SELECT che idleRound fa prima di ogni
+// IDLE, che prima non la registrava: registrarla anche li e innocuo, perche'
+// recheckNewMail registra la stessa epoca subito dopo il round. Gate gia detenuto.
 func (s *Store) selectBox(ctx context.Context, c *imapclient.Client, mailbox string) (*imap.SelectData, error) {
 	step := trace.BeginStep(ctx, trace.StepSelect)
 	sel, err := c.Select(mailbox, nil).Wait()

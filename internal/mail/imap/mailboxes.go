@@ -53,7 +53,8 @@ func (s *Store) ListMailboxes(ctx context.Context) ([]mail.Mailbox, error) {
 }
 
 // listMailboxes è il corpo di ListMailboxes SENZA gate: il gate non è rientrante
-// (cfr. idleGate), quindi chi è già sotto gate (Trash) lo chiama direttamente.
+// (cfr. idleGate), quindi chi è già sotto gate (Trash, Restore, le bozze) lo chiama
+// direttamente. Il ctx serve alla misura del passo "list" (Piano 12a, Task 5).
 func listMailboxes(ctx context.Context, c *imapclient.Client) ([]mail.Mailbox, error) {
 	data, err := listData(ctx, c, nil)
 	if err != nil {
@@ -79,6 +80,8 @@ func listMailboxes(ctx context.Context, c *imapclient.Client) ([]mail.Mailbox, e
 // listData è il LIST "*" con RETURN (SPECIAL-USE), SENZA gate. status != nil
 // aggiunge RETURN (STATUS ...) (LIST-STATUS, RFC 5819: solo se il server lo
 // annuncia; Piano 15, Task 11). Condiviso da listMailboxes e unreadCounts.
+// Il passo "list" si misura sempre, anche dentro le mutazioni e UnreadCounts: e'
+// lo stesso comando (Piano 12a, Task 5, D12-T3).
 func listData(ctx context.Context, c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
 	step := trace.BeginStep(ctx, trace.StepList) // Piano 12a, Task 5
 	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true, ReturnStatus: status}).Collect()

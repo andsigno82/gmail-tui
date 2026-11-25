@@ -205,10 +205,14 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   the UIDs missing from the FETCH response (message expunged in between); `toRef`
   takes a non-nil buffer.
 - **Trace steps** (Piano 12a): the SELECT and UID SEARCH of the read path go
-  through `selectBox` and `uidSearch` (`internal/mail/imap/steps.go`), which emit
-  the `step` events with the folder role (`traceRole`, never the name). A read
-  command added with a raw `c.Select`/`c.UIDSearch` is invisible in the trace.
-  Mutations are not traced (D12-T3).
+  through `selectBox` and `uidSearch` (`internal/mail/imap/steps.go`), and LIST and
+  FETCH open their step right before the command: a step opened after the command
+  measures zero. The `step` events carry the folder role (`traceRole`, never the
+  name). A read command added with a raw `c.Select`, `c.UIDSearch`, `c.List` or
+  `c.Fetch` is invisible in the trace. Not traced (D12-T3): the STORE, MOVE and
+  APPEND of mutations with their SELECT, the STATUS and SEARCH of `UnreadCounts`,
+  and `AllMailIDs`. The LIST is traced wherever it runs, because it is always the
+  same command.
 - **Text parts declare their `Content-Transfer-Encoding`** (`textPart`,
   `internal/mail/smtp/encoding.go`): `7bit`, or `quoted-printable` when the text
   has a byte above 127, a NUL or a line above 998 bytes. The standard

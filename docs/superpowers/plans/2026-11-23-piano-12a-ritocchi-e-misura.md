@@ -39,7 +39,7 @@ Scelte tecniche del piano. Sono state proposte il 2026-11-23 insieme al design, 
 |---|---|---|
 | D12-T1 | `Content-Transfer-Encoding` si dichiara sempre, anche `7bit` (prima era implicito). | Un solo posto che scrive l'intestazione; il sorgente dice come viaggia. Ogni invio cambia di una riga rispetto a oggi. |
 | D12-T2 | "Importanti" senza contatore dei non letti, come le altre speciali. | Il README promette conteggi solo per Posta in arrivo e label; Gmail web lo mostra, ma aggiungerlo è un altro lavoro. |
-| D12-T3 | La traccia per passo copre solo il percorso di lettura (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`). | Le mutazioni (STORE, MOVE, APPEND) non sono il sospetto di 12b. |
+| D12-T3 | La traccia per passo copre solo il percorso di lettura (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`). Il LIST si misura ovunque giri, anche dentro cestino, ripristino, bozze e conteggio dei non letti, perché è sempre lo stesso comando (precisato in esecuzione, 25 novembre). | Le mutazioni (STORE, MOVE, APPEND) non sono il sospetto di 12b. |
 | D12-T4 | `imap.Options.TLSConfig` esiste solo per i test (CA del certificato autofirmato); nil in produzione. | Il nuovo dial rifà a mano il TLS di produzione, che oggi non ha test: tutti girano in chiaro. |
 | D12-T5 | Il budget di `Connect` resta 90 s (Q16-7). | Decisione già presa in Piano 16; con l'annullamento vero si potrà ridiscuterla con una misura. |
 | D12-T6 | Design e decisioni stanno in testa a questo piano, nessuna spec separata. | Come i Piani 8–16. |
@@ -49,7 +49,7 @@ Fuori da questo piano, per scelta (non dimenticati):
 - **Cestino su più cartelle** (voce del piano dei gap): l'app già gestisce l'errore a metà, una conversazione alla volta, con annulla e "N di M nel cestino" (`internal/app/undo.go`). Resta il caso di una sola chiamata con messaggi di cartelle diverse, che l'app non produce.
 - **Righe di intestazione sopra 998 byte** (per esempio molti destinatari in `To:`). Gmail le accetta; limite noto.
 - **Contesto per le altre operazioni dello store**: controllano ancora solo `ctx.Err()` in ingresso. È materia di 12b.
-- **`UnreadCounts` nella traccia per passo**: ha già un suo budget e i suoi test con server lento.
+- **`UnreadCounts` nella traccia per passo**: i suoi STATUS e SEARCH non si misurano (ha già un suo budget e i suoi test con server lento); il suo LIST sì, come ogni LIST.
 - **`AllMailIDs` nella traccia per passo** (SELECT, FETCH, SELECT e SEARCH su Tutti i messaggi): è di sola lettura, ma serve all'annulla dell'archivia, non alla lista.
 
 ## Global Constraints

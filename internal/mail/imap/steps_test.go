@@ -36,21 +36,37 @@ func (s *syncBuf) String() string {
 	return s.b.String()
 }
 
-// stepTrail ritorna "operazione passo ruolo" per ogni evento step della traccia.
-func stepTrail(t *testing.T, buf *syncBuf) []string {
+// stepEvents ritorna gli eventi step della traccia, nell'ordine in cui sono scritti.
+func stepEvents(t *testing.T, buf *syncBuf) []trace.Event {
 	t.Helper()
-	var out []string
+	var out []trace.Event
 	for riga := range strings.SplitSeq(strings.TrimSpace(buf.String()), "\n") {
 		var e trace.Event
 		if err := json.Unmarshal([]byte(riga), &e); err != nil {
 			t.Fatalf("riga di traccia non valida: %v", err)
 		}
 		if e.K == "step" {
-			out = append(out, strings.TrimSpace(e.Op+" "+e.Step+" "+e.Role))
+			out = append(out, e)
 		}
 	}
 	return out
 }
+
+// stepTrail ritorna "operazione passo ruolo" per ogni evento step della traccia.
+func stepTrail(t *testing.T, buf *syncBuf) []string {
+	t.Helper()
+	var out []string
+	for _, e := range stepEvents(t, buf) {
+		out = append(out, strings.TrimSpace(e.Op+" "+e.Step+" "+e.Role))
+	}
+	return out
+}
+
+// durMinimaPasso e la durata sotto la quale un passo non ha misurato il suo comando:
+// un fetch sul loopback costa almeno una quarantina di microsecondi (misurato il 25
+// novembre 2026: minimo 41 senza -race, 242 con), mentre un passo aperto DOPO il
+// comando ne misura 0-1 (Piano 12a, revisione del Task 5).
+const durMinimaPasso = 5 // microsecondi
 
 // traceRole non guarda mai il nome della cartella.
 func TestTraceRoleNeverUsesMailboxName(t *testing.T) {
@@ -111,6 +127,20 @@ func TestListConversationsEmitsOneStepPerCommand(t *testing.T) {
 	for _, nome := range []string{"INBOX", "All Mail"} {
 		if strings.Contains(buf.String(), nome) {
 			t.Errorf("la traccia contiene il nome di una cartella: %q", nome)
+		}
+	}
+	// Ogni passo misura davvero il suo comando (Piano 12a, revisione del Task 5): il
+	// fetch dura come il comando, e il search conta i due UID della cartella.
+	for _, e := range stepEvents(t, &buf) {
+		switch e.Step {
+		case trace.StepFetch:
+			if e.Dur < durMinimaPasso {
+				t.Errorf("%s %s %s: dur_us = %d, voglio >= %d (il passo non misura il comando)", e.Op, e.Step, e.Role, e.Dur, durMinimaPasso)
+			}
+		case trace.StepSearch:
+			if e.N != 2 {
+				t.Errorf("%s %s %s: n = %d, voglio 2 (i due messaggi della cartella)", e.Op, e.Step, e.Role, e.N)
+			}
 		}
 	}
 }

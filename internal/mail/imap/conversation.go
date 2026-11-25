@@ -297,10 +297,14 @@ func (s *Store) allMailName(ctx context.Context) (string, error) {
 
 // gmailRefs scarica ENVELOPE, FLAGS, INTERNALDATE e X-GM-* per gli UID della
 // mailbox già selezionata, dal più recente al più vecchio. Gate già detenuto.
+// Misura il passo "fetch": il passo si apre PRIMA del comando, perché aperto dopo
+// misurerebbe zero (Piano 12a, Task 5).
 func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
 	}
+	// Il passo si apre PRIMA del comando, come in fetchRefs: aperto dopo, misurerebbe zero.
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	bufs, err := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,
 		Envelope:      true,
@@ -310,7 +314,6 @@ func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox str
 		GmailThreadID: true,
 		GmailLabels:   true,
 	}).Collect()
-	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	if err != nil {
 		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, fmt.Errorf("imap fetch gmail in %s: %w", mailbox, err)
@@ -337,6 +340,7 @@ func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox str
 
 // threadSummaries calcola Count, Participants, Unread e Labels per thread su
 // All Mail, con SEARCH OR di threadPerSearch thread alla volta. Gate detenuto.
+// Il ctx serve alla misura dei passi "select", "search" e "fetch" (Piano 12a, Task 5).
 func (s *Store) threadSummaries(ctx context.Context, c *imapclient.Client, allMail string, threads []uint64) (map[uint64]threadSummary, error) {
 	out := make(map[uint64]threadSummary, len(threads))
 	if len(threads) == 0 {
