@@ -330,9 +330,7 @@ func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox str
 			continue // espunto fra SEARCH e FETCH: nessuna riga senza dati (Piano 12a, Task 2)
 		}
 		ref := toRef(mailbox, uids[i], buf)
-		ref.GmailID = buf.GmailMsgID
-		ref.ThreadID = buf.GmailThreadID
-		ref.Labels = msg.UserLabels(buf.GmailLabels)
+		setGmailFields(&ref, buf)
 		refs = append(refs, ref)
 	}
 	return refs, nil
@@ -500,10 +498,9 @@ func pageRefs(refs []msg.MessageRef, pg mail.Page) []msg.MessageRef {
 }
 
 // setGmailFields copia ID Gmail e label utente dal buffer di FETCH nel riferimento.
+// buf è sempre presente: gli UID senza dati si saltano prima di chiamarla (Piano 12a,
+// Task 2).
 func setGmailFields(ref *msg.MessageRef, buf *imapclient.FetchMessageBuffer) {
-	if buf == nil {
-		return
-	}
 	ref.GmailID = buf.GmailMsgID
 	ref.ThreadID = buf.GmailThreadID
 	ref.Labels = msg.UserLabels(buf.GmailLabels)

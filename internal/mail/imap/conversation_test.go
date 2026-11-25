@@ -84,7 +84,7 @@ type gmailServerOpts struct {
 	epochs map[string]uint32 // UIDVALIDITY annunciata dalla SELECT per mailbox (0/assente = nessuna)
 	trash  bool              // LIST con \Trash e capability MOVE
 	// vanished elenca "BOX:uid" che il SEARCH riporta ma il FETCH non restituisce:
-	// il messaggio e stato espunto fra i due comandi (Piano 12a, Task 2).
+	// il messaggio è stato espunto fra i due comandi (Piano 12a, Task 2).
 	vanished map[string]bool
 }
 

@@ -423,7 +423,8 @@ func (s *Store) selectAndSearch(ctx context.Context, q msg.Query) (string, []ima
 // ENVELOPE+FLAGS+INTERNALDATE degli uid (nella mailbox già selezionata) e
 // mapping in msg.MessageRef, dal più nuovo al più vecchio. Piano 12a, Task 2: gli
 // uid che il FETCH non restituisce (messaggio espunto fra SEARCH e FETCH) si
-// saltano, mai una riga senza dati.
+// saltano. Un buffer presente ma senza ENVELOPE dà ancora una riga con il solo
+// ID e i flag: non è il caso di un messaggio espunto.
 func (s *Store) fetchRefs(ctx context.Context, mailbox string, uids []imap.UID) ([]msg.MessageRef, error) {
 	if len(uids) == 0 {
 		return nil, nil
