@@ -19,7 +19,8 @@ import (
 
 // Piano 12a, Task 1 (D12-S2): le parti di testo dichiarano sempre come viaggiano.
 
-var fissoCTE = time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
+// adesso è l'istante fisso dei test: la data dell'intestazione Date.
+var adesso = time.Date(2026, 11, 23, 10, 0, 0, 0, time.UTC)
 
 // decodeQP decodifica un corpo quoted-printable col decoder della libreria standard.
 func decodeQP(t *testing.T, r io.Reader) string {
@@ -84,7 +85,7 @@ func cteDichiarati(t *testing.T, out []byte) []string {
 // e corpo identico al sorgente (con CRLF).
 func TestBuildMIMEAsciiStaysSevenBit(t *testing.T) {
 	m := msg.Outgoing{From: "me@example.com", To: []string{"a@b.com"}, Subject: "Salve", BodyText: "riga1\nriga2\n"}
-	out, err := buildMIME(m, fissoCTE)
+	out, err := buildMIME(m, adesso)
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
@@ -99,7 +100,7 @@ func TestBuildMIMEAsciiStaysSevenBit(t *testing.T) {
 func TestBuildMIMEAccentsGoQuotedPrintable(t *testing.T) {
 	body := "Città  \r\nperché x=y\r\npiù su\r\n"
 	m := msg.Outgoing{From: "me@example.com", To: []string{"a@b.com"}, Subject: "Salve", BodyText: body}
-	out, err := buildMIME(m, fissoCTE)
+	out, err := buildMIME(m, adesso)
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
@@ -119,7 +120,7 @@ func TestBuildMIMEAccentsGoQuotedPrintable(t *testing.T) {
 func TestBuildMIMELongLineGoQuotedPrintable(t *testing.T) {
 	body := strings.Repeat("a", 1500) + "\r\nfine\r\n"
 	m := msg.Outgoing{From: "me@example.com", To: []string{"a@b.com"}, Subject: "Salve", BodyText: body}
-	out, err := buildMIME(m, fissoCTE)
+	out, err := buildMIME(m, adesso)
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
@@ -142,7 +143,7 @@ func TestBuildMIMEMarkdownPartsChooseOwnEncoding(t *testing.T) {
 		From: "me@example.com", To: []string{"a@b.com"}, Subject: "Md",
 		BodyText: riga + "\n", Markdown: true,
 	}
-	out, err := buildMIME(m, fissoCTE)
+	out, err := buildMIME(m, adesso)
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestBuildMIMEAttachmentTextPartDeclaresEncoding(t *testing.T) {
 		From: "me@example.com", To: []string{"a@b.com"}, Subject: "Salve",
 		BodyText: "città", Attachments: []string{path},
 	}
-	out, err := buildMIME(m, fissoCTE)
+	out, err := buildMIME(m, adesso)
 	if err != nil {
 		t.Fatalf("buildMIME: %v", err)
 	}
@@ -194,7 +195,7 @@ func TestBuildDraftRoundTripsQuotedPrintable(t *testing.T) {
 		From: "me@example.dev", To: []string{"anna@example.dev"}, Subject: "Bozza",
 		BodyText: "Città\r\n" + lunga + "\r\n",
 	}
-	raw, err := BuildDraft(out, fissoCTE)
+	raw, err := BuildDraft(out, adesso)
 	if err != nil {
 		t.Fatalf("BuildDraft: %v", err)
 	}
@@ -208,6 +209,62 @@ func TestBuildDraftRoundTripsQuotedPrintable(t *testing.T) {
 	}
 	if !strings.Contains(parsed.BodyText, "Città") || !strings.Contains(parsed.BodyText, lunga) {
 		t.Errorf("bozza riaperta senza il testo di prima: %q", parsed.BodyText)
+	}
+}
+
+// TestBuildMIMEMultipartHasNoTransferEncoding: le due guardie che tengono
+// Content-Transfer-Encoding fuori dalle parti multipart (Piano 12a, revisione del
+// Task 1). Si controlla la PRESENZA della chiave, non il valore: Header.Get dà ""
+// sia se manca sia se è vuota.
+func TestBuildMIMEMultipartHasNoTransferEncoding(t *testing.T) {
+	const chiave = "Content-Transfer-Encoding"
+
+	// Markdown senza allegati: le intestazioni di primo livello sono quelle di un multipart.
+	out, err := buildMIME(msg.Outgoing{
+		From: "me@example.com", To: []string{"a@b.com"}, Subject: "Md", BodyText: "titolo\n", Markdown: true,
+	}, adesso)
+	if err != nil {
+		t.Fatalf("buildMIME: %v", err)
+	}
+	m, err := mail.ReadMessage(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("ReadMessage: %v", err)
+	}
+	if _, ok := m.Header[chiave]; ok {
+		t.Errorf("il messaggio Markdown porta %s di primo livello: %q", chiave, m.Header.Get(chiave))
+	}
+
+	// Markdown con un allegato: la prima parte di multipart/mixed è l'alternative, e
+	// non deve portarla neanche lei. Si legge con NextRawPart, che non nasconde nulla.
+	path := filepath.Join(t.TempDir(), "notes.txt")
+	if err := os.WriteFile(path, []byte("allegato"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, err = buildMIME(msg.Outgoing{
+		From: "me@example.com", To: []string{"a@b.com"}, Subject: "Md", BodyText: "titolo\n", Markdown: true,
+		Attachments: []string{path},
+	}, adesso)
+	if err != nil {
+		t.Fatalf("buildMIME con allegato: %v", err)
+	}
+	m, err = mail.ReadMessage(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("ReadMessage con allegato: %v", err)
+	}
+	_, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("Content-Type top-level: %v", err)
+	}
+	mr := multipart.NewReader(m.Body, params["boundary"])
+	p, err := mr.NextRawPart()
+	if err != nil {
+		t.Fatalf("prima parte: %v", err)
+	}
+	if ct := p.Header.Get("Content-Type"); !strings.HasPrefix(ct, "multipart/alternative") {
+		t.Fatalf("prima parte = %s, voglio multipart/alternative", ct)
+	}
+	if _, ok := p.Header[chiave]; ok {
+		t.Errorf("la parte alternative porta %s: %q", chiave, p.Header.Get(chiave))
 	}
 }
 

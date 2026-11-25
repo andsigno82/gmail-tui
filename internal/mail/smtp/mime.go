@@ -31,9 +31,12 @@ import (
 //     Message-ID <hex16@dominio-di-From>, MIME-Version: 1.0.
 //   - Bcc MAI negli header: è un destinatario solo RCPT (vedi Sender.Send).
 //   - Senza allegati: Content-Type: text/plain; charset=utf-8,
-//     Content-Transfer-Encoding: 7bit o quoted-printable (Piano 12a, Task 1),
-//     corpo con LF→CRLF (gli eventuali CRLF esistenti restano tali).
-//   - Con allegati: multipart/mixed; prima parte text/plain, poi una parte
+//     Content-Transfer-Encoding: 7bit o quoted-printable (Piano 12a, Task 1).
+//     In 7bit il corpo esce com'è, con LF→CRLF (gli eventuali CRLF esistenti
+//     restano tali); in quoted-printable è codificato.
+//   - Con allegati: multipart/mixed, che non porta una
+//     Content-Transfer-Encoding propria; prima parte text/plain con la sua
+//     codifica, poi una parte
 //     per file: Content-Type da mime.TypeByExtension (fallback
 //     application/octet-stream), Content-Disposition: attachment;
 //     filename="<base del path>", Content-Transfer-Encoding: base64 con
@@ -201,7 +204,8 @@ func (e rawHTMLEscaper) renderHTMLBlock(w util.BufWriter, source []byte, n ast.N
 }
 
 // corpo costruisce Content-Type, Content-Transfer-Encoding e bytes della parte
-// corpo. Senza Markdown è text/plain con il corpo CRLF così com'è. Con Markdown è
+// corpo. Senza Markdown è text/plain: il corpo esce com'è in 7bit, codificato in
+// quoted-printable altrimenti. Con Markdown è
 // multipart/alternative: text/plain = markdown sorgente, text/html = documento
 // minimo con il rendering GFM (meta charset utf-8, nessuno stile o script esterno).
 // Piano 12a, Task 1: ogni parte di testo porta la sua codifica (textPart); cte è
