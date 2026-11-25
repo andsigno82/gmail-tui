@@ -150,8 +150,19 @@ func righeCon(s, prefisso string) []string {
 	return out
 }
 
+// campiRiga ritorna i campi dell'unica riga del riepilogo che inizia con prefisso
+// (nil se la riga non e' una sola).
+func campiRiga(s, prefisso string) []string {
+	righe := righeCon(s, prefisso)
+	if len(righe) != 1 {
+		return nil
+	}
+	return strings.Fields(righe[0])
+}
+
 // Piano 12a, Task 4: la tabella dei passi IMAP, una riga per operazione, passo e
-// ruolo; i passi del Connect finiscono nella cronologia dell'avvio.
+// ruolo, con il conteggio dei passi falliti. Della cronologia dell'avvio fanno
+// parte solo i passi del PRIMO Connect.
 func TestSummarizeSezionePassi(t *testing.T) {
 	in := jsonl(
 		Event{K: "meta", Start: "2026-11-23T10:00:00Z", OS: "darwin", Arch: "arm64", Version: "dev"},
@@ -162,6 +173,10 @@ func TestSummarizeSezionePassi(t *testing.T) {
 		Event{T: 1_600_000, K: "step", Op: "ListConversations", Step: "select", Role: "inbox", Dur: 900_000},
 		Event{T: 2_100_000, K: "step", Op: "ListConversations", Step: "search", Role: "inbox", Dur: 500_000},
 		Event{T: 2_900_000, K: "step", Op: "ListConversations", Step: "select", Role: "all", Dur: 800_000},
+		// Un secondo Connect, piu' tardi, con il login fallito: sta nella tabella, non nell'avvio.
+		Event{T: 9_000_000, K: "step", Op: "Connect", Step: "tcp", Dur: 120_000},
+		Event{T: 9_200_000, K: "step", Op: "Connect", Step: "login", Dur: 900_000, Err: true},
+		Event{T: 9_250_000, K: "store", Op: "Connect", Dur: 1_200_000, Err: true},
 	)
 	var out strings.Builder
 	if err := Summarize(strings.NewReader(in), &out); err != nil {
@@ -178,9 +193,23 @@ func TestSummarizeSezionePassi(t *testing.T) {
 	if got := righeCon(s, "ListConversations search"); len(got) != 1 || !strings.Contains(got[0], "inbox") || !strings.Contains(got[0], "500.0") {
 		t.Errorf("riga di search attesa con inbox e 500.0:\n%s", s)
 	}
-	// Cronologia dell'avvio: i passi del Connect, in ordine di tempo.
-	i, j, k := strings.Index(s, "Connect tcp"), strings.Index(s, "Connect tls"), strings.Index(s, "Connect login")
+	// Le righe della tabella contano tutti i Connect (due) e i passi falliti (uno, il
+	// login del secondo). Campi: operazione, passo, n, mediana, p95, max, err.
+	if got := campiRiga(s, "Connect tcp"); got == nil || got[2] != "2" || got[len(got)-1] != "0" {
+		t.Errorf("riga di Connect tcp attesa con n = 2 e err = 0: %v\n%s", got, s)
+	}
+	if got := campiRiga(s, "Connect login"); got == nil || got[2] != "2" || got[len(got)-1] != "1" {
+		t.Errorf("riga di Connect login attesa con n = 2 e err = 1: %v\n%s", got, s)
+	}
+	// Cronologia dell'avvio: solo i passi del PRIMO Connect, in ordine di tempo. Il
+	// suffisso "(passo)" esiste solo li': la tabella stampa le stesse etichette senza.
+	i := strings.Index(s, "Connect tcp (passo)")
+	j := strings.Index(s, "Connect tls (passo)")
+	k := strings.Index(s, "Connect login (passo)")
 	if i < 0 || j < 0 || k < 0 || i >= j || j >= k {
-		t.Errorf("i passi del Connect non sono in ordine nell'avvio:\n%s", s)
+		t.Errorf("i passi del primo Connect non sono in ordine nell'avvio:\n%s", s)
+	}
+	if n := strings.Count(s, "(passo)"); n != 3 {
+		t.Errorf("righe \"(passo)\" nella cronologia = %d, attese 3 (solo il primo Connect):\n%s", n, s)
 	}
 }

@@ -77,6 +77,7 @@ type group struct {
 type stepGroup struct {
 	label, role string
 	dur         []int64
+	errs        int // passi finiti con errore (un timeout, un comando rifiutato)
 }
 
 // frame e un messaggio Bubble Tea con Update+View, per la classifica dei lenti.
@@ -160,6 +161,9 @@ func Summarize(r io.Reader, w io.Writer) error {
 				stepOrder = append(stepOrder, key)
 			}
 			g.dur = append(g.dur, e.Dur)
+			if e.Err {
+				g.errs++
+			}
 			if e.Op == "Connect" {
 				connect = append(connect, e)
 			}
@@ -228,9 +232,15 @@ func Summarize(r io.Reader, w io.Writer) error {
 			start = append(start, e)
 		}
 	}
-	for _, e := range connect {
-		e.Op = "Connect " + e.Step + " (passo)"
-		start = append(start, e)
+	// Solo i passi del PRIMO Connect: la cronologia e quella dell'avvio. Un Connect
+	// rifallito (per esempio dopo `R`) sta nella tabella dei passi, con le sue misure.
+	if primo, ok := firstStore["Connect"]; ok {
+		for _, e := range connect {
+			if e.T <= primo.T {
+				e.Op = "Connect " + e.Step + " (passo)"
+				start = append(start, e)
+			}
+		}
 	}
 	start = append(start, phases...)
 	if len(start) > 0 {
@@ -256,11 +266,11 @@ func Summarize(r io.Reader, w io.Writer) error {
 
 	if len(stepOrder) > 0 {
 		fmt.Fprintln(w, "\nPassi IMAP (ms; un comando per passo, per ruolo della cartella)")
-		fmt.Fprintln(tw, "operazione passo\truolo\tn\tmediana\tp95\tmax")
+		fmt.Fprintln(tw, "operazione passo\truolo\tn\tmediana\tp95\tmax\terr")
 		for _, k := range stepOrder {
 			g := steps[k]
-			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\n", g.label, g.role, len(g.dur),
-				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)))
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\t%s\t%d\n", g.label, g.role, len(g.dur),
+				ms(median(g.dur)), ms(percentile(g.dur, 95)), ms(maxOf(g.dur)), g.errs)
 		}
 		_ = tw.Flush()
 	}
