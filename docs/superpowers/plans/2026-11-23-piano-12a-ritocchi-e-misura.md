@@ -859,7 +859,7 @@ func TestConnectSurvivesCallerContextCancel(t *testing.T) {
 - [x] **Step 3: vedere rosso.**
 
 Run: `go test ./internal/mail/imap/ -run 'TestConnectStopsAtContextDeadline|TestCapabilitiesStopsAtContextDeadline' -count=1`
-Expected: FAIL, e il rosso è lento perché è il bug stesso. Prima della correzione (misurato su una copia dell'albero `a9d68d6`):
+Expected: FAIL, e il rosso è lento perché è il bug stesso. Prima della correzione (misurato su una copia dell'albero `32bca0d`):
 
 - «senza greeting»: `Connect` torna dopo 60 s con `err = imap login u: in response: cannot read tag: read tcp …: i/o timeout, voglio context.DeadlineExceeded`;
 - «greeting ma login muto»: non torna affatto. Dopo il greeting il ciclo di lettura del client attende senza scadenza (`Client.read` chiama `Decoder.EOF` prima che `readResponse` rimetta i 30 s), quindi questo caso si raccoglie con `-timeout` (per esempio `go test -timeout 20s`) e muore con `panic: test timed out`;
@@ -2483,8 +2483,10 @@ Il punto «`ROADMAP.md` è indietro» esce dalla lista perché è fatto; i due p
 
 - [x] Revisione indipendente per task (subagent diverso da quello che ha implementato): comportamento, privacy della traccia, nessun nome di cartella negli eventi, commenti in italiano con il riferimento al task. Fatta per tutti e sette i task; seguono due ondate di correzioni in sessione (25 novembre), la seconda dopo il ricontrollo della prima e dopo la revisione finale.
 - [x] Revisione dell'intero branch: `go test -race -count=1 ./...`, `golangci-lint run ./...`, `CGO_ENABLED=0 go build ./...`, `govulncheck ./...` pulito (nessuna dipendenza nuova: deve restare com'è). Verificati sulla seconda ondata: 29 pacchetti `ok`, lint a 0 issue, build senza CGO, "No vulnerabilities found".
-- [ ] Smoke in demo mode: `go run ./cmd/gmail-tui`, wizard, `s`: `m` mostra Importanti dopo Posta in arrivo; nessuna regressione visibile.
+- [x] Smoke in demo mode: `go run ./cmd/gmail-tui`, wizard, `s`: `m` mostra Importanti dopo Posta in arrivo; nessuna regressione visibile. Fatto due volte con una HOME isolata via pty, la seconda sull'albero finale: `m` mostra Posta in arrivo, Importanti, Inviati, Bozze, Tutta la posta, Cestino, Lavoro, Clienti, Work, senza un ramo `[Gmail]`; invio chiude il selettore, `q` esce con stato 0.
 - [ ] Merge in `main` e push **solo con l'ok di Andrea** (decisione "Lavoro con agenti", stato dei lavori).
+
+La seconda ondata di correzioni non ha avuto il ricontrollo indipendente: il revisore era partito e Andrea, il 25 novembre, ha chiesto di alleggerire le revisioni. Restano le prove nei test (rosso prima, verde dopo, mutazioni), il gate completo e il report `.superpowers/sdd/fix-wave-2-report.md`.
 
 ## Dopo il merge: la misura per il Piano 12b
 
