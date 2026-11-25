@@ -303,7 +303,6 @@ func (s *Store) gmailRefs(ctx context.Context, c *imapclient.Client, mailbox str
 	if len(uids) == 0 {
 		return nil, nil
 	}
-	// Il passo si apre PRIMA del comando, come in fetchRefs: aperto dopo, misurerebbe zero.
 	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
 	bufs, err := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,

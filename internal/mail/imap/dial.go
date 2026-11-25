@@ -54,9 +54,11 @@ func dialSession(ctx context.Context, o Options, op string, options *imapclient.
 		_ = c.Close()
 		return nil, fmt.Errorf("imap login %s: %w", o.Username, err)
 	}
-	// Il ctx puo finire fra il controllo qui sopra e stop(). Se stop() torna false la
-	// chiusura automatica e gia partita: la connessione sta per chiudersi e il client
-	// non si restituisce come buono (Piano 12a, revisione del Task 3).
+	// A login riuscito la connessione resta dello Store: stop() stacca la chiusura
+	// automatica, perche il ctx del chiamante non la deve piu chiudere. Il ctx pero
+	// puo finire fra il controllo qui sopra e stop(): se stop() torna false la
+	// chiusura e gia partita, la connessione sta per chiudersi e il client non si
+	// restituisce come buono (Piano 12a, revisione del Task 3).
 	if !stop() {
 		cerr := ctx.Err()
 		step.End("", 0, 0, cerr)

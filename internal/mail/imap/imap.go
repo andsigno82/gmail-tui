@@ -448,8 +448,9 @@ func (s *Store) fetchRefs(ctx context.Context, mailbox string, uids []imap.UID) 
 		return nil, err
 	}
 
-	gm := s.gmailOn() // Piano 8, Task 8: X-GM-* solo se il server li annuncia
-	cmd := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
+	gm := s.gmailOn()                             // Piano 8, Task 8: X-GM-* solo se il server li annuncia
+	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5: prima del comando
+	bufs, err := c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:           true,
 		Envelope:      true,
 		Flags:         true,
@@ -457,9 +458,7 @@ func (s *Store) fetchRefs(ctx context.Context, mailbox string, uids []imap.UID) 
 		GmailMsgID:    gm,
 		GmailThreadID: gm,
 		GmailLabels:   gm,
-	})
-	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
-	bufs, err := cmd.Collect()
+	}).Collect()
 	if err != nil {
 		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, fmt.Errorf("imap fetch envelope in %s: %w", mailbox, err)

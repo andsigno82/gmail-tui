@@ -187,16 +187,15 @@ func (s *Store) fetchRaw(ctx context.Context, mailbox string, uid imap.UID) (raw
 
 	section := &imap.FetchItemBodySection{Peek: true} // BODY.PEEK[] = messaggio intero, senza \Seen
 	gm := s.gmailOn()                                 // X-GM-* del messaggio solo se il server li annuncia (Piano 8)
-	cmd := c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
+	step := trace.BeginStep(ctx, trace.StepFetch)     // Piano 12a, Task 5: prima del comando
+	bufs, err := c.Fetch(imap.UIDSetNum(uid), &imap.FetchOptions{
 		UID:           true,
 		Flags:         true,
 		BodySection:   []*imap.FetchItemBodySection{section},
 		GmailMsgID:    gm,
 		GmailThreadID: gm,
 		GmailLabels:   gm,
-	})
-	step := trace.BeginStep(ctx, trace.StepFetch) // Piano 12a, Task 5
-	bufs, err := cmd.Collect()
+	}).Collect()
 	if err != nil {
 		step.End(s.traceRole(mailbox), 0, 0, err)
 		return nil, nil, 0, gmailFields{}, fmt.Errorf("imap fetch body in %s: %w", mailbox, err)

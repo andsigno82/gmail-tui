@@ -80,8 +80,9 @@ func listMailboxes(ctx context.Context, c *imapclient.Client) ([]mail.Mailbox, e
 // listData è il LIST "*" con RETURN (SPECIAL-USE), SENZA gate. status != nil
 // aggiunge RETURN (STATUS ...) (LIST-STATUS, RFC 5819: solo se il server lo
 // annuncia; Piano 15, Task 11). Condiviso da listMailboxes e unreadCounts.
-// Il passo "list" si misura sempre, anche dentro le mutazioni e UnreadCounts: e'
-// lo stesso comando (Piano 12a, Task 5, D12-T3).
+// Il passo "list" si misura sempre, anche dentro cestino, ripristino, bozze e
+// UnreadCounts: è lo stesso comando (Piano 12a, Task 5, D12-T3). Il LIST di una
+// sola mailbox con cui ensureMailbox crea una label non passa di qui e non si misura.
 func listData(ctx context.Context, c *imapclient.Client, status *imap.StatusOptions) ([]*imap.ListData, error) {
 	step := trace.BeginStep(ctx, trace.StepList) // Piano 12a, Task 5
 	data, err := c.List("", "*", &imap.ListOptions{ReturnSpecialUse: true, ReturnStatus: status}).Collect()
