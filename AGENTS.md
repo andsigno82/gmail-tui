@@ -81,7 +81,9 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
    error status and `R` to retry. A retry never runs concurrent `Connect`s
    (`connectFailed` is cleared at dispatch). `Store.Connect` honours its ctx for
    the whole dial and login: it closes the connection when the ctx expires
-   (`dialSession`, `internal/mail/imap/dial.go`).
+   (`dialSession`, `internal/mail/imap/dial.go`). A ctx without a deadline gets
+   `connectBudget` (90 s), so the reconnects of `Watch` and `UnreadCounts` and
+   `gmail-tui fetch` cannot hang on a login the server never answers.
 8. **Bcc never appears in headers** (`internal/mail/smtp/mime.go`): it is an
    RCPT-only recipient.
 9. **The MCP server stays plain text.** `internal/mcpserver` never imports
@@ -210,10 +212,12 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   FETCH open their step right before the command: a step opened after the command
   measures zero. The `step` events carry the folder role (`traceRole`, never the
   name). A read command added with a raw `c.Select`, `c.UIDSearch`, `c.List` or
-  `c.Fetch` is invisible in the trace. Not traced (D12-T3): the STORE, MOVE and
-  APPEND of mutations with their SELECT, the STATUS and SEARCH of `UnreadCounts`,
-  and `AllMailIDs`. The LIST is traced wherever it runs, because it is always the
-  same command.
+  `c.Fetch` is invisible in the trace. Traced: the list, thread and body read path,
+  the `select`, `search` and `fetch` of `Watch`, and the LIST that `listData` sends,
+  which `UnreadCounts`, `Trash`, `Restore`, `SaveDraft` and `DeleteDraft` call too.
+  Not traced (D12-T3): the STORE, MOVE and APPEND of mutations with their SELECT, the
+  STATUS and SEARCH of `UnreadCounts`, the single-mailbox LIST of `ensureMailbox`,
+  and `AllMailIDs`.
 - **Text parts declare their `Content-Transfer-Encoding`** (`textPart`,
   `internal/mail/smtp/encoding.go`): `7bit`, or `quoted-printable` when the text
   has a byte above 127, a NUL or a line above 998 bytes. The standard
@@ -221,8 +225,8 @@ docs/                 demo.tape (VHS) → demo.gif, smoke-checklist.md, specs/pl
   use `NextRawPart` of `mime/multipart` (`NextPart` hides it on quoted-printable
   parts).
 - **Pinned library APIs**: go-imap is `v2.0.0-beta.9`. Verify APIs against the
-  source of the pinned version, not against docs or memory (e.g. `DialInsecure`,
-  `UIDExpunge`). bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.
+  source of the pinned version, not against docs or memory (e.g. `UIDExpunge`).
+  bbolt sentinel errors live in `go.etcd.io/bbolt/errors`.
 
 ## Development workflow
 

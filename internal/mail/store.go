@@ -156,10 +156,9 @@ type MailStore interface {
 	Send(ctx context.Context, m msg.Outgoing) error
 
 	// ListMailboxes restituisce cartelle e label con il ruolo SPECIAL-USE.
-	// "important" viene per primo (Piano 12a, Task 6).
-	// Ordine: INBOX, poi le speciali (important, flagged, sent, drafts, all, junk,
-	// trash), poi le label in ordine alfabetico. Le mailbox \Noselect (contenitori come
-	// "[Gmail]") sono escluse.
+	// Ordine: INBOX, poi le speciali con "important" per prima (Piano 12a, Task 6:
+	// important, flagged, sent, drafts, all, junk, trash), poi le label in ordine
+	// alfabetico. Le mailbox \Noselect (contenitori come "[Gmail]") sono escluse.
 	ListMailboxes(ctx context.Context) ([]Mailbox, error)
 
 	// UnreadCounts restituisce i messaggi non letti per cartella (Piano 15,

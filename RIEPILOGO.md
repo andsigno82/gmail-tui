@@ -280,16 +280,21 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
 - Codifica di trasferimento delle parti di testo (D12-S2): `7bit` se ASCII puro con
   righe fino a 998 byte, altrimenti `quoted-printable` con la libreria standard
 - Scelte tecniche (D12-T1…T6): `7bit` dichiarato sempre; "Importanti" senza
-  contatore; nella traccia si misurano i comandi del percorso di lettura (il LIST
-  dovunque giri; non i conteggi dei non letti né `AllMailIDs`);
-  `Options.TLSConfig` solo nei test; budget di Connect a 90 s; nessuna spec separata
+  contatore; nella traccia si misurano i comandi del percorso di lettura, i passi
+  del Watch e il LIST di `listData` (anche dentro cestino, ripristino, bozze e
+  conteggio dei non letti); non le mutazioni, né STATUS e SEARCH dei non letti, né
+  `AllMailIDs`; `Options.TLSConfig` solo nei test; budget di Connect a 90 s; nessuna
+  spec separata
 - `Connect` e la sonda di doctor e del wizard rispettano il contesto per tutto il
   dial e il login: alla scadenza la connessione si chiude. Prima il login restava
-  appeso senza scadenza se il server taceva dopo il greeting. Primo test del dial TLS
+  appeso senza scadenza se il server taceva dopo il greeting. Un contesto senza
+  scadenza riceve comunque 90 s: anche le riconnessioni del Watch e dei conteggi
+  dei non letti, e `gmail-tui fetch`, non restano appese. Primo test del dial TLS
 - "Importanti" tra le cartelle speciali, dopo Posta in arrivo (`\Important`)
 - Niente righe vuote per i messaggi spariti tra SEARCH e FETCH
 - Traccia per passo IMAP: evento `step` (tcp, tls, login, list, select, search,
-  fetch) e tabella "Passi IMAP" in `gmail-tui trace`
+  fetch) e tabella "Passi IMAP" in `gmail-tui trace`; la cronologia d'avvio elenca
+  i passi fino al primo Connect riuscito, con le durate
 - File nuovi: `internal/mail/smtp/encoding.go`, `internal/mail/imap/dial.go`,
   `internal/mail/imap/steps.go`
 - Esecuzione mista: Task 1 e 2 con subagent (implementatore e revisore); Task 3-7 in
@@ -297,8 +302,12 @@ go build -ldflags "-X main.version=0.1.0-dev" -o gmail-tui ./cmd/gmail-tui
   indipendente (subagent), che ha trovato due bug veri (nel Task 3 `Connect` poteva
   riportare successo su una connessione chiusa; nel Task 5 il passo `fetch` della
   lista misurava zero), un test che non verificava nulla nel Task 4 e quattro frasi
-  false nei documenti. Una sola ondata di correzioni, fatta in sessione; poi la
-  revisione finale dell'intero branch, prima del merge
+  false nei documenti: prima ondata di correzioni, in sessione. Il ricontrollo di
+  quella ondata e la revisione finale dell'intero branch (25 novembre, subagent)
+  hanno trovato un terzo bug vero (le riconnessioni chiamavano `Connect` senza
+  scadenza: il login poteva restare appeso), frasi ancora inesatte su cosa copre la
+  traccia e una cronologia d'avvio che perdeva i passi di un Connect non riuscito:
+  seconda ondata, in sessione, poi il merge
 - Misura che ha motivato il piano (traccia del 23 novembre): rete veloce
   (un comando verso Gmail in 62–64 ms), Connect a 29 s, prima lista a 61 s di
   esecuzione, refresh dopo un'operazione a 15–20 s

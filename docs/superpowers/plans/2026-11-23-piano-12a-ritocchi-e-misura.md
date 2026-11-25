@@ -39,7 +39,7 @@ Scelte tecniche del piano. Sono state proposte il 2026-11-23 insieme al design, 
 |---|---|---|
 | D12-T1 | `Content-Transfer-Encoding` si dichiara sempre, anche `7bit` (prima era implicito). | Un solo posto che scrive l'intestazione; il sorgente dice come viaggia. Ogni invio cambia di una riga rispetto a oggi. |
 | D12-T2 | "Importanti" senza contatore dei non letti, come le altre speciali. | Il README promette conteggi solo per Posta in arrivo e label; Gmail web lo mostra, ma aggiungerlo è un altro lavoro. |
-| D12-T3 | La traccia per passo copre solo il percorso di lettura (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`). Il LIST si misura ovunque giri, anche dentro cestino, ripristino, bozze e conteggio dei non letti, perché è sempre lo stesso comando (precisato in esecuzione, 25 novembre). | Le mutazioni (STORE, MOVE, APPEND) non sono il sospetto di 12b. |
+| D12-T3 | La traccia per passo copre il percorso di lettura (`tcp`, `tls`, `login`, `list`, `select`, `search`, `fetch`), i passi del Watch e il LIST di `listData`, anche dentro cestino, ripristino, bozze e conteggio dei non letti, perché è sempre lo stesso comando. Non copre le mutazioni con la loro SELECT, il LIST di una sola mailbox con cui `ensureMailbox` crea una label, STATUS e SEARCH dei non letti, `AllMailIDs` (precisato in esecuzione, 25 novembre, dopo le due revisioni). | Le mutazioni (STORE, MOVE, APPEND) non sono il sospetto di 12b. |
 | D12-T4 | `imap.Options.TLSConfig` esiste solo per i test (CA del certificato autofirmato); nil in produzione. | Il nuovo dial rifà a mano il TLS di produzione, che oggi non ha test: tutti girano in chiaro. |
 | D12-T5 | Il budget di `Connect` resta 90 s (Q16-7). | Decisione già presa in Piano 16; con l'annullamento vero si potrà ridiscuterla con una misura. |
 | D12-T6 | Design e decisioni stanno in testa a questo piano, nessuna spec separata. | Come i Piani 8–16. |
@@ -49,7 +49,7 @@ Fuori da questo piano, per scelta (non dimenticati):
 - **Cestino su più cartelle** (voce del piano dei gap): l'app già gestisce l'errore a metà, una conversazione alla volta, con annulla e "N di M nel cestino" (`internal/app/undo.go`). Resta il caso di una sola chiamata con messaggi di cartelle diverse, che l'app non produce.
 - **Righe di intestazione sopra 998 byte** (per esempio molti destinatari in `To:`). Gmail le accetta; limite noto.
 - **Contesto per le altre operazioni dello store**: controllano ancora solo `ctx.Err()` in ingresso. È materia di 12b.
-- **`UnreadCounts` nella traccia per passo**: i suoi STATUS e SEARCH non si misurano (ha già un suo budget e i suoi test con server lento); il suo LIST sì, come ogni LIST.
+- **`UnreadCounts` nella traccia per passo**: i suoi STATUS e SEARCH non si misurano (ha già un suo budget e i suoi test con server lento); il suo LIST sì, come quello di ogni operazione che passa da `listData`.
 - **`AllMailIDs` nella traccia per passo** (SELECT, FETCH, SELECT e SEARCH su Tutti i messaggi): è di sola lettura, ma serve all'annulla dell'archivia, non alla lista.
 
 ## Global Constraints
@@ -1140,6 +1140,8 @@ func TestConnectStopsDuringTLSHandshake(t *testing.T) {
 
 Dopo la revisione indipendente (25 novembre) si è aggiunto `TestDialSessionNonRestituisceUnClientChiuso` in `dial_test.go`: se il contesto finisce fra il controllo finale e il distacco della chiusura automatica, `dialSession` non deve restituire il client. La correzione controlla il valore di ritorno di `stop()`.
 
+Dopo la revisione finale dell'intero branch (25 novembre) si è aggiunto `connectBudget` in `imap.go`: il piano non elencava i due percorsi di riconnessione (`reconnect` in `watch.go` e il riconnessione dopo lo stallo di `UnreadCounts`), che chiamano `Connect` con un contesto senza scadenza, come `gmail-tui fetch`. Lì la correzione di questo task non faceva nulla: un server che manda il greeting e tace sul LOGIN teneva `Connect` appesa per sempre, con in mano `Store.mu`. Ora `Connect` si dà 90 s (D12-T5) quando il contesto non ha una scadenza; una scadenza fissata dal chiamante resta la sua. Test: `TestConnectSenzaScadenzaHaUnBudget` in `dial_test.go`, rosso prima (Connect non tornava entro 3 s), verde dopo. Il test del client chiuso dà al suo contesto una scadenza lontana, perché deve arrivare a `dialSession` così com'è.
+
 - [x] **Step 6: vedere verde e controllare che i dial di imapclient non ci siano più.**
 
 Run: `go test ./internal/mail/imap/ -count=1 -v`
@@ -1464,6 +1466,8 @@ Run: `go test ./internal/trace/... ./internal/mail/imap/ -count=1`
 Expected: PASS.
 
 - [x] **Step 6: gate**, poi commit `feat(trace): evento step per i passi IMAP e tabella nel riepilogo (Piano 12a, Task 4)`.
+
+Dopo le revisioni (25 novembre) la cronologia dell'avvio è cambiata due volte. La prima ondata l'ha ristretta ai passi del primo Connect, ma perdeva quelli di un Connect mai finito (traccia chiusa durante il login: nessun evento `store`). La seconda ondata arriva fino alla fine del primo Connect **riuscito** e stampa la durata di ogni passo, con `ERR` sui falliti: se il primo tentativo cade e `R` riesce, il tempo del login buono resta leggibile; se nessun Connect riesce, valgono tutti. La fine di un Connect fallito si legge `store Connect (fallito)`. Test: `TestSummarizeAvvioSenzaFineDelConnect` e `TestSummarizeAvvioFinoAlPrimoConnectRiuscito` in `summary_test.go`. La sonda del wizard (`testConnection` in `cmd/gmail-tui/main.go`) ora passa da `tracestore.Wrap` e chiude il suo store: senza, i suoi passi arrivavano senza nome d'operazione.
 
 ## Task 5: i passi misurati nello store IMAP
 
@@ -2395,8 +2399,8 @@ Run on a real Gmail account. These behaviours have unit tests, but none of them 
 This is the measurement the Piano 12b design is built on. Do it first and paste the summary in the chat.
 
 - [ ] `GMAIL_TUI_TRACE=1 gmail-tui`: start, wait for the list, open 2 conversations (one with several messages), press `v` on a row, switch to another folder with `m`, quit.
-- [ ] `gmail-tui trace <path>`: the summary has the "Passi IMAP" table, with rows for `Connect tcp`, `Connect tls` and `Connect login`, and `list`, `select`, `search` and `fetch` for `ListConversations` and `ThreadMessages`, `select` and `fetch` for `FetchMessage`. The unread counts and `AllMailIDs` are not broken down.
-- [ ] Startup timeline: it lists the three Connect steps. Note the time of `Connect login`: in the trace of 23 November the whole Connect took 28.9 s, and that trace could not tell how much of it was the login.
+- [ ] `gmail-tui trace <path>`: the summary has the "Passi IMAP" table, with rows for `Connect tcp`, `Connect tls` and `Connect login`, and `list`, `select`, `search` and `fetch` for `ListConversations` and `ThreadMessages`, `select` and `fetch` for `FetchMessage`. It also has `UnreadCounts list` and `Watch select` and `Watch search` on `inbox`; `Watch fetch` appears when new mail arrives, and the `list` rows of `Trash`, `Restore`, `SaveDraft` and `DeleteDraft` only if you used them. Mutations have no row of their own (STORE, MOVE, APPEND), and the unread counts have none other than `list`.
+- [ ] Startup timeline: it lists the three Connect steps with their duration (`Connect tcp`, `Connect tls`, `Connect login`), then `store Connect (fine)`. Note the duration of `Connect login`: in the trace of 23 November the whole Connect took 28.9 s, and that trace could not tell how much of it was the login.
 - [ ] First `ListConversations`: note the slowest step, and whether it is in `inbox` or in `all`.
 - [ ] Privacy: `grep -ciE '\[Gmail\]|Tutti i messaggi|all mail' <path>` prints 0 (no folder name), and `grep -oE '"role":"[^"]*"' <path> | sort -u` lists only these roles: `inbox`, `important`, `sent`, `drafts`, `all`, `trash`, `junk`, `flagged`, `label`.
 - [ ] Paste the "Passi IMAP" table and the startup timeline in the chat: they decide the order of Piano 12b.
@@ -2477,8 +2481,8 @@ Il punto «`ROADMAP.md` è indietro» esce dalla lista perché è fatto; i due p
 
 ## Revisione e chiusura
 
-- [ ] Revisione indipendente per task (subagent diverso da quello che ha implementato): comportamento, privacy della traccia, nessun nome di cartella negli eventi, commenti in italiano con il riferimento al task.
-- [ ] Revisione dell'intero branch: `go test -race -count=1 ./...`, `golangci-lint run ./...`, `CGO_ENABLED=0 go build ./...`, `govulncheck ./...` pulito (nessuna dipendenza nuova: deve restare com'è).
+- [x] Revisione indipendente per task (subagent diverso da quello che ha implementato): comportamento, privacy della traccia, nessun nome di cartella negli eventi, commenti in italiano con il riferimento al task. Fatta per tutti e sette i task; seguono due ondate di correzioni in sessione (25 novembre), la seconda dopo il ricontrollo della prima e dopo la revisione finale.
+- [x] Revisione dell'intero branch: `go test -race -count=1 ./...`, `golangci-lint run ./...`, `CGO_ENABLED=0 go build ./...`, `govulncheck ./...` pulito (nessuna dipendenza nuova: deve restare com'è). Verificati sulla seconda ondata: 29 pacchetti `ok`, lint a 0 issue, build senza CGO, "No vulnerabilities found".
 - [ ] Smoke in demo mode: `go run ./cmd/gmail-tui`, wizard, `s`: `m` mostra Importanti dopo Posta in arrivo; nessuna regressione visibile.
 - [ ] Merge in `main` e push **solo con l'ok di Andrea** (decisione "Lavoro con agenti", stato dei lavori).
 
